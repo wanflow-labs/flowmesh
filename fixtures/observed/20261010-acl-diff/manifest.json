@@ -1,6 +1,6 @@
 {
   "label": "acl-diff",
-  "captured_at": "2026-10-09T23:38:56+00:00",
+  "captured_at": "2026-10-09T23:46:50+00:00",
   "official_client": "1.94.2",
   "method": "lab/acl-diff/run.py: per policy, scapy probes from ts1 (raw socket) to ts2; tcpdump on ts2 tailscale0",
   "files": [

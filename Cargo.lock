@@ -211,6 +211,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowmesh-filter"
+version = "0.1.0"
+dependencies = [
+ "flowmesh-proto",
+ "ipnet",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "flowmesh-noise"
 version = "0.1.0"
 dependencies = [

@@ -9,7 +9,7 @@ import socket
 import sys
 import time
 
-from scapy.all import ICMP, IP, TCP, UDP, IPv6, ICMPv6EchoReply, ICMPv6EchoRequest, Raw
+from scapy.all import ICMP, IP, TCP, UDP, IPv6, ICMPv6DestUnreach, ICMPv6EchoReply, ICMPv6EchoRequest, ICMPv6PacketTooBig, ICMPv6TimeExceeded, Raw
 
 GRE = 47
 
@@ -22,8 +22,12 @@ def build6(p):
     if proto == "udp":
         return ip / UDP(sport=40000, dport=p["dport"]) / Raw(load=p["id"].encode())
     if proto == "icmp6":
-        cls = ICMPv6EchoRequest if p.get("icmp_type", 128) == 128 else ICMPv6EchoReply
-        return ip / cls(id=4242, seq=1, data=p["id"].encode())
+        t = p.get("icmp_type", 128)
+        if t in (128, 129):
+            cls = ICMPv6EchoRequest if t == 128 else ICMPv6EchoReply
+            return ip / cls(id=4242, seq=1, data=p["id"].encode())
+        err = {1: ICMPv6DestUnreach, 2: ICMPv6PacketTooBig, 3: ICMPv6TimeExceeded}[t]
+        return ip / err() / Raw(load=p["id"].encode())
     raise ValueError(proto)
 
 

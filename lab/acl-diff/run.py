@@ -52,6 +52,8 @@ def probes(ts1, ts2, ts1_6, ts2_6):
     out.append({"id": "icmp-timestamp-reply", "proto": "icmp", "dport": 0, "tcp_flags": "", "icmp_type": 14})
     out.append({"id": "icmp-unreachable", "proto": "icmp", "dport": 0, "tcp_flags": "", "icmp_type": 3})
     out.append({"id": "icmp-time-exceeded", "proto": "icmp", "dport": 0, "tcp_flags": "", "icmp_type": 11})
+    for t, name in [(4, "source-quench"), (5, "redirect"), (12, "param-problem")]:
+        out.append({"id": f"icmp-{name}", "proto": "icmp", "dport": 0, "tcp_flags": "", "icmp_type": t})
     out.append({"id": "gre", "proto": "gre", "dport": 0, "tcp_flags": ""})
     for p in out:
         p.update({"src": ts1, "dst": ts2})
@@ -62,6 +64,9 @@ def probes(ts1, ts2, ts1_6, ts2_6):
         {"id": "v6-udp-53", "proto": "udp", "dport": 53, "tcp_flags": ""},
         {"id": "v6-icmp6-echo", "proto": "icmp6", "dport": 0, "tcp_flags": "", "icmp_type": 128},
         {"id": "v6-icmp6-echo-reply", "proto": "icmp6", "dport": 0, "tcp_flags": "", "icmp_type": 129},
+        {"id": "v6-icmp6-unreachable", "proto": "icmp6", "dport": 0, "tcp_flags": "", "icmp_type": 1},
+        {"id": "v6-icmp6-too-big", "proto": "icmp6", "dport": 0, "tcp_flags": "", "icmp_type": 2},
+        {"id": "v6-icmp6-time-exceeded", "proto": "icmp6", "dport": 0, "tcp_flags": "", "icmp_type": 3},
     ]
     for p in v6:
         p.update({"src": ts1_6, "dst": ts2_6})
@@ -103,7 +108,8 @@ def classify(fields):
         if nxt == "17":
             return f"{prefix}udp-{udport}"
         if nxt == "58":
-            return {"128": "v6-icmp6-echo", "129": "v6-icmp6-echo-reply"}.get(icmp6type)
+            return {"128": "v6-icmp6-echo", "129": "v6-icmp6-echo-reply", "1": "v6-icmp6-unreachable",
+                    "2": "v6-icmp6-too-big", "3": "v6-icmp6-time-exceeded"}.get(icmp6type)
         return None
     if proto == "6":
         flags = int(tflags, 16) if tflags else 0
@@ -113,7 +119,8 @@ def classify(fields):
         return f"udp-{udport}"
     if proto == "1":
         return {"8": "icmp-echo", "0": "icmp-echo-reply", "13": "icmp-timestamp", "14": "icmp-timestamp-reply",
-                "3": "icmp-unreachable", "11": "icmp-time-exceeded"}.get(icmptype)
+                "3": "icmp-unreachable", "11": "icmp-time-exceeded", "4": "icmp-source-quench",
+                "5": "icmp-redirect", "12": "icmp-param-problem"}.get(icmptype)
     if proto == "47":
         return "gre"
     return None
