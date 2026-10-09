@@ -18,6 +18,8 @@ services:
   headscale:
     image: flowmesh-lab/headscale:native
     command: ["serve"]
+    ports:
+      - "127.0.0.1:18080:80"
     volumes:
       - ./headscale/config.yaml:/etc/headscale/config.yaml:ro
       - ./headscale/derp-map.yaml:/etc/headscale/derp-map.yaml:ro

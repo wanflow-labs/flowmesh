@@ -1,0 +1,19 @@
+{
+  "label": "flowmesh-probe",
+  "captured_at": "2026-10-09T23:22:30+00:00",
+  "client": "flowmesh-probe 0.1.0 (capability version 131)",
+  "headscale": "lab control server @964cf55b",
+  "setup": "lab with ts1, ts2 online; flowmesh-probe --login-server http://127.0.0.1:18080 --hostname fm1 --duration 40",
+  "files": [
+    "early.json",
+    "map-0000.json",
+    "map-0001.json",
+    "map-0002.json",
+    "map-0003.json",
+    "map-0004.json",
+    "map-request.json",
+    "register-request.json",
+    "register-response.json"
+  ],
+  "note": "Raw decrypted, decompressed control messages as received by flowmesh; register-request authkey redacted; re-serialized with sorted keys by redact.py."
+}

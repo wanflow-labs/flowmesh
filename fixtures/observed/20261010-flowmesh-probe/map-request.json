@@ -1,0 +1,15 @@
+{
+  "Compress": "zstd",
+  "DiscoKey": "discokey:7d35e5734852bd560a1c5fa9a7a80bcb09e4a3df2b36cf539889920986cd6a0b",
+  "Endpoints": [],
+  "Hostinfo": {
+    "Hostname": "fm1",
+    "IPNVersion": "flowmesh-0.1.0",
+    "Machine": "aarch64",
+    "OS": "macOS"
+  },
+  "KeepAlive": true,
+  "NodeKey": "nodekey:1ae900e5f2d274de76a7ac2bad38bb7e67c6e7ba0608a72c57d34eb6f85f0c68",
+  "Stream": true,
+  "Version": 131
+}

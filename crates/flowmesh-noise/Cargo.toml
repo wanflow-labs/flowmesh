@@ -11,8 +11,9 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+chacha20poly1305 = "0.10"
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
-snow = "0.9"
+snow = { version = "0.9", features = ["risky-raw-split"] }
 thiserror = "2.0.21"
 
 [dev-dependencies]

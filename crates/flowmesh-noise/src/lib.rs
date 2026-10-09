@@ -14,4 +14,10 @@ pub enum Error {
     UnexpectedFrame(frame::FrameType),
     #[error("noise: {0}")]
     Noise(#[from] snow::Error),
+    #[error("record decryption failed")]
+    Decrypt,
+    #[error("nonce counter exhausted")]
+    NonceExhausted,
+    #[error("protocol: {0}")]
+    Protocol(&'static str),
 }

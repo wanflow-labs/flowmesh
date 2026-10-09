@@ -1,0 +1,20 @@
+{
+  "AuthURL": "",
+  "Error": "",
+  "Login": {
+    "DisplayName": "lab",
+    "ID": 1,
+    "LoginName": "lab",
+    "ProfilePicURL": "",
+    "Provider": ""
+  },
+  "MachineAuthorized": true,
+  "NodeKeyExpired": false,
+  "NodeKeySignature": null,
+  "User": {
+    "Created": "2026-10-09T23:01:41.639790301Z",
+    "DisplayName": "lab",
+    "ID": 1,
+    "ProfilePicURL": ""
+  }
+}

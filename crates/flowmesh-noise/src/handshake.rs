@@ -45,9 +45,12 @@ impl Initiator {
         }
         let mut scratch = vec![0u8; response.payload.len()];
         self.state.read_message(&response.payload, &mut scratch)?;
-        Ok(Transport {
-            state: self.state.into_transport_mode()?,
-        })
+        if !self.state.is_handshake_finished() {
+            return Err(Error::Protocol("handshake not finished after response"));
+        }
+        // 发起方：split 的第一把密钥用于发送，第二把用于接收。
+        let (send, recv) = self.state.dangerously_get_raw_split();
+        Ok(Transport::from_raw_split(send, recv))
     }
 }
 
@@ -75,6 +78,12 @@ mod tests {
         let mut dec = FrameDecoder::default();
         dec.push(&msg[2..]);
         (version, dec.next_frame().unwrap().unwrap())
+    }
+
+    /// 响应方的记录层：split 的两把密钥方向与发起方相反。
+    fn responder_transport(r: &mut Responder) -> Transport {
+        let (i2r, r2i) = r.state.dangerously_get_raw_split();
+        Transport::from_raw_split(r2i, i2r)
     }
 
     fn keys() -> (MachinePrivate, MachinePrivate) {
@@ -117,7 +126,7 @@ mod tests {
         };
 
         let mut client_t = init.finish(response).unwrap();
-        let mut server_t = r.state.into_transport_mode().unwrap();
+        let mut server_t = responder_transport(&mut r);
 
         // 客户端 → 服务端：超过单帧上限的明文必须被切成多帧。
         let big: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
@@ -128,22 +137,20 @@ mod tests {
         let mut frames = 0;
         while let Some(f) = dec.next_frame().unwrap() {
             assert_eq!(f.ty, FrameType::Record);
-            let mut out = vec![0u8; f.payload.len()];
-            let k = server_t.read_message(&f.payload, &mut out).unwrap();
-            got.extend_from_slice(&out[..k]);
+            got.extend_from_slice(&server_t.open(f).unwrap());
             frames += 1;
         }
         assert_eq!(got, big);
         assert_eq!(frames, 3);
 
-        // 服务端 → 客户端。
-        let mut buf = vec![0u8; 64];
-        let k = server_t.write_message(b"hello", &mut buf).unwrap();
-        let reply = Frame {
-            ty: FrameType::Record,
-            payload: buf[..k].to_vec(),
-        };
-        assert_eq!(client_t.open(reply).unwrap(), b"hello");
+        // 服务端 → 客户端，连续多条，覆盖 nonce 递增。
+        for msg in [&b"hello"[..], b"world", b"third"] {
+            let wire = server_t.seal(msg).unwrap();
+            let mut dec = FrameDecoder::default();
+            dec.push(&wire);
+            let f = dec.next_frame().unwrap().unwrap();
+            assert_eq!(client_t.open(f).unwrap(), msg);
+        }
     }
 
     #[test]
@@ -185,7 +192,7 @@ mod tests {
                 payload: scratch[..n].to_vec(),
             })
             .unwrap();
-        let mut server_t = r.state.into_transport_mode().unwrap();
+        let mut server_t = responder_transport(&mut r);
 
         let wrong = Frame {
             ty: FrameType::Initiation,
@@ -196,14 +203,12 @@ mod tests {
             Err(Error::UnexpectedFrame(FrameType::Initiation))
         ));
 
-        let mut buf = vec![0u8; 64];
-        let k = server_t.write_message(b"data", &mut buf).unwrap();
-        buf[0] ^= 1;
-        let tampered = Frame {
-            ty: FrameType::Record,
-            payload: buf[..k].to_vec(),
-        };
-        assert!(matches!(client_t.open(tampered), Err(Error::Noise(_))));
+        let wire = server_t.seal(b"data").unwrap();
+        let mut dec = FrameDecoder::default();
+        dec.push(&wire);
+        let mut f = dec.next_frame().unwrap().unwrap();
+        f.payload[0] ^= 1;
+        assert!(matches!(client_t.open(f), Err(Error::Decrypt)));
         let _ = encode;
     }
 }

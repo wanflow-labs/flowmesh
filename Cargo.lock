@@ -214,10 +214,23 @@ dependencies = [
 name = "flowmesh-noise"
 version = "0.1.0"
 dependencies = [
+ "chacha20poly1305",
  "flowmesh-proto",
  "serde_json",
  "snow",
  "thiserror",
+]
+
+[[package]]
+name = "flowmesh-probe"
+version = "0.1.0"
+dependencies = [
+ "flowmesh-control",
+ "flowmesh-proto",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

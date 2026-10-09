@@ -79,11 +79,27 @@ pub struct UserProfile {
     pub display_name: String,
 }
 
+/// 注册响应中的登录身份。用户名在这里，而不在 `User` 中（OBS-20261010-flowmesh-probe）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Login {
+    #[serde(rename = "ID")]
+    pub id: i64,
+    #[serde(rename = "LoginName")]
+    pub login_name: String,
+    #[serde(rename = "DisplayName")]
+    pub display_name: String,
+    #[serde(rename = "Provider")]
+    pub provider: String,
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RegisterResponse {
     #[serde(rename = "User")]
     pub user: UserProfile,
+    #[serde(rename = "Login")]
+    pub login: Login,
     #[serde(rename = "NodeKeyExpired")]
     pub node_key_expired: bool,
     #[serde(rename = "MachineAuthorized")]
@@ -167,6 +183,35 @@ pub struct Node {
     pub cap_map: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(rename = "Expired", skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,
+    /// 该节点的能力版本。
+    #[serde(rename = "Cap")]
+    pub cap: u32,
+    #[serde(rename = "Created", skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+}
+
+/// 对已有对端的增量修改，只携带变化的字段（`PeersChangedPatch`）。
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct PeerChange {
+    #[serde(rename = "NodeID")]
+    pub node_id: i64,
+    #[serde(rename = "DERPRegion", skip_serializing_if = "Option::is_none")]
+    pub derp_region: Option<u32>,
+    #[serde(rename = "Endpoints", skip_serializing_if = "Option::is_none")]
+    pub endpoints: Option<Vec<SocketAddr>>,
+    #[serde(rename = "Key", skip_serializing_if = "Option::is_none")]
+    pub key: Option<NodePublic>,
+    #[serde(rename = "DiscoKey", skip_serializing_if = "Option::is_none")]
+    pub disco_key: Option<DiscoPublic>,
+    #[serde(rename = "Online", skip_serializing_if = "Option::is_none")]
+    pub online: Option<bool>,
+    #[serde(rename = "LastSeen", skip_serializing_if = "Option::is_none")]
+    pub last_seen: Option<String>,
+    #[serde(rename = "KeyExpiry", skip_serializing_if = "Option::is_none")]
+    pub key_expiry: Option<String>,
+    #[serde(rename = "Cap", skip_serializing_if = "Option::is_none")]
+    pub cap: Option<u32>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -221,12 +266,19 @@ pub struct MapResponse {
     pub peers_changed: Vec<Node>,
     #[serde(rename = "PeersRemoved", skip_serializing_if = "Vec::is_empty")]
     pub peers_removed: Vec<i64>,
+    #[serde(rename = "PeersChangedPatch", skip_serializing_if = "Vec::is_empty")]
+    pub peers_changed_patch: Vec<PeerChange>,
     #[serde(rename = "DNSConfig", skip_serializing_if = "Option::is_none")]
     pub dns_config: Option<DnsConfig>,
     #[serde(rename = "Domain", skip_serializing_if = "String::is_empty")]
     pub domain: String,
+    /// 旧式的单一规则表；headscale 0.26 不发送，改用 `PacketFilters`。
     #[serde(rename = "PacketFilter", skip_serializing_if = "Option::is_none")]
     pub packet_filter: Option<Vec<FilterRule>>,
+    /// 按名称分组的规则表，headscale 只使用 `"base"` 一组（OBS-20261010-flowmesh-probe）。
+    /// 跨消息的合并语义（整体替换还是逐键更新、null 的含义）待 M3 用差分测试确认（control.md §6）。
+    #[serde(rename = "PacketFilters", skip_serializing_if = "Option::is_none")]
+    pub packet_filters: Option<BTreeMap<String, Option<Vec<FilterRule>>>>,
     #[serde(rename = "UserProfiles", skip_serializing_if = "Vec::is_empty")]
     pub user_profiles: Vec<UserProfile>,
     #[serde(rename = "Health", skip_serializing_if = "Vec::is_empty")]
@@ -280,6 +332,77 @@ mod tests {
         assert_eq!(v["Auth"]["AuthKey"], "k");
         assert_eq!(v["Hostinfo"]["Hostname"], "fm1");
         assert_eq!(v["OldNodeKey"], format!("nodekey:{}", "0".repeat(64)));
+    }
+
+    const PROBE: &str = "../../../fixtures/observed/20261010-flowmesh-probe";
+
+    #[test]
+    fn observed_register_response_has_login_name() {
+        let r: RegisterResponse = serde_json::from_str(include_str!(
+            "../../../fixtures/observed/20261010-flowmesh-probe/register-response.json"
+        ))
+        .unwrap();
+        assert!(r.machine_authorized);
+        assert!(r.error.is_empty());
+        assert_eq!(r.login.login_name, "lab");
+        let _ = PROBE;
+    }
+
+    #[test]
+    fn observed_initial_map_response() {
+        let m: MapResponse = serde_json::from_str(include_str!(
+            "../../../fixtures/observed/20261010-flowmesh-probe/map-0000.json"
+        ))
+        .unwrap();
+        let me = m.node.as_ref().unwrap();
+        assert_eq!(me.name, "fm1.mesh.lab.internal.");
+        assert_eq!(me.cap, 131);
+        let peers = m.peers.as_ref().unwrap();
+        assert_eq!(peers.len(), 2);
+        assert!(
+            peers
+                .iter()
+                .all(|p| p.home_derp == 1000 && !p.endpoints.is_empty())
+        );
+        assert!(peers.iter().all(|p| p.online == Some(true)));
+
+        let base = m.packet_filters.as_ref().unwrap()["base"].as_ref().unwrap();
+        assert_eq!(base.len(), 2);
+        assert_eq!(base[0].src_ips, ["0.0.0.0/0", "::/0"]);
+        assert_eq!(
+            base[0].dst_ports[0].ports,
+            crate::filter::PortRange {
+                first: 0,
+                last: 65535
+            }
+        );
+        assert_eq!(
+            base[1].cap_grant[0].caps,
+            ["tailscale.com/cap/relay", "tailscale.com/cap/relay-target"]
+        );
+        let derp = m.derp_map.as_ref().unwrap();
+        assert_eq!(derp.regions[&1000].nodes[0].host_name, "derp.lab");
+        assert!(m.dns_config.is_some());
+    }
+
+    #[test]
+    fn observed_peer_patch() {
+        let m: MapResponse = serde_json::from_str(include_str!(
+            "../../../fixtures/observed/20261010-flowmesh-probe/map-0001.json"
+        ))
+        .unwrap();
+        assert_eq!(m.peers_changed_patch.len(), 1);
+        assert_eq!(m.peers_changed_patch[0].node_id, 3);
+        assert_eq!(m.peers_changed_patch[0].online, Some(true));
+    }
+
+    #[test]
+    fn packet_filters_null_entry_means_delete() {
+        let m: MapResponse =
+            serde_json::from_str(r#"{"PacketFilters":{"base":null,"*":null}}"#).unwrap();
+        let pf = m.packet_filters.unwrap();
+        assert_eq!(pf.get("base"), Some(&None));
+        assert_eq!(pf.get("*"), Some(&None));
     }
 
     #[test]
