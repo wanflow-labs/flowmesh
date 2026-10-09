@@ -1,0 +1,8 @@
+flowmesh
+Copyright 2026 WanFlow
+
+This product is an independent implementation. It is compatible with the
+Tailscale coordination protocol but contains no code from Tailscale or
+headscale. "Tailscale" is a trademark of Tailscale Inc. and "WireGuard" is a
+registered trademark of Jason A. Donenfeld; neither is affiliated with or
+endorses this project.
