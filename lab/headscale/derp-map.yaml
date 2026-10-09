@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: Apache-2.0
+omitdefaultregions: true
+regions:
+  1000:
+    regionid: 1000
+    regioncode: wanflow-relay-1000
+    regionname: Lab Relay
+    nodes:
+      - name: lab-1
+        regionid: 1000
+        hostname: derp.lab
+        ipv4: 172.29.0.11
+        derpport: 443
+        stunport: 3478
+        insecurefortests: true

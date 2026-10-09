@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: Apache-2.0
+# flowmesh 互操作实验环境：只在本机运行，不连接任何生产主机。
+name: flowmesh-lab
+
+x-official-client: &official-client
+  image: tailscale/tailscale:v1.94.2
+  cap_add: [NET_ADMIN, NET_RAW]
+  devices: ["/dev/net/tun:/dev/net/tun"]
+  environment:
+    TS_NO_LOGS_NO_SUPPORT: "true"
+  entrypoint:
+    - /bin/sh
+    - -c
+    - mkdir -p /var/run/tailscale /var/lib/tailscale && exec tailscaled --state=/var/lib/tailscale/tailscaled.state
+  depends_on: [headscale, derp]
+
+services:
+  headscale:
+    image: flowmesh-lab/headscale:native
+    command: ["serve"]
+    volumes:
+      - ./headscale/config.yaml:/etc/headscale/config.yaml:ro
+      - ./headscale/derp-map.yaml:/etc/headscale/derp-map.yaml:ro
+      - ./headscale/policy.json:/etc/headscale/policy.json:ro
+      - ./headscale/extra-records.json:/etc/headscale/extra-records.json:ro
+      - headscale-data:/var/lib/headscale
+      - headscale-run:/var/run/headscale
+    networks:
+      lab:
+        ipv4_address: 172.29.0.10
+        aliases: [headscale.lab]
+
+  derp:
+    image: ${FLOWMESH_LAB_DERP_IMAGE}
+    platform: linux/amd64
+    command:
+      - --hostname=derp.lab
+      - --certmode=manual
+      - --certdir=/certs
+      - --a=:443
+      - --http-port=-1
+      - --stun=true
+      - --stun-port=3478
+    volumes:
+      - ./derp/certs:/certs:ro
+    networks:
+      lab:
+        ipv4_address: 172.29.0.11
+        aliases: [derp.lab]
+
+  ts1:
+    <<: *official-client
+    hostname: ts1
+    volumes: [ts1-state:/var/lib/tailscale]
+    networks:
+      lab:
+        ipv4_address: 172.29.0.21
+
+  ts2:
+    <<: *official-client
+    hostname: ts2
+    volumes: [ts2-state:/var/lib/tailscale]
+    networks:
+      lab:
+        ipv4_address: 172.29.0.22
+
+networks:
+  lab:
+    ipam:
+      config:
+        - subnet: 172.29.0.0/24
+
+volumes:
+  headscale-data:
+  headscale-run:
+  ts1-state:
+  ts2-state:

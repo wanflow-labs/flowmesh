@@ -1,0 +1,8 @@
+{
+  "tagOwners": {
+    "tag:relay-enabled": ["lab@"]
+  },
+  "acls": [
+    { "action": "accept", "src": ["*"], "dst": ["*:*"] }
+  ]
+}
