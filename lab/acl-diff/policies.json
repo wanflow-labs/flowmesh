@@ -1,0 +1,178 @@
+[
+  {
+    "name": "allow-all",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "*:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "deny-all",
+    "acls": []
+  },
+  {
+    "name": "tcp-80",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "dst": [
+          "{ts2}:80"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "range-8000-8100",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "dst": [
+          "{ts2}:8000-8100"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "list-22-443",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "dst": [
+          "{ts2}:22,443"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "proto-udp",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "proto": "udp",
+        "dst": [
+          "{ts2}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "proto-icmp",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "proto": "icmp",
+        "dst": [
+          "{ts2}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "other-src",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{other}"
+        ],
+        "dst": [
+          "{ts2}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "dst-other",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "dst": [
+          "{other}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "proto-tcp-all-ports",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "proto": "tcp",
+        "dst": [
+          "{ts2}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "proto-gre",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{ts1}"
+        ],
+        "proto": "gre",
+        "dst": [
+          "{ts2}:*"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "tcp-80-from-other-only",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "{other}"
+        ],
+        "dst": [
+          "{ts2}:80"
+        ]
+      }
+    ]
+  },
+  {
+    "name": "allow-all-again",
+    "acls": [
+      {
+        "action": "accept",
+        "src": [
+          "*"
+        ],
+        "dst": [
+          "*:*"
+        ]
+      }
+    ]
+  }
+]
