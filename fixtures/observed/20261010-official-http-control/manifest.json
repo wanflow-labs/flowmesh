@@ -1,0 +1,11 @@
+{
+  "label": "official-http-control",
+  "captured_at": "2026-10-09T22:49:59+00:00",
+  "official_client": "1.94.2 (tailscale/tailscale:v1.94.2)",
+  "setup": "headscale server_url http://headscale.lab:8080 (non-80 port), client: tailscale up --login-server=http://headscale.lab:8080",
+  "files": ["ts1-log-excerpt.txt"],
+  "findings": [
+    "With an http:// control URL on a port other than 80, the official client refuses plaintext and dials TLS on 443 instead (log: 'TLS forced: no port 80 dialed').",
+    "While resolving the control host, the official client queries bootstrap DNS on *.tailscale.com DERP servers (outbound connections to Tailscale infrastructure)."
+  ]
+}

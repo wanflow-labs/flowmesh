@@ -1,0 +1,131 @@
+{
+  "AuthURL": "",
+  "BackendState": "Running",
+  "CertDomains": null,
+  "ClientVersion": null,
+  "CurrentTailnet": {
+    "MagicDNSEnabled": true,
+    "MagicDNSSuffix": "mesh.lab.internal",
+    "Name": "headscale.lab"
+  },
+  "HaveNodeKey": true,
+  "Health": [],
+  "MagicDNSSuffix": "mesh.lab.internal",
+  "Peer": {
+    "nodekey:4700ed7f109a1321686f1f587ab7ac4fe5afe28cbcc6360e368dd74b71e02e00": {
+      "Active": false,
+      "Addrs": null,
+      "AllowedIPs": [
+        "100.64.0.1/32",
+        "fd7a:115c:a1e0::1/128"
+      ],
+      "CapMap": {
+        "https://tailscale.com/cap/file-sharing": [],
+        "https://tailscale.com/cap/is-admin": [],
+        "https://tailscale.com/cap/ssh": []
+      },
+      "Created": "2026-10-09T23:01:42.848975052Z",
+      "CurAddr": "",
+      "DNSName": "ts1.mesh.lab.internal.",
+      "ExitNode": false,
+      "ExitNodeOption": false,
+      "HostName": "ts1",
+      "ID": "1",
+      "InEngine": true,
+      "InMagicSock": true,
+      "InNetworkMap": true,
+      "LastHandshake": "2026-10-09T23:01:44.248314594Z",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "LastWrite": "2026-10-09T23:01:46.253269219Z",
+      "NoFileSharingReason": "",
+      "OS": "linux",
+      "Online": true,
+      "PeerAPIURL": [
+        "http://100.64.0.1:58436",
+        "http://[fd7a:115c:a1e0::1]:59780"
+      ],
+      "PeerRelay": "",
+      "PublicKey": "nodekey:4700ed7f109a1321686f1f587ab7ac4fe5afe28cbcc6360e368dd74b71e02e00",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 564,
+      "Tags": [
+        "tag:relay-enabled"
+      ],
+      "TaildropTarget": 1,
+      "TailscaleIPs": [
+        "100.64.0.1",
+        "fd7a:115c:a1e0::1"
+      ],
+      "TxBytes": 508,
+      "UserID": 1
+    }
+  },
+  "Self": {
+    "Active": false,
+    "Addrs": [
+      "172.29.0.22:38882"
+    ],
+    "AllowedIPs": [
+      "100.64.0.2/32",
+      "fd7a:115c:a1e0::2/128"
+    ],
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "Capabilities": [
+      "HTTPS://TAILSCALE.COM/s/DEPRECATED-NODE-CAPS#see-https://github.com/tailscale/tailscale/issues/11508",
+      "https://tailscale.com/cap/file-sharing",
+      "https://tailscale.com/cap/is-admin",
+      "https://tailscale.com/cap/ssh"
+    ],
+    "Created": "2026-10-09T23:01:43.250491593Z",
+    "CurAddr": "",
+    "DNSName": "ts2.mesh.lab.internal.",
+    "ExitNode": false,
+    "ExitNodeOption": false,
+    "HostName": "ts2",
+    "ID": "2",
+    "InEngine": false,
+    "InMagicSock": false,
+    "InNetworkMap": true,
+    "LastHandshake": "0001-01-01T00:00:00Z",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "LastWrite": "0001-01-01T00:00:00Z",
+    "NoFileSharingReason": "",
+    "OS": "linux",
+    "Online": true,
+    "PeerAPIURL": [
+      "http://100.64.0.2:46590",
+      "http://[fd7a:115c:a1e0::2]:47166"
+    ],
+    "PeerRelay": "",
+    "PublicKey": "nodekey:c7a7ea9b742c5d2960f1e11d6361da70f733b01db9bf854e4107571ff215e350",
+    "Relay": "wanflow-relay-1000",
+    "RxBytes": 0,
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "TaildropTarget": 0,
+    "TailscaleIPs": [
+      "100.64.0.2",
+      "fd7a:115c:a1e0::2"
+    ],
+    "TxBytes": 0,
+    "UserID": 1
+  },
+  "TUN": true,
+  "TailscaleIPs": [
+    "100.64.0.2",
+    "fd7a:115c:a1e0::2"
+  ],
+  "User": {
+    "1": {
+      "DisplayName": "lab",
+      "ID": 1,
+      "LoginName": "lab"
+    }
+  },
+  "Version": "1.94.2-t2de4d317a"
+}

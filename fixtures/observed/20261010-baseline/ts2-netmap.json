@@ -1,0 +1,407 @@
+{
+  "AllCaps": [
+    "https://tailscale.com/cap/file-sharing",
+    "https://tailscale.com/cap/is-admin",
+    "https://tailscale.com/cap/ssh"
+  ],
+  "CollectServices": false,
+  "DERPMap": {
+    "Regions": {
+      "1000": {
+        "Nodes": [
+          {
+            "DERPPort": 443,
+            "HostName": "derp.lab",
+            "IPv4": "172.29.0.11",
+            "InsecureForTests": true,
+            "Name": "lab-1",
+            "RegionID": 1000,
+            "STUNPort": 3478
+          }
+        ],
+        "RegionCode": "wanflow-relay-1000",
+        "RegionID": 1000,
+        "RegionName": "Lab Relay"
+      }
+    }
+  },
+  "DNS": {
+    "Domains": [
+      "mesh.lab.internal"
+    ],
+    "ExtraRecords": [
+      {
+        "Name": "svc.mesh.lab.internal",
+        "Type": "A",
+        "Value": "100.64.0.250"
+      }
+    ],
+    "FallbackResolvers": [
+      {
+        "Addr": "223.5.5.5"
+      }
+    ],
+    "Proxied": true,
+    "Routes": {
+      "0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa": [],
+      "100.100.in-addr.arpa": [],
+      "101.100.in-addr.arpa": [],
+      "102.100.in-addr.arpa": [],
+      "103.100.in-addr.arpa": [],
+      "104.100.in-addr.arpa": [],
+      "105.100.in-addr.arpa": [],
+      "106.100.in-addr.arpa": [],
+      "107.100.in-addr.arpa": [],
+      "108.100.in-addr.arpa": [],
+      "109.100.in-addr.arpa": [],
+      "110.100.in-addr.arpa": [],
+      "111.100.in-addr.arpa": [],
+      "112.100.in-addr.arpa": [],
+      "113.100.in-addr.arpa": [],
+      "114.100.in-addr.arpa": [],
+      "115.100.in-addr.arpa": [],
+      "116.100.in-addr.arpa": [],
+      "117.100.in-addr.arpa": [],
+      "118.100.in-addr.arpa": [],
+      "119.100.in-addr.arpa": [],
+      "120.100.in-addr.arpa": [],
+      "121.100.in-addr.arpa": [],
+      "122.100.in-addr.arpa": [],
+      "123.100.in-addr.arpa": [],
+      "124.100.in-addr.arpa": [],
+      "125.100.in-addr.arpa": [],
+      "126.100.in-addr.arpa": [],
+      "127.100.in-addr.arpa": [],
+      "64.100.in-addr.arpa": [],
+      "65.100.in-addr.arpa": [],
+      "66.100.in-addr.arpa": [],
+      "67.100.in-addr.arpa": [],
+      "68.100.in-addr.arpa": [],
+      "69.100.in-addr.arpa": [],
+      "70.100.in-addr.arpa": [],
+      "71.100.in-addr.arpa": [],
+      "72.100.in-addr.arpa": [],
+      "73.100.in-addr.arpa": [],
+      "74.100.in-addr.arpa": [],
+      "75.100.in-addr.arpa": [],
+      "76.100.in-addr.arpa": [],
+      "77.100.in-addr.arpa": [],
+      "78.100.in-addr.arpa": [],
+      "79.100.in-addr.arpa": [],
+      "80.100.in-addr.arpa": [],
+      "81.100.in-addr.arpa": [],
+      "82.100.in-addr.arpa": [],
+      "83.100.in-addr.arpa": [],
+      "84.100.in-addr.arpa": [],
+      "85.100.in-addr.arpa": [],
+      "86.100.in-addr.arpa": [],
+      "87.100.in-addr.arpa": [],
+      "88.100.in-addr.arpa": [],
+      "89.100.in-addr.arpa": [],
+      "90.100.in-addr.arpa": [],
+      "91.100.in-addr.arpa": [],
+      "92.100.in-addr.arpa": [],
+      "93.100.in-addr.arpa": [],
+      "94.100.in-addr.arpa": [],
+      "95.100.in-addr.arpa": [],
+      "96.100.in-addr.arpa": [],
+      "97.100.in-addr.arpa": [],
+      "98.100.in-addr.arpa": [],
+      "99.100.in-addr.arpa": []
+    }
+  },
+  "DisplayMessages": null,
+  "Domain": "headscale.lab",
+  "DomainAuditLogID": "",
+  "MachineKey": "mkey:027c5ba984565c622ada05bd9ccb3d9003d125fdbd3a6a7f8389b9542982e97f",
+  "NodeKey": "nodekey:c7a7ea9b742c5d2960f1e11d6361da70f733b01db9bf854e4107571ff215e350",
+  "PacketFilter": [
+    {
+      "Caps": [],
+      "Dsts": [
+        {
+          "Net": "0.0.0.0/0",
+          "Ports": {
+            "First": 0,
+            "Last": 65535
+          }
+        },
+        {
+          "Net": "::/0",
+          "Ports": {
+            "First": 0,
+            "Last": 65535
+          }
+        }
+      ],
+      "IPProto": [
+        6,
+        17,
+        1,
+        58
+      ],
+      "SrcCaps": null,
+      "Srcs": [
+        "0.0.0.0/0",
+        "::/0"
+      ]
+    },
+    {
+      "Caps": [
+        {
+          "Cap": "tailscale.com/cap/relay",
+          "Dst": "100.64.0.0/10",
+          "Values": null
+        },
+        {
+          "Cap": "tailscale.com/cap/relay-target",
+          "Dst": "100.64.0.0/10",
+          "Values": null
+        },
+        {
+          "Cap": "tailscale.com/cap/relay",
+          "Dst": "fd7a:115c:a1e0::/48",
+          "Values": null
+        },
+        {
+          "Cap": "tailscale.com/cap/relay-target",
+          "Dst": "fd7a:115c:a1e0::/48",
+          "Values": null
+        }
+      ],
+      "Dsts": [],
+      "IPProto": [
+        6,
+        17,
+        1,
+        58
+      ],
+      "SrcCaps": null,
+      "Srcs": [
+        "0.0.0.0/0",
+        "::/0"
+      ]
+    }
+  ],
+  "PacketFilterRules": [
+    {
+      "DstPorts": [
+        {
+          "IP": "0.0.0.0/0",
+          "Ports": {
+            "First": 0,
+            "Last": 65535
+          }
+        },
+        {
+          "IP": "::/0",
+          "Ports": {
+            "First": 0,
+            "Last": 65535
+          }
+        }
+      ],
+      "SrcIPs": [
+        "0.0.0.0/0",
+        "::/0"
+      ]
+    },
+    {
+      "CapGrant": [
+        {
+          "Caps": [
+            "tailscale.com/cap/relay",
+            "tailscale.com/cap/relay-target"
+          ],
+          "Dsts": [
+            "100.64.0.0/10",
+            "fd7a:115c:a1e0::/48"
+          ]
+        }
+      ],
+      "SrcIPs": [
+        "*"
+      ]
+    }
+  ],
+  "Peers": [
+    {
+      "Addresses": [
+        "100.64.0.1/32",
+        "fd7a:115c:a1e0::1/128"
+      ],
+      "AllowedIPs": [
+        "100.64.0.1/32",
+        "fd7a:115c:a1e0::1/128"
+      ],
+      "Cap": 131,
+      "CapMap": {
+        "https://tailscale.com/cap/file-sharing": [],
+        "https://tailscale.com/cap/is-admin": [],
+        "https://tailscale.com/cap/ssh": []
+      },
+      "ComputedName": "ts1",
+      "ComputedNameWithHost": "ts1",
+      "Created": "2026-10-09T23:01:42.848975052Z",
+      "DiscoKey": "discokey:3230bf47e9b8b6a58ca15abc2617af8e0c956810ad7c5eb7a870e9c69e99cf67",
+      "Endpoints": [
+        "172.29.0.21:54656"
+      ],
+      "HomeDERP": 1000,
+      "Hostinfo": {
+        "AppConnector": false,
+        "BackendLogID": "a73788d891a70ebb7974a90a4d749542c8f9d1c5d75e469db1bc541035cec66e",
+        "Container": true,
+        "Desktop": false,
+        "Distro": "alpine",
+        "DistroVersion": "3.22.3",
+        "GoArch": "arm64",
+        "GoArchVar": "v8.0",
+        "GoVersion": "go1.25.5",
+        "Hostname": "ts1",
+        "IPNVersion": "1.94.2-t2de4d317a",
+        "Machine": "aarch64",
+        "NetInfo": {
+          "DERPLatency": {
+            "1000-v4": 0.000183834
+          },
+          "FirewallMode": "ipt-default",
+          "MappingVariesByDestIP": null,
+          "OSHasIPv6": true,
+          "PCP": false,
+          "PMP": false,
+          "PreferredDERP": 1000,
+          "UPnP": false,
+          "WorkingICMPv4": false,
+          "WorkingIPv6": false,
+          "WorkingUDP": true
+        },
+        "NoLogsNoSupport": true,
+        "OS": "linux",
+        "OSVersion": "6.10.14-linuxkit",
+        "Package": "container",
+        "Services": [
+          {
+            "Port": 58436,
+            "Proto": "peerapi4"
+          },
+          {
+            "Port": 59780,
+            "Proto": "peerapi6"
+          },
+          {
+            "Port": 1,
+            "Proto": "peerapi-dns-proxy"
+          }
+        ],
+        "Userspace": false,
+        "UserspaceRouter": false
+      },
+      "ID": 1,
+      "Key": "nodekey:4700ed7f109a1321686f1f587ab7ac4fe5afe28cbcc6360e368dd74b71e02e00",
+      "Machine": "mkey:5d8f5c40c6580d5535b1699b9a9c3d4135f21a7108d78f59877ce67849fe8d5f",
+      "MachineAuthorized": true,
+      "Name": "ts1.mesh.lab.internal.",
+      "Online": true,
+      "StableID": "1",
+      "Tags": [
+        "tag:relay-enabled"
+      ],
+      "User": 1
+    }
+  ],
+  "SSHPolicy": null,
+  "SelfNode": {
+    "Addresses": [
+      "100.64.0.2/32",
+      "fd7a:115c:a1e0::2/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.2/32",
+      "fd7a:115c:a1e0::2/128"
+    ],
+    "Cap": 131,
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "ComputedName": "ts2",
+    "ComputedNameWithHost": "ts2",
+    "Created": "2026-10-09T23:01:43.250491593Z",
+    "DiscoKey": "discokey:a865f735e72f5ef03a407b54f5792ecf8b77b03669a32b2050426ef470cbf751",
+    "Endpoints": [
+      "172.29.0.22:38882"
+    ],
+    "HomeDERP": 1000,
+    "Hostinfo": {
+      "AppConnector": false,
+      "BackendLogID": "cf3760094c57c2a3546852c7f9201df3944302921d1495a0b8220e5a57fb24e5",
+      "Container": true,
+      "Desktop": false,
+      "Distro": "alpine",
+      "DistroVersion": "3.22.3",
+      "GoArch": "arm64",
+      "GoArchVar": "v8.0",
+      "GoVersion": "go1.25.5",
+      "Hostname": "ts2",
+      "IPNVersion": "1.94.2-t2de4d317a",
+      "Machine": "aarch64",
+      "NetInfo": {
+        "DERPLatency": {
+          "1000-v4": 0.000147041
+        },
+        "FirewallMode": "ipt-default",
+        "MappingVariesByDestIP": false,
+        "OSHasIPv6": true,
+        "PCP": false,
+        "PMP": false,
+        "PreferredDERP": 1000,
+        "UPnP": false,
+        "WorkingICMPv4": false,
+        "WorkingIPv6": false,
+        "WorkingUDP": true
+      },
+      "NoLogsNoSupport": true,
+      "OS": "linux",
+      "OSVersion": "6.10.14-linuxkit",
+      "Package": "container",
+      "Services": [
+        {
+          "Port": 46590,
+          "Proto": "peerapi4"
+        },
+        {
+          "Port": 47166,
+          "Proto": "peerapi6"
+        },
+        {
+          "Port": 1,
+          "Proto": "peerapi-dns-proxy"
+        }
+      ],
+      "Userspace": false,
+      "UserspaceRouter": false
+    },
+    "ID": 2,
+    "Key": "nodekey:c7a7ea9b742c5d2960f1e11d6361da70f733b01db9bf854e4107571ff215e350",
+    "LastSeen": "2026-10-09T23:03:00.800700837Z",
+    "Machine": "mkey:027c5ba984565c622ada05bd9ccb3d9003d125fdbd3a6a7f8389b9542982e97f",
+    "MachineAuthorized": true,
+    "Name": "ts2.mesh.lab.internal.",
+    "StableID": "2",
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "User": 1
+  },
+  "TKAEnabled": false,
+  "TKAHead": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+  "UserProfiles": {
+    "1": {
+      "DisplayName": "lab",
+      "ID": 1,
+      "LoginName": "lab"
+    }
+  }
+}

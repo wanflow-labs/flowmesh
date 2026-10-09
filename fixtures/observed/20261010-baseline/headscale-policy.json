@@ -1,0 +1,18 @@
+{
+  "acls": [
+    {
+      "action": "accept",
+      "dst": [
+        "*:*"
+      ],
+      "src": [
+        "*"
+      ]
+    }
+  ],
+  "tagOwners": {
+    "tag:relay-enabled": [
+      "lab@"
+    ]
+  }
+}

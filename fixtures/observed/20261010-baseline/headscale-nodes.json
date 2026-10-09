@@ -1,0 +1,122 @@
+[
+  {
+    "created_at": {
+      "nanos": 848975052,
+      "seconds": 1791586902
+    },
+    "disco_key": "discokey:3230bf47e9b8b6a58ca15abc2617af8e0c956810ad7c5eb7a870e9c69e99cf67",
+    "forced_tags": [
+      "tag:relay-enabled"
+    ],
+    "given_name": "ts1",
+    "id": 1,
+    "ip_addresses": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "last_seen": {
+      "nanos": 108054260,
+      "seconds": 1791586904
+    },
+    "machine_key": "mkey:5d8f5c40c6580d5535b1699b9a9c3d4135f21a7108d78f59877ce67849fe8d5f",
+    "name": "ts1",
+    "node_key": "nodekey:4700ed7f109a1321686f1f587ab7ac4fe5afe28cbcc6360e368dd74b71e02e00",
+    "online": true,
+    "pre_auth_key": {
+      "acl_tags": [
+        "tag:relay-enabled"
+      ],
+      "created_at": {
+        "nanos": 389655468,
+        "seconds": 1791586902
+      },
+      "expiration": {
+        "nanos": 388850593,
+        "seconds": 1791673302
+      },
+      "id": 1,
+      "key": "<redacted>",
+      "reusable": true,
+      "user": {
+        "created_at": {
+          "nanos": 639790301,
+          "seconds": 1791586901
+        },
+        "id": 1,
+        "name": "lab"
+      }
+    },
+    "register_method": 1,
+    "user": {
+      "created_at": {
+        "nanos": 639790301,
+        "seconds": 1791586901
+      },
+      "id": 1,
+      "name": "lab"
+    },
+    "valid_tags": [
+      "tag:relay-enabled"
+    ]
+  },
+  {
+    "created_at": {
+      "nanos": 250491593,
+      "seconds": 1791586903
+    },
+    "disco_key": "discokey:a865f735e72f5ef03a407b54f5792ecf8b77b03669a32b2050426ef470cbf751",
+    "forced_tags": [
+      "tag:relay-enabled"
+    ],
+    "given_name": "ts2",
+    "id": 2,
+    "ip_addresses": [
+      "100.64.0.2",
+      "fd7a:115c:a1e0::2"
+    ],
+    "last_seen": {
+      "nanos": 800700837,
+      "seconds": 1791586980
+    },
+    "machine_key": "mkey:027c5ba984565c622ada05bd9ccb3d9003d125fdbd3a6a7f8389b9542982e97f",
+    "name": "ts2",
+    "node_key": "nodekey:c7a7ea9b742c5d2960f1e11d6361da70f733b01db9bf854e4107571ff215e350",
+    "online": true,
+    "pre_auth_key": {
+      "acl_tags": [
+        "tag:relay-enabled"
+      ],
+      "created_at": {
+        "nanos": 389655468,
+        "seconds": 1791586902
+      },
+      "expiration": {
+        "nanos": 388850593,
+        "seconds": 1791673302
+      },
+      "id": 1,
+      "key": "<redacted>",
+      "reusable": true,
+      "user": {
+        "created_at": {
+          "nanos": 639790301,
+          "seconds": 1791586901
+        },
+        "id": 1,
+        "name": "lab"
+      }
+    },
+    "register_method": 1,
+    "user": {
+      "created_at": {
+        "nanos": 639790301,
+        "seconds": 1791586901
+      },
+      "id": 1,
+      "name": "lab"
+    },
+    "valid_tags": [
+      "tag:relay-enabled"
+    ]
+  }
+]

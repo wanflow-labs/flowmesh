@@ -1,0 +1,45 @@
+{
+  "AdvertiseRoutes": null,
+  "AdvertiseServices": null,
+  "AdvertiseTags": null,
+  "AllowSingleHosts": true,
+  "AppConnector": {
+    "Advertise": false
+  },
+  "AutoUpdate": {
+    "Apply": null,
+    "Check": true
+  },
+  "Config": {
+    "NetworkLockKey": "nlpriv:00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "NodeID": "2",
+    "OldPrivateNodeKey": "<redacted>",
+    "PrivateNodeKey": "<redacted>",
+    "UserProfile": {
+      "DisplayName": "lab",
+      "ID": 1,
+      "LoginName": "lab"
+    }
+  },
+  "ControlURL": "http://headscale.lab",
+  "CorpDNS": false,
+  "DriveShares": null,
+  "ExitNodeAllowLANAccess": false,
+  "ExitNodeID": "",
+  "ExitNodeIP": "",
+  "Hostname": "ts2",
+  "InternalExitNodePrior": "",
+  "LoggedOut": false,
+  "NetfilterKind": "",
+  "NetfilterMode": 2,
+  "NoSNAT": false,
+  "NoStatefulFiltering": true,
+  "NotepadURLs": false,
+  "PostureChecking": false,
+  "RouteAll": false,
+  "RunSSH": false,
+  "RunWebClient": false,
+  "ShieldsUp": false,
+  "Sync": null,
+  "WantRunning": true
+}

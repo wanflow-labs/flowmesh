@@ -1,0 +1,18 @@
+{
+  "label": "baseline",
+  "captured_at": "2026-10-09T23:03:12+00:00",
+  "official_client": "1.94.2",
+  "headscale": "lab control server @964cf55b (built by lab/scripts/build-images.sh)",
+  "derp_image": "${FLOWMESH_LAB_DERP_IMAGE}",
+  "files": [
+    "headscale-nodes.json",
+    "headscale-policy.json",
+    "ts1-netmap.json",
+    "ts1-prefs.json",
+    "ts1-status.json",
+    "ts2-netmap.json",
+    "ts2-prefs.json",
+    "ts2-status.json"
+  ],
+  "note": "lab-only keys; captured from flowmesh lab, see lab/README.md"
+}
