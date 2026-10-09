@@ -1,0 +1,28 @@
+[package]
+name = "flowmesh-control"
+description = "flowmesh control client: connect, register, stream network maps"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+base64 = "0.23.1"
+bytes = "1.12.1"
+flowmesh-noise = { version = "0.1.0", path = "../flowmesh-noise" }
+flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
+http = "1.5.0"
+http-body-util = "0.1.5"
+hyper = { version = "1", features = ["client", "http1", "http2"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+ruzstd = "0.9.0"
+serde_json = "1.0.151"
+thiserror = "2.0.21"
+tokio = { version = "1.53.2", features = ["net", "io-util", "rt", "time", "macros"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["rt-multi-thread"] }
