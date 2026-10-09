@@ -1,0 +1,131 @@
+{
+  "note": "Outer framing of the first control connection; derived from ts1-register.pcap by the parsing script. Lengths only, no ciphertext content.",
+  "directions": {
+    "client": {
+      "http_start_line": "POST /ts2021 HTTP/1.1",
+      "headers": [
+        "Host: headscale.lab:80",
+        "User-Agent: Go-http-client/1.1",
+        "Content-Length: 0",
+        "Connection: upgrade",
+        "Upgrade: tailscale-control-protocol",
+        "X-Tailscale-Handshake: AIMBAGCrP5q9jhoB3CBO/ahp58ydF1n/OgQgyd69xL9Xf/qiYZUk17zkLEVBR2HSyCG8C8aN0JO4RKPw0Jjem50YEn+QmAjUYGsHlATltwBbSUecvU7uwEMXImezDFQ5DF/ERMw="
+      ],
+      "frames": [
+        {
+          "type": 4,
+          "len": 86
+        },
+        {
+          "type": 4,
+          "len": 135
+        },
+        {
+          "type": 4,
+          "len": 961
+        },
+        {
+          "type": 4,
+          "len": 25
+        },
+        {
+          "type": 4,
+          "len": 49
+        },
+        {
+          "type": 4,
+          "len": 845
+        },
+        {
+          "type": 4,
+          "len": 37
+        },
+        {
+          "type": 4,
+          "len": 842
+        },
+        {
+          "type": 4,
+          "len": 37
+        },
+        {
+          "type": 4,
+          "len": 913
+        },
+        {
+          "type": 4,
+          "len": 37
+        },
+        {
+          "type": 4,
+          "len": 1157
+        }
+      ]
+    },
+    "server": {
+      "http_start_line": "HTTP/1.1 101 Switching Protocols",
+      "headers": [
+        "Connection: upgrade",
+        "Upgrade: tailscale-control-protocol",
+        "Date: Fri, 09 Oct 2026 23:06:13 GMT"
+      ],
+      "frames": [
+        {
+          "type": 2,
+          "len": 48
+        },
+        {
+          "type": 4,
+          "len": 21
+        },
+        {
+          "type": 4,
+          "len": 20
+        },
+        {
+          "type": 4,
+          "len": 111
+        },
+        {
+          "type": 4,
+          "len": 55
+        },
+        {
+          "type": 4,
+          "len": 29
+        },
+        {
+          "type": 4,
+          "len": 25
+        },
+        {
+          "type": 4,
+          "len": 79
+        },
+        {
+          "type": 4,
+          "len": 308
+        },
+        {
+          "type": 4,
+          "len": 30
+        },
+        {
+          "type": 4,
+          "len": 1972
+        },
+        {
+          "type": 4,
+          "len": 28
+        }
+      ]
+    }
+  },
+  "handshake_header_decoded": {
+    "total_len": 101,
+    "first5_hex": "0083010060",
+    "version_u16be": 131,
+    "type_u8": 1,
+    "len_u16be": 96
+  }
+}

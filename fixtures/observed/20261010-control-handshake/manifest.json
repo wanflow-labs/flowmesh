@@ -1,0 +1,9 @@
+{
+  "label": "control-handshake",
+  "captured_at": "2026-10-09T23:06:13+00:00",
+  "official_client": "1.94.2 (tailscale/tailscale:v1.94.2)",
+  "headscale": "lab control server @964cf55b",
+  "setup": "ts1: tailscale logout; tailscale up --login-server=http://headscale.lab --authkey=<lab key>; tcpdump on ts1 eth0 'tcp port 80' (nicolaka/netshoot:v0.13)",
+  "files": ["ts1-register.pcap", "framing-summary.json", "key-response.json"],
+  "note": "Contains only public keys and ciphertext; the pre-auth key travels inside the Noise-encrypted channel and does not appear in plaintext."
+}
