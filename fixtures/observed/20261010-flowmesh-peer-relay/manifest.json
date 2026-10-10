@@ -1,0 +1,11 @@
+{
+  "captured_at": "2026-10-10T16:30:54+00:00",
+  "files": [
+    "notes.md",
+    "tsr-fmr.pcap"
+  ],
+  "label": "flowmesh-peer-relay",
+  "method": "flowmesh-dev in a temporary container, ts2 dropping UDP to it, tsr as relay; tcpdump on tsr port 40000",
+  "note": "lab-only keys",
+  "official_client": "1.94.2"
+}
