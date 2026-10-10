@@ -1,0 +1,12 @@
+{
+  "label": "stun",
+  "captured_at": "2026-10-10T01:50:00+00:00",
+  "official_client": "1.94.2",
+  "method": "tcpdump on ts1 eth0 udp port 3478 during `tailscale netcheck` (nicolaka/netshoot:v0.13)",
+  "files": ["ts1-netcheck-stun.pcap"],
+  "findings": [
+    "Binding request (40 bytes): header + SOFTWARE (0x8022) 'tailnode' + FINGERPRINT (0x8028).",
+    "A plain Binding request without these attributes gets no reply from the lab derper (flowmesh test, timed out).",
+    "Response: Binding success with only XOR-MAPPED-ADDRESS."
+  ]
+}

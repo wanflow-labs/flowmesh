@@ -29,3 +29,14 @@ Source: `OBS-20261010-disco`. flowmesh-dev decrypts the disco messages that offi
 |---|---|
 | The source address in a pong over DERP is `127.3.3.40:<DERP region number>`, the same format as the legacy `DERP` field in the netmap | Observed |
 | Official clients send pings to a peer with no endpoints via DERP about every 5 seconds (tap timestamps 1.4s, 6.4s, 11.4s) | Observed (interval) |
+
+## 4. STUN (used together with disco)
+
+Source: `OBS-20261010-stun`. STUN is unencrypted, so the official client's requests can be captured directly.
+
+| Fact | Status |
+|---|---|
+| A Binding request is sent to the DERP node's `STUNPort` (default 3478) | Observed |
+| The request carries **SOFTWARE `tailnode`** and **FINGERPRINT** (RFC 5389 §15.5) attributes, 40 bytes total. The derper does not answer a plain request missing these two attributes | Observed (flowmesh generates a request byte-identical to the official client's) |
+| The response has only XOR-MAPPED-ADDRESS, and an IPv4 address is given as an IPv4-mapped IPv6 address (family 0x02, `::ffff:a.b.c.d`) | Observed (flowmesh normalizes it to IPv4) |
+| Docker Desktop on macOS does not reliably forward UDP published ports; STUN interop tests must run inside a lab container | Lab note |
