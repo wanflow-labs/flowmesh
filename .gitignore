@@ -6,3 +6,5 @@
 build/cache/
 /dist/
 __pycache__/
+# Internal planning notes stay out of the repository.
+/docs/superpowers/
