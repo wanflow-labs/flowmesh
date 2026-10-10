@@ -55,7 +55,8 @@ for t in $targets; do
     f=$(find crates -name "${b}_bin.cdx.json")
     sed "s|path+file://$PWD/|path+file:///flowmesh/|g" "$f" > "$out/$b-$version-linux-$arch.cdx.json"
   done
-  find crates -name '*_bin.cdx.json' -delete
+  # Every workspace member gets one (xtask too, outside crates/): clean them all, not the output.
+  find . -path ./target -prune -o -path "./$out" -prune -o -name '*_bin.cdx.json' -type f -print0 | xargs -0 rm -f
 done
 # Every workspace reference must be the mapped one (the build directory may itself be /flowmesh).
 if grep -ho 'path+file://[^"#]*' "$out"/*.cdx.json | grep -v '^path+file:///flowmesh/'; then
