@@ -135,9 +135,17 @@ pub fn ping_json(
     use flowmesh_engine::command::PingPath;
     match r {
         Ok(p) => {
-            let (endpoint, region, code) = match &p.via {
-                PingPath::Direct(a) => (a.to_string(), 0, String::new()),
-                PingPath::Derp { region, code } => (String::new(), *region, code.clone()),
+            let (endpoint, peer_relay, region, code) = match &p.via {
+                PingPath::Direct(a) => (a.to_string(), String::new(), 0, String::new()),
+                PingPath::PeerRelay { server, vni } => (
+                    String::new(),
+                    format!("{server}:vni:{vni}"),
+                    0,
+                    String::new(),
+                ),
+                PingPath::Derp { region, code } => {
+                    (String::new(), String::new(), *region, code.clone())
+                }
             };
             json!({
                 "IP": ip.to_string(),
@@ -146,6 +154,7 @@ pub fn ping_json(
                 "Err": "",
                 "LatencySeconds": p.latency.as_secs_f64(),
                 "Endpoint": endpoint,
+                "PeerRelay": peer_relay,
                 "DERPRegionID": region,
                 "DERPRegionCode": code,
             })

@@ -16,6 +16,7 @@ use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
+use flowmesh_disco::relay::{Geneve, PROTO_DISCO, PROTO_WIREGUARD, geneve_encode};
 use flowmesh_pathsock::{Action, Mode, PathSock, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
@@ -469,6 +470,16 @@ struct Ctx {
     rng: OsRandom,
 }
 
+/// A packet for a peer relay path: Geneve header (no O bit) + payload (peer-relay.md §3).
+fn relayed(vni: u32, protocol: u16, payload: &[u8]) -> Vec<u8> {
+    let h = Geneve {
+        control: false,
+        protocol,
+        vni,
+    };
+    [&geneve_encode(&h)[..], payload].concat()
+}
+
 impl Ctx {
     async fn run_actions(&mut self, actions: Vec<Action>) {
         for a in actions {
@@ -480,6 +491,12 @@ impl Ctx {
                 }
                 Action::Derp { to, region, data } => {
                     self.relays.send(region, &self.nm.derp_map, to, &data).await;
+                }
+                Action::Relay { server, vni, data } => {
+                    let packet = relayed(vni, PROTO_DISCO, &data);
+                    if let Err(e) = self.udp.send_to(&packet, server).await {
+                        log(format!("peer relay send {server}: {e}"));
+                    }
                 }
             }
         }
@@ -507,6 +524,12 @@ impl Ctx {
                             bytes,
                         )
                         .await;
+                }
+            }
+            Route::PeerRelay { server, vni } => {
+                let packet = relayed(vni, PROTO_WIREGUARD, bytes);
+                if let Err(e) = self.udp.send_to(&packet, server).await {
+                    log(format!("peer relay send {server}: {e}"));
                 }
             }
             Route::Derp(region) => {

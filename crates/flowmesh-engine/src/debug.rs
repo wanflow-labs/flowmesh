@@ -53,6 +53,7 @@ pub fn netmap(nm: &NetMap) -> Value {
 fn route_json(r: Route) -> Value {
     match r {
         Route::Direct(a) => json!({ "direct": a.to_string() }),
+        Route::PeerRelay { server, vni } => json!({ "peerRelay": format!("{server}:vni:{vni}") }),
         Route::Derp(region) => json!({ "relay": region }),
         Route::None => Value::Null,
     }

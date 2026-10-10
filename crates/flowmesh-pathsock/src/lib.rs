@@ -44,11 +44,23 @@ pub enum Action {
         region: u32,
         data: Vec<u8>,
     },
+    /// A disco message to a peer through its peer relay path: sent to the relay server with a Geneve
+    /// header (this VNI, protocol disco, no O bit) in front of `data` (peer-relay.md §3).
+    Relay {
+        server: SocketAddr,
+        vni: u32,
+        data: Vec<u8>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Route {
     Direct(SocketAddr),
+    /// Through a bound peer relay that answered recently (peer-relay.md).
+    PeerRelay {
+        server: SocketAddr,
+        vni: u32,
+    },
     Derp(u32),
     /// Peer unknown or has no home relay.
     None,
@@ -57,7 +69,15 @@ pub enum Route {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Source {
     Udp(SocketAddr),
-    Derp { node: NodePublic, region: u32 },
+    Derp {
+        node: NodePublic,
+        region: u32,
+    },
+    /// Received from a relay server with a Geneve header carrying this VNI.
+    Relay {
+        server: SocketAddr,
+        vni: u32,
+    },
 }
 
 /// Relay mode (disco.md §5; WanFlow tag semantics).
@@ -91,6 +111,17 @@ struct PeerPath {
     last_discovery: Option<Duration>,
     last_heartbeat: Option<Duration>,
     last_active: Option<Duration>,
+    /// The peer relay endpoint the caller bound (flowmesh-udprelay), and its liveness.
+    relay: Option<RelayPath>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct RelayPath {
+    server: SocketAddr,
+    vni: u32,
+    /// Last pong through the relay.
+    confirmed: Option<Duration>,
+    last_heartbeat: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -101,6 +132,8 @@ struct Pending {
     sent: Duration,
     /// Sent by [`PathSock::probe`]: its pong is reported as a [`ProbeResult`].
     probe: bool,
+    /// The VNI when the ping went through a peer relay (`to` is then the relay server).
+    vni: Option<u32>,
 }
 
 /// The state behind a peer's current path ([`PathSock::explain`]). Ages are measured back from `now`.
@@ -115,6 +148,8 @@ pub struct PathExplain {
     pub last_direct_pong: Option<(SocketAddr, Duration)>,
     pub last_discovery: Option<Duration>,
     pub last_active: Option<Duration>,
+    /// The bound peer relay endpoint (server, VNI) and the age of its last pong.
+    pub relay: Option<(SocketAddr, u32, Option<Duration>)>,
 }
 
 /// A pong answering [`PathSock::probe`] (the `flowmesh ping` command).
@@ -135,6 +170,8 @@ pub struct PathSock {
     by_disco: HashMap<DiscoPublic, NodePublic>,
     pending: HashMap<[u8; TX_ID_LEN], Pending>,
     probe_results: Vec<ProbeResult>,
+    /// Peers that answered a ping through their peer relay since the last call.
+    relay_pongs: Vec<NodePublic>,
 }
 
 impl PathSock {
@@ -148,6 +185,7 @@ impl PathSock {
             by_disco: HashMap::new(),
             pending: HashMap::new(),
             probe_results: Vec::new(),
+            relay_pongs: Vec::new(),
         }
     }
 
@@ -184,12 +222,49 @@ impl PathSock {
                     last_discovery: None,
                     last_heartbeat: None,
                     last_active: None,
+                    relay: None,
                 },
             };
             next.insert(path.info.node, path);
         }
         self.peers = next;
         self.pending.retain(|_, p| self.peers.contains_key(&p.peer));
+    }
+
+    /// The peer relay endpoint bound for `peer` (from flowmesh-udprelay), or `None`. A new endpoint
+    /// starts unconfirmed and makes the next `route` call run discovery, which pings through it.
+    pub fn set_relay(&mut self, peer: NodePublic, endpoint: Option<(SocketAddr, u32)>) {
+        let Some(p) = self.peers.get_mut(&peer) else {
+            return;
+        };
+        let same =
+            matches!((p.relay, endpoint), (Some(r), Some((s, v))) if r.server == s && r.vni == v);
+        if same {
+            return;
+        }
+        p.relay = endpoint.map(|(server, vni)| RelayPath {
+            server,
+            vni,
+            confirmed: None,
+            last_heartbeat: None,
+        });
+        if p.relay.is_some() {
+            p.last_discovery = None;
+        }
+    }
+
+    /// Which peer a packet from relay server `server` with VNI `vni` belongs to.
+    pub fn peer_for_relay(&self, server: SocketAddr, vni: u32) -> Option<NodePublic> {
+        self.peers
+            .values()
+            .find(|p| p.relay.is_some_and(|r| r.server == server && r.vni == vni))
+            .map(|p| p.info.node)
+    }
+
+    /// Peers that answered a ping through their peer relay since the last call (for
+    /// flowmesh-udprelay's liveness tracking).
+    pub fn take_relay_pongs(&mut self) -> Vec<NodePublic> {
+        std::mem::take(&mut self.relay_pongs)
     }
 
     /// Called when there is data to send to `peer`: returns the route to use, plus any disco traffic this triggers.
@@ -210,7 +285,9 @@ impl PathSock {
             }
             p.best = None;
         }
-        let route = p.info.home_region.map_or(Route::None, Route::Derp);
+        let route = relay_route(p, now)
+            .or(p.info.home_region.map(Route::Derp))
+            .unwrap_or(Route::None);
         let due = p
             .last_discovery
             .is_none_or(|last| now.saturating_sub(last) >= DISCOVERY_INTERVAL);
@@ -236,6 +313,9 @@ impl PathSock {
         if let Some(a) = self.ping(&info, None, false, now, rng) {
             actions.push(a);
         }
+        if let Some(r) = self.peers.get(&peer).and_then(|p| p.relay) {
+            actions.extend(self.relay_ping(&info, r.server, r.vni, false, now, rng));
+        }
         if !relay_only && !self.my_endpoints.is_empty() {
             if let Some(a) = self.call_me_maybe(&info, rng) {
                 actions.push(a);
@@ -252,6 +332,7 @@ impl PathSock {
             return Vec::new();
         };
         let info = p.info.clone();
+        let p_relay = p.relay;
         let mut actions = Vec::new();
         if self.mode == Mode::Auto {
             let mut candidates = info.endpoints.clone();
@@ -265,6 +346,9 @@ impl PathSock {
             }
         }
         actions.extend(self.ping(&info, None, true, now, rng));
+        if let Some(r) = p_relay {
+            actions.extend(self.relay_ping(&info, r.server, r.vni, true, now, rng));
+        }
         actions
     }
 
@@ -298,6 +382,7 @@ impl PathSock {
                         to: addr,
                         sent: now,
                         probe,
+                        vni: None,
                     },
                 );
                 Some(Action::Udp { to: addr, data })
@@ -314,6 +399,7 @@ impl PathSock {
                             to: derp_magic(region),
                             sent: now,
                             probe,
+                            vni: None,
                         },
                     );
                 }
@@ -324,6 +410,36 @@ impl PathSock {
                 })
             }
         }
+    }
+
+    /// Build a ping to the peer through its peer relay.
+    fn relay_ping(
+        &mut self,
+        info: &PeerInfo,
+        server: SocketAddr,
+        vni: u32,
+        probe: bool,
+        now: Duration,
+        rng: &mut dyn Random,
+    ) -> Option<Action> {
+        let mut tx_id = [0u8; TX_ID_LEN];
+        rng.fill(&mut tx_id);
+        let plain = message::encode(&Message::Ping {
+            tx_id,
+            node_key: self.my_node,
+        });
+        let data = self.seal(&info.disco, &plain, rng)?;
+        self.pending.insert(
+            tx_id,
+            Pending {
+                peer: info.node,
+                to: server,
+                sent: now,
+                probe,
+                vni: Some(vni),
+            },
+        );
+        Some(Action::Relay { server, vni, data })
     }
 
     /// Send our endpoints to the peer via DERP, asking it to ping them (helps NAT hole punching from both sides).
@@ -395,6 +511,7 @@ impl PathSock {
                 let src = match from {
                     Source::Udp(a) => a,
                     Source::Derp { region, .. } => derp_magic(region),
+                    Source::Relay { server, .. } => server,
                 };
                 let pong = message::encode(&Message::Pong { tx_id, src });
                 let Some(data) = self.seal(&sender, &pong, rng) else {
@@ -407,6 +524,7 @@ impl PathSock {
                         region,
                         data,
                     }],
+                    Source::Relay { server, vni } => vec![Action::Relay { server, vni, data }],
                 }
             }
             Ok(Message::Pong { tx_id, .. }) => {
@@ -426,6 +544,16 @@ impl PathSock {
                     }
                     Source::Derp { region, .. } if pend.to == derp_magic(region) => {
                         Route::Derp(region)
+                    }
+                    Source::Relay { server, vni } if pend.to == server && pend.vni == Some(vni) => {
+                        if let Some(r) = self.peers.get_mut(&peer).and_then(|p| p.relay.as_mut()) {
+                            if r.server == server && r.vni == vni {
+                                r.confirmed = Some(now);
+                                r.last_heartbeat = Some(now);
+                            }
+                        }
+                        self.relay_pongs.push(peer);
+                        Route::PeerRelay { server, vni }
                     }
                     _ => return Vec::new(),
                 };
@@ -447,8 +575,9 @@ impl PathSock {
     pub fn tick(&mut self, now: Duration, rng: &mut dyn Random) -> Vec<Action> {
         self.pending
             .retain(|_, p| now.saturating_sub(p.sent) <= PING_TIMEOUT);
+        let mut out = self.relay_heartbeats(now, rng);
         if self.mode != Mode::Auto {
-            return Vec::new();
+            return out;
         }
         let mut due = Vec::new();
         for p in self.peers.values_mut() {
@@ -470,8 +599,41 @@ impl PathSock {
                 due.push((p.info.clone(), addr));
             }
         }
+        out.extend(
+            due.into_iter()
+                .filter_map(|(info, addr)| self.ping(&info, Some(addr), false, now, rng)),
+        );
+        out
+    }
+
+    /// Peer relay paths in every mode: expire the trust of one that stopped answering (it stays bound,
+    /// discovery keeps pinging it) and keep active ones alive with a heartbeat.
+    fn relay_heartbeats(&mut self, now: Duration, rng: &mut dyn Random) -> Vec<Action> {
+        let mut due = Vec::new();
+        for p in self.peers.values_mut() {
+            let Some(r) = p.relay.as_mut() else {
+                continue;
+            };
+            let Some(confirmed) = r.confirmed else {
+                continue;
+            };
+            if now >= confirmed + TRUST {
+                r.confirmed = None;
+                continue;
+            }
+            let active = p
+                .last_active
+                .is_some_and(|t| now.saturating_sub(t) < ACTIVE_WINDOW);
+            let hb_due = r
+                .last_heartbeat
+                .is_none_or(|t| now.saturating_sub(t) >= HEARTBEAT);
+            if active && hb_due {
+                r.last_heartbeat = Some(now);
+                due.push((p.info.clone(), r.server, r.vni));
+            }
+        }
         due.into_iter()
-            .filter_map(|(info, addr)| self.ping(&info, Some(addr), false, now, rng))
+            .filter_map(|(info, server, vni)| self.relay_ping(&info, server, vni, false, now, rng))
             .collect()
     }
 
@@ -489,7 +651,16 @@ impl PathSock {
         let direct = p
             .best
             .map(|(addr, confirmed)| (addr, now.saturating_sub(confirmed)));
+        let relay = p.relay.map(|r| (r.server, r.vni, since(r.confirmed)));
         let reason = match (route, self.mode) {
+            (Route::PeerRelay { server, vni }, _) => {
+                let age = since(p.relay.and_then(|r| r.confirmed)).unwrap_or(Duration::ZERO);
+                format!(
+                    "peer relay: pong via {server} vni {vni} {:.1}s ago (trusted for {:.1}s)",
+                    age.as_secs_f64(),
+                    TRUST.as_secs_f64()
+                )
+            }
             (Route::Direct(addr), _) => {
                 let age = direct.map_or(Duration::ZERO, |(_, a)| a);
                 format!(
@@ -526,6 +697,7 @@ impl PathSock {
             last_direct_pong: direct,
             last_discovery: since(p.last_discovery),
             last_active: since(p.last_active),
+            relay,
         })
     }
 
@@ -538,7 +710,9 @@ impl PathSock {
             Some((addr, confirmed)) if self.mode == Mode::Auto && now < confirmed + TRUST => {
                 Route::Direct(addr)
             }
-            _ => p.info.home_region.map_or(Route::None, Route::Derp),
+            _ => relay_route(p, now)
+                .or(p.info.home_region.map(Route::Derp))
+                .unwrap_or(Route::None),
         }
     }
 
@@ -571,6 +745,16 @@ fn derp_magic(region: u32) -> SocketAddr {
 /// The "port" in the DERP magic address is the region number; region numbers in WanFlow all fit in u16 (1000+).
 fn clamp_port(region: u32) -> u16 {
     u16::try_from(region).unwrap_or(u16::MAX)
+}
+
+/// The peer relay route if one is bound and answered within the trust window.
+fn relay_route(p: &PeerPath, now: Duration) -> Option<Route> {
+    let r = p.relay?;
+    let confirmed = r.confirmed?;
+    (now < confirmed + TRUST).then_some(Route::PeerRelay {
+        server: r.server,
+        vni: r.vni,
+    })
 }
 
 #[cfg(test)]
@@ -1487,5 +1671,298 @@ mod tests {
         let x = w.a.explain(w.b_node, 2 * S).unwrap();
         assert_eq!(x.candidates, vec![e, cmm]);
         assert_eq!(x.from_call_me_maybe, vec![e, cmm]);
+    }
+
+    const R: &str = "172.29.0.23:40000";
+
+    fn relay_pings(w: &World, acts: &[Action]) -> Vec<(SocketAddr, u32, [u8; TX_ID_LEN])> {
+        acts.iter()
+            .filter_map(|a| match a {
+                Action::Relay { server, vni, data } => match b_reads(w, data) {
+                    Message::Ping { tx_id, .. } => Some((*server, *vni, tx_id)),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn relay_pong(w: &mut World, tx_id: [u8; TX_ID_LEN], vni: u32, now: Duration) -> Vec<Action> {
+        let pong = b_says(
+            w,
+            &Message::Pong {
+                tx_id,
+                src: R.parse().unwrap(),
+            },
+        );
+        w.a.on_disco(
+            Source::Relay {
+                server: R.parse().unwrap(),
+                vni,
+            },
+            &pong,
+            now,
+            &mut w.rng,
+        )
+    }
+
+    /// A bound relay is pinged at once; the route moves to it on the pong and back to DERP when
+    /// it stops answering for the trust window.
+    #[test]
+    fn a_bound_relay_is_confirmed_by_a_pong_and_expires_without_one() {
+        let mut w = world(vec![]);
+        w.a.route(w.b_node, S, &mut w.rng);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (r, acts) = w.a.route(w.b_node, 2 * S, &mut w.rng);
+        assert_eq!(r, Route::Derp(1000), "not confirmed yet");
+        let pings = relay_pings(&w, &acts);
+        assert_eq!(pings.len(), 1, "discovery runs at once for a new relay");
+        let (server, vni, tx) = pings[0];
+        assert_eq!((server, vni), (R.parse().unwrap(), 4));
+        assert!(relay_pong(&mut w, tx, 5, 2 * S).is_empty(), "wrong VNI");
+        assert_eq!(w.a.current_route(w.b_node, 2 * S), Route::Derp(1000));
+        relay_pong(&mut w, tx, 4, 2 * S);
+        let relayed = Route::PeerRelay {
+            server: R.parse().unwrap(),
+            vni: 4,
+        };
+        assert_eq!(w.a.current_route(w.b_node, 2 * S), relayed);
+        assert_eq!(w.a.take_relay_pongs(), vec![w.b_node]);
+        assert_eq!(w.a.route(w.b_node, 3 * S, &mut w.rng).0, relayed);
+        w.a.tick(2 * S + TRUST, &mut w.rng);
+        assert_eq!(
+            w.a.current_route(w.b_node, 2 * S + TRUST),
+            Route::Derp(1000)
+        );
+    }
+
+    #[test]
+    fn an_active_relay_path_gets_a_heartbeat_every_three_seconds() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, S);
+        let early = w.a.tick(S + HEARTBEAT - S / 10, &mut w.rng);
+        assert!(relay_pings(&w, &early).is_empty());
+        let acts = w.a.tick(S + HEARTBEAT, &mut w.rng);
+        assert_eq!(relay_pings(&w, &acts).len(), 1);
+        // No traffic for the activity window: no heartbeat.
+        let mut idle = world(vec![]);
+        idle.a.set_relay(idle.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = idle.a.route(idle.b_node, S, &mut idle.rng);
+        let tx = relay_pings(&idle, &acts)[0].2;
+        let pong = b_says(
+            &idle,
+            &Message::Pong {
+                tx_id: tx,
+                src: R.parse().unwrap(),
+            },
+        );
+        idle.a.on_disco(
+            Source::Relay {
+                server: R.parse().unwrap(),
+                vni: 4,
+            },
+            &pong,
+            S + ACTIVE_WINDOW,
+            &mut idle.rng,
+        );
+        let late = idle.a.tick(S + ACTIVE_WINDOW + HEARTBEAT, &mut idle.rng);
+        assert!(relay_pings(&idle, &late).is_empty());
+    }
+
+    #[test]
+    fn a_direct_path_is_preferred_over_the_relay() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let rtx = relay_pings(&w, &acts)[0].2;
+        let (_, dtx) = udp_pings(&w, &acts)[0];
+        relay_pong(&mut w, rtx, 4, S);
+        let pong = b_says(
+            &w,
+            &Message::Pong {
+                tx_id: dtx,
+                src: E.parse().unwrap(),
+            },
+        );
+        w.a.on_disco(Source::Udp(E.parse().unwrap()), &pong, S, &mut w.rng);
+        assert_eq!(
+            w.a.current_route(w.b_node, S),
+            Route::Direct(E.parse().unwrap())
+        );
+    }
+
+    /// strict and prefer rule out direct paths, not the peer relay (OBS-20261010-peer-relay-behavior).
+    #[test]
+    fn strict_and_prefer_use_the_relay_and_answer_pings_through_it() {
+        for mode in [Mode::Strict, Mode::Prefer] {
+            let mut w = world(vec![E.parse().unwrap()]);
+            w.a.set_mode(mode);
+            w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+            let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+            assert!(udp_pings(&w, &acts).is_empty(), "{mode:?}: no direct pings");
+            let tx = relay_pings(&w, &acts)[0].2;
+            relay_pong(&mut w, tx, 4, S);
+            assert_eq!(
+                w.a.current_route(w.b_node, S),
+                Route::PeerRelay {
+                    server: R.parse().unwrap(),
+                    vni: 4
+                },
+                "{mode:?}"
+            );
+            // A ping from the peer through the relay is answered through the relay.
+            let ping = b_says(
+                &w,
+                &Message::Ping {
+                    tx_id: [5; TX_ID_LEN],
+                    node_key: w.b_node,
+                },
+            );
+            let acts = w.a.on_disco(
+                Source::Relay {
+                    server: R.parse().unwrap(),
+                    vni: 4,
+                },
+                &ping,
+                S,
+                &mut w.rng,
+            );
+            match acts.as_slice() {
+                [
+                    Action::Relay {
+                        server,
+                        vni: 4,
+                        data,
+                    },
+                ] => {
+                    assert_eq!(*server, R.parse().unwrap());
+                    assert!(
+                        matches!(b_reads(&w, data), Message::Pong { tx_id, src } if tx_id == [5; TX_ID_LEN] && src == R.parse().unwrap())
+                    );
+                }
+                other => panic!("{mode:?}: {other:?}"),
+            }
+        }
+        // strict still drops disco over plain UDP.
+        let mut w = world(vec![E.parse().unwrap()]);
+        w.a.set_mode(Mode::Strict);
+        let ping = b_says(
+            &w,
+            &Message::Ping {
+                tx_id: [5; TX_ID_LEN],
+                node_key: w.b_node,
+            },
+        );
+        assert!(
+            w.a.on_disco(Source::Udp(E.parse().unwrap()), &ping, S, &mut w.rng)
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn probe_pings_through_the_relay_too() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let acts = w.a.probe(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, S + S / 100);
+        let results = w.a.take_probe_results();
+        assert_eq!(results.len(), 1);
+        assert_eq!(
+            results[0].via,
+            Route::PeerRelay {
+                server: R.parse().unwrap(),
+                vni: 4
+            }
+        );
+        assert_eq!(results[0].latency, S / 100);
+    }
+
+    #[test]
+    fn relay_endpoint_lookup_and_replacement() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        assert_eq!(w.a.peer_for_relay(R.parse().unwrap(), 4), Some(w.b_node));
+        assert_eq!(w.a.peer_for_relay(R.parse().unwrap(), 5), None);
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, S);
+        // Setting the same endpoint again keeps it confirmed; a new one starts unconfirmed.
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        assert!(matches!(
+            w.a.current_route(w.b_node, S),
+            Route::PeerRelay { vni: 4, .. }
+        ));
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 9)));
+        assert_eq!(w.a.current_route(w.b_node, S), Route::Derp(1000));
+        w.a.set_relay(w.b_node, None);
+        assert_eq!(w.a.peer_for_relay(R.parse().unwrap(), 9), None);
+    }
+
+    #[test]
+    fn explain_names_the_relay() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, S);
+        let e = w.a.explain(w.b_node, 2 * S).unwrap();
+        assert!(
+            e.reason
+                .starts_with("peer relay: pong via 172.29.0.23:40000 vni 4 1.0s ago"),
+            "{}",
+            e.reason
+        );
+        assert_eq!(e.relay, Some((R.parse().unwrap(), 4, Some(S))));
+    }
+
+    /// A pong for a ping sent before the relay endpoint changed must not confirm the new endpoint.
+    #[test]
+    fn a_late_pong_does_not_confirm_a_replaced_relay() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 9)));
+        relay_pong(&mut w, tx, 4, S);
+        assert_eq!(w.a.current_route(w.b_node, S), Route::Derp(1000));
+    }
+
+    /// Boundaries: the relay is trusted strictly less than TRUST after its pong, and gets a heartbeat
+    /// only while the last traffic is strictly less than ACTIVE_WINDOW old.
+    #[test]
+    fn relay_trust_and_activity_boundaries() {
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, S);
+        assert!(matches!(
+            w.a.current_route(w.b_node, S + TRUST - S / 1000),
+            Route::PeerRelay { .. }
+        ));
+        assert_eq!(w.a.current_route(w.b_node, S + TRUST), Route::Derp(1000));
+
+        let mut w = world(vec![]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        w.a.route(w.b_node, S, &mut w.rng); // last traffic at 1 s
+        // Confirmed 4 s before the activity window ends (a probe does not count as traffic), so trust
+        // and heartbeat timing are not the limit.
+        let edge = S + ACTIVE_WINDOW;
+        let acts = w.a.probe(w.b_node, edge - 4 * S, &mut w.rng);
+        let tx = relay_pings(&w, &acts)[0].2;
+        relay_pong(&mut w, tx, 4, edge - 4 * S);
+        assert!(
+            matches!(w.a.current_route(w.b_node, edge), Route::PeerRelay { .. }),
+            "still trusted"
+        );
+        let at_edge = w.a.tick(S + ACTIVE_WINDOW, &mut w.rng);
+        assert!(
+            relay_pings(&w, &at_edge).is_empty(),
+            "last traffic exactly ACTIVE_WINDOW ago"
+        );
     }
 }

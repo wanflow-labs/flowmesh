@@ -43,13 +43,17 @@ pub fn parse_attempt(v: &Value) -> Result<Attempt, String> {
         other => return Err(other.to_string()),
     }
     let endpoint = v["Endpoint"].as_str().unwrap_or("");
-    let (via, direct) = if endpoint.is_empty() {
+    let peer_relay = v["PeerRelay"].as_str().unwrap_or("");
+    let (via, direct) = if !endpoint.is_empty() {
+        (endpoint.to_string(), true)
+    } else if !peer_relay.is_empty() {
+        // A peer relay is not a direct path (OBS-20261010-peer-relay-official, ts1-ping.txt).
+        (format!("peer-relay({peer_relay})"), false)
+    } else {
         (
             format!("DERP({})", v["DERPRegionCode"].as_str().unwrap_or("")),
             false,
         )
-    } else {
-        (endpoint.to_string(), true)
     };
     let line = format!(
         "pong from {} ({}) via {via} in {}",
@@ -164,6 +168,18 @@ mod tests {
             parse_attempt(&relay()),
             Ok(Attempt::Pong {
                 line: "pong from fm-a (100.64.0.9) via DERP(wanflow-relay-1000) in 6ms".into(),
+                direct: false
+            })
+        );
+        // The official client's peer relay line (OBS-20261010-peer-relay-official, ts1-ping.txt).
+        let via_peer_relay = json!({ "Err": "", "NodeName": "ts2-u3o8zwr3", "NodeIP": "100.64.0.22",
+            "Endpoint": "", "PeerRelay": "172.29.0.23:40000:vni:1", "DERPRegionID": 0,
+            "DERPRegionCode": "", "LatencySeconds": 0.0011 });
+        assert_eq!(
+            parse_attempt(&via_peer_relay),
+            Ok(Attempt::Pong {
+                line: "pong from ts2-u3o8zwr3 (100.64.0.22) via peer-relay(172.29.0.23:40000:vni:1) in 1ms"
+                    .into(),
                 direct: false
             })
         );

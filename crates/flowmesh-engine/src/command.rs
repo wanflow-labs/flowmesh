@@ -59,7 +59,15 @@ pub fn whois(nm: &NetMap, ip: IpAddr) -> Option<WhoisReply> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PingPath {
     Direct(SocketAddr),
-    Derp { region: u32, code: String },
+    /// Through a peer relay server (peer-relay.md); shown as `ip:port:vni:N`.
+    PeerRelay {
+        server: SocketAddr,
+        vni: u32,
+    },
+    Derp {
+        region: u32,
+        code: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -133,6 +141,7 @@ pub(crate) fn deliver_pings(pings: &mut Vec<PendingPing>, results: Vec<ProbeResu
         };
         let via = match r.via {
             Route::Direct(addr) => PingPath::Direct(addr),
+            Route::PeerRelay { server, vni } => PingPath::PeerRelay { server, vni },
             Route::Derp(region) => PingPath::Derp {
                 region,
                 code: nm
