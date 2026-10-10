@@ -3,6 +3,7 @@
 
 pub mod envelope;
 pub mod message;
+pub mod relay;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum Error {

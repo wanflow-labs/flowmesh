@@ -21,7 +21,7 @@ Source: `OBS-20261010-disco`. flowmesh-dev decrypts the disco messages that offi
 | 0x01 | Ping | 12-byte transaction ID + 32-byte **sender node key** (46 bytes total) | Observed |
 | 0x02 | Pong | 12-byte transaction ID (same as the ping) + the source address the replier saw: 16-byte IPv6 form (IPv4 as `::ffff:a.b.c.d`) + 2-byte big-endian port (32 bytes total) | Observed |
 | 0x03 | CallMeMaybe | Zero or more 18-byte addresses (same encoding as Pong): the sender's endpoints, asking the receiver to ping them. Sent via DERP | Observed (OBS-20261010-disco/decrypted-callmemaybe.tsv, sent by wanflow-mesh) |
-| 0x08 | (peer relay) endpoint allocation request | sender disco key (32) + another disco key (32) + 4-byte incrementing counter. Official clients send this to peers granted `cap/relay` (wanflow headscale grants it to all nodes unconditionally). v1 ignores it and does not reply; the official client keeps working normally | Observed (semantics inferred) |
+| 0x04–0x09 | peer relay: Bind, Challenge, Answer (handshake with a relay server), CallMeMaybeVia (allocation forwarded to the peer), allocation request and response | see peer-relay.md §2–3. flowmesh (a client only) does not answer allocation requests sent to it; the official client keeps working | Observed (OBS-20261010-peer-relay-*) |
 
 ## 3. Behavior
 

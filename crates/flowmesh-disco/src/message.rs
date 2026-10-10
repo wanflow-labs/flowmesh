@@ -2,7 +2,8 @@
 //! disco payloads (disco.md §2). Format: 1-byte type + 1-byte version + type-specific body.
 
 use crate::Error;
-use flowmesh_proto::key::NodePublic;
+use crate::relay::{self, Alloc, BindBody};
+use flowmesh_proto::key::{DiscoPublic, NodePublic};
 use std::net::SocketAddr;
 
 pub const TYPE_PING: u8 = 0x01;
@@ -26,7 +27,22 @@ pub enum Message {
     /// Observed: type 0x03, version 0, followed by zero or more 18-byte addresses (same encoding as Pong):
     /// the sender's endpoints, asking the receiver to ping them (OBS-20261010-disco/decrypted-callmemaybe.tsv).
     CallMeMaybe { endpoints: Vec<SocketAddr> },
-    /// A type this module doesn't recognize yet (e.g. 0x08 peer-relay endpoint allocation, belongs to v2); preserved as-is.
+    /// Peer relay handshake, client to server (0x04); see relay.rs and peer-relay.md.
+    Bind(BindBody),
+    /// Server's challenge (0x05).
+    Challenge(BindBody),
+    /// Client's answer echoing the challenge (0x06).
+    Answer(BindBody),
+    /// An allocation forwarded to the other member of the pair (0x07).
+    CallMeMaybeVia(Alloc),
+    /// Allocation request to a candidate relay server (0x08).
+    AllocateRequest {
+        pair: [DiscoPublic; 2],
+        counter: u32,
+    },
+    /// The relay server's answer (0x09): the request's counter and the allocation.
+    AllocateResponse { counter: u32, alloc: Alloc },
+    /// A type this module doesn't recognize; preserved as-is.
     Unknown { ty: u8, version: u8, body: Vec<u8> },
 }
 
@@ -49,6 +65,32 @@ pub fn encode(m: &Message) -> Vec<u8> {
             for e in endpoints {
                 v.extend_from_slice(&addr_bytes(e));
             }
+            v
+        }
+        Message::Bind(b) | Message::Challenge(b) | Message::Answer(b) => {
+            let ty = match m {
+                Message::Bind(_) => relay::TYPE_BIND,
+                Message::Challenge(_) => relay::TYPE_CHALLENGE,
+                _ => relay::TYPE_ANSWER,
+            };
+            let mut v = vec![ty, 0];
+            b.encode(&mut v);
+            v
+        }
+        Message::CallMeMaybeVia(a) => {
+            let mut v = vec![relay::TYPE_CALL_ME_MAYBE_VIA, 0];
+            a.encode(&mut v);
+            v
+        }
+        Message::AllocateRequest { pair, counter } => {
+            let mut v = vec![relay::TYPE_ALLOCATE_REQUEST, 0];
+            relay::encode_request(pair, *counter, &mut v);
+            v
+        }
+        Message::AllocateResponse { counter, alloc } => {
+            let mut v = vec![relay::TYPE_ALLOCATE_RESPONSE, 0];
+            v.extend_from_slice(&counter.to_be_bytes());
+            alloc.encode(&mut v);
             v
         }
         Message::Unknown { ty, version, body } => {
@@ -97,6 +139,25 @@ pub fn decode(b: &[u8]) -> Result<Message, Error> {
                 .map(parse_addr)
                 .collect::<Result<Vec<_>, _>>()?;
             Ok(Message::CallMeMaybe { endpoints })
+        }
+        relay::TYPE_BIND => Ok(Message::Bind(BindBody::parse(body)?)),
+        relay::TYPE_CHALLENGE => Ok(Message::Challenge(BindBody::parse(body)?)),
+        relay::TYPE_ANSWER => Ok(Message::Answer(BindBody::parse(body)?)),
+        relay::TYPE_CALL_ME_MAYBE_VIA => Ok(Message::CallMeMaybeVia(Alloc::parse(body)?)),
+        relay::TYPE_ALLOCATE_REQUEST => {
+            let (pair, counter) = relay::parse_request(body)?;
+            Ok(Message::AllocateRequest { pair, counter })
+        }
+        relay::TYPE_ALLOCATE_RESPONSE => {
+            let counter = body
+                .get(..4)
+                .and_then(|c| c.try_into().ok())
+                .map(u32::from_be_bytes)
+                .ok_or(Error::Truncated)?;
+            Ok(Message::AllocateResponse {
+                counter,
+                alloc: Alloc::parse(&body[4..])?,
+            })
         }
         _ => Ok(Message::Unknown {
             ty,
@@ -208,12 +269,13 @@ mod tests {
 
     #[test]
     fn unknown_type_roundtrips_unchanged() {
-        let raw = hex("0800aabbcc");
+        // 0x7f is not a disco type (0x08 used to stand in here until the peer relay types were added).
+        let raw = hex("7f00aabbcc");
         let m = decode(&raw).unwrap();
         assert_eq!(
             m,
             Message::Unknown {
-                ty: 8,
+                ty: 0x7f,
                 version: 0,
                 body: hex("aabbcc")
             }
