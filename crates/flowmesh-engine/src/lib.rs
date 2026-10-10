@@ -7,6 +7,7 @@ pub mod debug;
 mod logic;
 pub mod relay_plan;
 pub mod status;
+mod udpio;
 
 use flowmesh_control::client::ControlClient;
 use flowmesh_proto::capver::CAPABILITY_VERSION;
@@ -14,6 +15,8 @@ use flowmesh_proto::control::{Hostinfo, RegisterRequest};
 
 #[cfg(target_os = "linux")]
 mod linux;
+#[cfg(target_os = "linux")]
+mod tunio;
 #[cfg(target_os = "linux")]
 pub use linux::run;
 

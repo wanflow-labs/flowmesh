@@ -40,7 +40,7 @@ const HOME_HEALTH_GRACE: Duration = Duration::from_secs(5);
 const MTU: u16 = 1280;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
-fn log(msg: impl std::fmt::Display) {
+pub(crate) fn log(msg: impl std::fmt::Display) {
     eprintln!("flowmesh: {msg}");
 }
 
@@ -474,7 +474,23 @@ struct Ctx {
     disco: DiscoPrivate,
     /// The peer relay client (allocations, forwards, the bind handshake).
     peer_relay: RelayClient,
+    /// Batched sends on `udp`.
+    udp_tx: crate::udpio::UdpTx,
+    /// WireGuard datagrams routed to a UDP address (direct or peer relay), sent together by
+    /// `flush` so that runs to one destination can leave in one GSO send.
+    pending: Vec<Pending>,
 }
+
+/// A WireGuard datagram waiting in `Ctx::pending`.
+struct Pending {
+    to: SocketAddr,
+    data: Vec<u8>,
+    /// The peer, for a direct send: a failed send falls back to DERP. None for the peer relay.
+    direct: Option<NodePublic>,
+}
+
+/// Flush `Ctx::pending` once it holds this many datagrams even if more input is waiting.
+const PENDING_MAX: usize = 128;
 
 /// A packet for a peer relay path: Geneve header (no O bit) + payload (peer-relay.md §3).
 fn relayed(vni: u32, protocol: u16, payload: &[u8]) -> Vec<u8> {
@@ -579,7 +595,7 @@ impl Ctx {
         }
     }
 
-    async fn send_to_peer(&mut self, key: NodePublic, bytes: &[u8], now: Duration) {
+    async fn send_to_peer(&mut self, key: NodePublic, bytes: Vec<u8>, now: Duration) {
         let (route, actions) = self.ps.route(key, now, &mut self.rng);
         self.run_actions(actions).await;
         // Traffic without a direct path: a peer relay is wanted (peer-relay.md §1).
@@ -602,39 +618,68 @@ impl Ctx {
             }
         }
         match route {
-            Route::Direct(addr) => {
-                if self.udp.send_to(bytes, addr).await.is_err() {
-                    // Send failure: fall back to DERP immediately and resend (observed behavior).
-                    self.ps.on_send_error(key);
-                    let region = self
-                        .nm
-                        .peers
-                        .values()
-                        .find(|n| n.key == key)
-                        .and_then(peer_home);
-                    self.relays
-                        .send(
-                            region.unwrap_or(self.relays.plan.home()),
-                            &self.nm.derp_map,
-                            key,
-                            bytes,
-                        )
-                        .await;
-                }
-            }
-            Route::PeerRelay { server, vni } => {
-                let packet = relayed(vni, PROTO_WIREGUARD, bytes);
-                if let Err(e) = self.udp.send_to(&packet, server).await {
-                    log(format!("peer relay send {server}: {e}"));
-                }
-            }
+            Route::Direct(addr) => self.pending.push(Pending {
+                to: addr,
+                data: bytes,
+                direct: Some(key),
+            }),
+            Route::PeerRelay { server, vni } => self.pending.push(Pending {
+                to: server,
+                data: relayed(vni, PROTO_WIREGUARD, &bytes),
+                direct: None,
+            }),
             Route::Derp(region) => {
                 self.relays
-                    .send(region, &self.nm.derp_map, key, bytes)
+                    .send(region, &self.nm.derp_map, key, &bytes)
                     .await
             }
             Route::None => {}
         }
+    }
+
+    /// Send the pending datagrams, grouped per destination (order kept within each destination).
+    async fn flush(&mut self) {
+        if self.pending.is_empty() {
+            return;
+        }
+        let mut pending = std::mem::take(&mut self.pending);
+        pending.sort_by_key(|p| p.to);
+        let mut start = 0;
+        while start < pending.len() {
+            let to = pending[start].to;
+            let end = start + pending[start..].iter().take_while(|p| p.to == to).count();
+            let run = &pending[start..end];
+            let dgrams: Vec<&[u8]> = run.iter().map(|p| p.data.as_slice()).collect();
+            if let Err(e) = self.udp_tx.send(&self.udp, to, &dgrams).await {
+                for p in run {
+                    match p.direct {
+                        // Send failure: fall back to DERP immediately and resend (observed behavior).
+                        Some(key) => {
+                            self.ps.on_send_error(key);
+                            let region = self
+                                .nm
+                                .peers
+                                .values()
+                                .find(|n| n.key == key)
+                                .and_then(peer_home);
+                            self.relays
+                                .send(
+                                    region.unwrap_or(self.relays.plan.home()),
+                                    &self.nm.derp_map,
+                                    key,
+                                    &p.data,
+                                )
+                                .await;
+                        }
+                        None => log(format!("peer relay send {to}: {e}")),
+                    }
+                }
+            }
+            start = end;
+        }
+        // Keep the allocation for the next batch.
+        pending.clear();
+        self.pending = pending;
     }
 }
 
@@ -754,6 +799,11 @@ pub async fn run(
             .await
             .map_err(|e| format!("udp bind :{}: {e}", args.port))?,
     );
+    let gro = crate::udpio::enable_gro(&udp);
+    log(format!(
+        "udp: GRO {}",
+        if gro { "on" } else { "unavailable" }
+    ));
     let mut mode = mode_of(&nm);
     let local = local_endpoints(&args.tun, args.port);
     let mut stun_mapped: Option<SocketAddr> = None;
@@ -805,14 +855,21 @@ pub async fn run(
     }
 
     let me = nm.self_node.clone().ok_or("no self node in netmap")?;
-    let mut builder = tun_rs::DeviceBuilder::new().name(args.tun.clone()).mtu(MTU);
+    let mut builder = tun_rs::DeviceBuilder::new()
+        .name(args.tun.clone())
+        .mtu(MTU)
+        .offload(true);
     for a in &me.addresses {
         builder = match a.addr() {
             IpAddr::V4(v4) => builder.ipv4(v4, 32u8, None),
             IpAddr::V6(v6) => builder.ipv6(v6, 128u8),
         };
     }
-    let tun = builder.build_async().map_err(|e| format!("tun: {e}"))?;
+    let mut tun = crate::tunio::TunIo::new(builder.build_async().map_err(|e| format!("tun: {e}"))?);
+    log(format!(
+        "tun: offload {}",
+        if tun.offload() { "on" } else { "unavailable" }
+    ));
     ip(&["route", "replace", "100.64.0.0/10", "dev", &args.tun])?;
     ip(&[
         "-6",
@@ -893,6 +950,8 @@ pub async fn run(
         rng: OsRandom,
         disco: disco.clone(),
         peer_relay: RelayClient::new(disco.public()),
+        udp_tx: crate::udpio::UdpTx::new(),
+        pending: Vec::with_capacity(PENDING_MAX),
     };
     if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
         log(e);
@@ -963,22 +1022,21 @@ pub async fn run(
     let mut last_publish: Option<Duration> = None;
     let mut ticker = tokio::time::interval(TICK);
     let mut pings: Vec<PendingPing> = Vec::new();
-    let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
-    let mut udp_buf = vec![0u8; usize::from(u16::MAX)];
+    let mut udp_rx = crate::udpio::UdpRx::new();
+    // MagicDNS answers produced inside the select (the TUN is borrowed there), written afterwards.
+    let mut tun_replies: Vec<Vec<u8>> = Vec::new();
     loop {
         let now = start.elapsed();
         let outputs = tokio::select! {
-                r = tun.recv(&mut tun_buf) => {
-                    let n = r.map_err(|e| format!("tun read: {e}"))?;
-                    let pkt = &tun_buf[..n];
+                r = tun.next() => {
+                    let pkt = r.map_err(|e| format!("tun read: {e}"))?;
                     match flowmesh_dataplane::ippkt::udp4_payload(pkt).filter(|(_, d, _)| *d == quad100_dns) {
                         Some((client, _, query)) => {
                             match flowmesh_dns::handle(&view, query) {
                                 flowmesh_dns::Decision::Local(resp) => {
                                     let reply = flowmesh_dataplane::ippkt::build_udp4(quad100_dns, client, &resp);
-                                    if let Err(e) = tun.send(&reply).await {
-                                        log(format!("tun write: {e}"));
-                                    }
+                                    // Queued: written with the batch at the end of this turn.
+                                    tun_replies.push(reply);
                                 }
                                 flowmesh_dns::Decision::Forward => forward_dns(
                                     dns_upstreams(&ctx.nm, &host_upstreams),
@@ -995,9 +1053,7 @@ pub async fn run(
                     }
                 }
                 Some(reply) = dns_rx.recv() => {
-                    if let Err(e) = tun.send(&reply).await {
-                        log(format!("tun write: {e}"));
-                    }
+                    tun_replies.push(reply);
                     Vec::new()
                 }
                 r = stop.changed() => {
@@ -1007,9 +1063,8 @@ pub async fn run(
                     }
                     Vec::new()
                 }
-                r = udp.recv_from(&mut udp_buf) => {
-                    let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
-                    let data = &udp_buf[..n];
+                r = udp_rx.next(&udp) => {
+                    let (data, from) = r.map_err(|e| format!("udp read: {e}"))?;
                     // From one of our relay servers: Geneve-framed (peer-relay.md §3).
                     let relayed = if ctx.peer_relay.is_server(from) { geneve_decode(data) } else { None };
                     if let Some((h, payload)) = relayed {
@@ -1249,12 +1304,21 @@ pub async fn run(
             };
         for out in outputs {
             match out {
-                Output::ToTun(p) => {
-                    if let Err(e) = tun.send(&p).await {
-                        log(format!("tun write: {e}"));
-                    }
-                }
-                Output::ToPeer(key, bytes) => ctx.send_to_peer(key, &bytes, now).await,
+                Output::ToTun(p) => tun.queue(&p),
+                Output::ToPeer(key, bytes) => ctx.send_to_peer(key, bytes, now).await,
+            }
+        }
+        for reply in tun_replies.drain(..) {
+            tun.queue(&reply);
+        }
+        // Write once both received batches are used up, so packets to one peer (or to the TUN)
+        // leave together; the pending sets are bounded, so a long burst still flushes.
+        if (udp_rx.is_empty() && tun.is_empty()) || ctx.pending.len() >= PENDING_MAX {
+            ctx.flush().await;
+        }
+        if (udp_rx.is_empty() && tun.is_empty()) || tun.queued() >= PENDING_MAX {
+            if let Err(e) = tun.flush().await {
+                log(format!("tun write: {e}"));
             }
         }
     }
