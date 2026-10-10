@@ -877,6 +877,9 @@ pub async fn run(
             }
             Some(cmd) = commands.recv() => {
                 match cmd {
+                    EngineCommand::Whois { ip, reply } => {
+                        let _ = reply.send(crate::command::whois(&ctx.nm, ip));
+                    }
                     EngineCommand::Ping { ip, reply } => {
                         let found = ctx
                             .nm

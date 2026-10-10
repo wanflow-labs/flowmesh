@@ -47,6 +47,49 @@ pub fn text(status: &Value) -> String {
     out
 }
 
+/// `whois` text, in the official layout (OBS-20261010-whois). The User section for untagged nodes
+/// follows the same layout but could not be observed in the lab (every lab node is tagged).
+pub fn whois_text(w: &Value) -> String {
+    let node = &w["Node"];
+    let mut out = String::from("Machine:\n");
+    let name = node["Name"].as_str().unwrap_or("").trim_end_matches('.');
+    out.push_str(&format!("  Name:          {name}\n"));
+    out.push_str(&format!("  ID:            {}\n", node["ID"]));
+    let addrs: Vec<&str> = node["Addresses"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    out.push_str(&format!("  Addresses:     [{}]\n", addrs.join(" ")));
+    let tags: Vec<&str> = node["Tags"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .collect();
+    if tags.is_empty() {
+        let user = &w["UserProfile"];
+        if user.is_object() {
+            out.push_str("User:\n");
+            out.push_str(&format!(
+                "  Name:     {}\n",
+                user["LoginName"].as_str().unwrap_or("")
+            ));
+            out.push_str(&format!("  ID:       {}\n", user["ID"]));
+        }
+    } else {
+        out.push_str(&format!("  Tags:          {}\n", tags.join(", ")));
+    }
+    if let Some(caps) = w["CapMap"].as_object().filter(|c| !c.is_empty()) {
+        out.push_str("Capabilities:\n");
+        for cap in caps.keys() {
+            out.push_str(&format!("  - {cap}\n"));
+        }
+    }
+    out
+}
+
 fn first_ip(n: &Value) -> String {
     n["TailscaleIPs"][0].as_str().unwrap_or("-").to_string()
 }
@@ -140,6 +183,53 @@ mod tests {
 100.64.0.4  idle  linux    -
 100.64.0.9  old   windows  offline
 "
+        );
+    }
+
+    #[test]
+    fn whois_layout_matches_official() {
+        let w = json!({
+            "Node": { "ID": 1, "Name": "ts1.mesh.lab.internal.",
+                      "Addresses": ["100.64.0.1/32", "fd7a:115c:a1e0::1/128"],
+                      "Tags": ["tag:relay-enabled"] },
+            "UserProfile": { "ID": 1, "LoginName": "lab", "DisplayName": "lab" },
+            "CapMap": { "tailscale.com/cap/relay": null, "tailscale.com/cap/relay-target": null }
+        });
+        assert_eq!(
+            whois_text(&w),
+            "\
+Machine:
+  Name:          ts1.mesh.lab.internal
+  ID:            1
+  Addresses:     [100.64.0.1/32 fd7a:115c:a1e0::1/128]
+  Tags:          tag:relay-enabled
+Capabilities:
+  - tailscale.com/cap/relay
+  - tailscale.com/cap/relay-target
+"
+        );
+    }
+
+    #[test]
+    fn whois_untagged_shows_user_and_no_caps_section() {
+        let w = json!({
+            "Node": { "ID": 5, "Name": "laptop.mesh.lab.internal.", "Addresses": ["100.64.0.5/32"] },
+            "UserProfile": { "ID": 3, "LoginName": "alice", "DisplayName": "Alice" },
+            "CapMap": {}
+        });
+        assert_eq!(
+            whois_text(&w),
+            "Machine:\n  Name:          laptop.mesh.lab.internal\n  ID:            5\n  Addresses:     [100.64.0.5/32]\nUser:\n  Name:     alice\n  ID:       3\n"
+        );
+        let mut no_user = w.clone();
+        no_user["UserProfile"] = Value::Null;
+        assert!(!whois_text(&no_user).contains("User:"));
+        let mut two_tags = w;
+        two_tags["Node"]["Tags"] = json!(["tag:a", "tag:b"]);
+        assert!(whois_text(&two_tags).contains("  Tags:          tag:a, tag:b\n"));
+        assert!(
+            !whois_text(&two_tags).contains("User:"),
+            "tagged nodes hide the user"
         );
     }
 

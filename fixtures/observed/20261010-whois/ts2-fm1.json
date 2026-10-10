@@ -1,0 +1,63 @@
+{
+  "Node": {
+    "ID": 43,
+    "StableID": "43",
+    "Name": "fm1-4xfexlba.mesh.lab.internal.",
+    "User": 1,
+    "Key": "nodekey:9368758ae38367755057558fc3daf1b2b882f0b5020cf056d59b0dcaa2f0990a",
+    "Machine": "mkey:ee98e29ea561ea6c543166d4a038c531b6bcb8251ad34e6f2abf1ff2c2df045d",
+    "DiscoKey": "discokey:17b96f6700607c34aed8b02501eedde4ddd9b847ef1e8fc6ffa3bafbb8b30640",
+    "Addresses": [
+      "100.64.0.58/32",
+      "fd7a:115c:a1e0::3a/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.58/32",
+      "fd7a:115c:a1e0::3a/128"
+    ],
+    "Endpoints": [
+      "172.29.0.31:41641"
+    ],
+    "HomeDERP": 1000,
+    "Hostinfo": {
+      "IPNVersion": "flowmesh-0.1.0",
+      "OS": "linux",
+      "Hostname": "fm1",
+      "Machine": "aarch64",
+      "NetInfo": {
+        "MappingVariesByDestIP": null,
+        "WorkingIPv6": null,
+        "OSHasIPv6": null,
+        "WorkingUDP": null,
+        "WorkingICMPv4": null,
+        "UPnP": null,
+        "PMP": null,
+        "PCP": null,
+        "PreferredDERP": 1000
+      }
+    },
+    "Cap": 131,
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "LastSeen": "2026-10-10T05:26:43.226302253Z",
+    "Online": true,
+    "MachineAuthorized": true,
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "ComputedName": "fm1-4xfexlba",
+    "ComputedNameWithHost": "fm1-4xfexlba (fm1)"
+  },
+  "UserProfile": {
+    "ID": 1,
+    "LoginName": "lab",
+    "DisplayName": "lab"
+  },
+  "CapMap": {
+    "tailscale.com/cap/relay": null,
+    "tailscale.com/cap/relay-target": null
+  }
+}

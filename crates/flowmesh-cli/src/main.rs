@@ -60,6 +60,48 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             .await;
             Ok(code)
         }
+        Command::Whois { addr, json } => {
+            let encoded: String = addr
+                .chars()
+                .map(|c| match c {
+                    ':' => "%3A".to_string(),
+                    '[' => "%5B".to_string(),
+                    ']' => "%5D".to_string(),
+                    '%' => "%25".to_string(),
+                    '&' => "%26".to_string(),
+                    '#' => "%23".to_string(),
+                    ' ' => "%20".to_string(),
+                    other => other.to_string(),
+                })
+                .collect();
+            match client.get(&format!("whois?addr={encoded}")).await {
+                Ok(w) if json => {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&w).map_err(|e| e.to_string())?
+                    );
+                    Ok(0)
+                }
+                Ok(w) => {
+                    print!("{}", render::whois_text(&w));
+                    Ok(0)
+                }
+                // Same wording as the official client for its two common failures.
+                Err(flowmesh_daemon::client::ClientError::Api { status, message })
+                    if status.as_u16() == 400 =>
+                {
+                    eprintln!("400 Bad Request: {message}");
+                    Ok(1)
+                }
+                Err(flowmesh_daemon::client::ClientError::Api { status, message })
+                    if status.as_u16() == 404 =>
+                {
+                    eprintln!("{message}");
+                    Ok(1)
+                }
+                Err(other) => Err(other.to_string()),
+            }
+        }
         Command::DebugPrefs => {
             let p = client.get("prefs").await.map_err(e)?;
             println!(

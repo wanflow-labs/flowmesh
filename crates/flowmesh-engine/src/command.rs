@@ -14,6 +14,39 @@ pub enum EngineCommand {
         ip: IpAddr,
         reply: oneshot::Sender<Result<PingReply, PingError>>,
     },
+    /// Who owns `ip` (this node or a peer), for `whois` and mesh services.
+    Whois {
+        ip: IpAddr,
+        reply: oneshot::Sender<Option<WhoisReply>>,
+    },
+}
+
+/// The node owning an address, its user, and the capabilities the packet filter grants it towards
+/// this node (cli.md §5).
+#[derive(Debug, Clone, PartialEq)]
+pub struct WhoisReply {
+    pub node: flowmesh_proto::control::Node,
+    pub user_profile: Option<flowmesh_proto::control::UserProfile>,
+    pub cap_map: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// Look up `ip` among this node and its peers.
+pub fn whois(nm: &NetMap, ip: IpAddr) -> Option<WhoisReply> {
+    let node = nm
+        .self_node
+        .iter()
+        .chain(nm.peers.values())
+        .find(|n| n.addresses.iter().any(|a| a.addr() == ip))?;
+    let mine: Vec<IpAddr> = nm
+        .self_node
+        .iter()
+        .flat_map(|n| n.addresses.iter().map(|a| a.addr()))
+        .collect();
+    Some(WhoisReply {
+        node: node.clone(),
+        user_profile: nm.user_profiles.get(&node.user).cloned(),
+        cap_map: flowmesh_filter::caps::peer_caps(&nm.filter_rules(), ip, &mine),
+    })
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -213,6 +246,75 @@ mod tests {
         assert_eq!(rx_a.try_recv().unwrap(), Err(PingError::Timeout));
         assert!(rx_b.try_recv().is_err());
         assert_eq!(pings.len(), 1);
+    }
+
+    fn node(id: i64, user: i64, addrs: &[&str]) -> Node {
+        Node {
+            id,
+            user,
+            name: format!("n{id}.mesh.lab.internal."),
+            addresses: addrs.iter().map(|a| a.parse().unwrap()).collect(),
+            ..Default::default()
+        }
+    }
+
+    fn whois_netmap() -> NetMap {
+        let mut nm = NetMap {
+            self_node: Some(node(2, 1, &["100.64.0.2/32", "fd7a:115c:a1e0::2/128"])),
+            ..Default::default()
+        };
+        nm.peers
+            .insert(1, node(1, 1, &["100.64.0.1/32", "fd7a:115c:a1e0::1/128"]));
+        nm.peers.insert(7, node(7, 9, &["100.64.0.7/32"]));
+        nm.user_profiles.insert(
+            1,
+            flowmesh_proto::control::UserProfile {
+                id: 1,
+                login_name: "lab".into(),
+                display_name: "lab".into(),
+            },
+        );
+        nm.packet_filters.insert(
+            "base".into(),
+            vec![
+                serde_json::from_value(serde_json::json!({
+                    "SrcIPs": ["100.64.0.1"],
+                    "CapGrant": [{ "Caps": ["tailscale.com/cap/relay"], "Dsts": ["100.64.0.2/32"] }]
+                }))
+                .unwrap(),
+            ],
+        );
+        nm
+    }
+
+    #[test]
+    fn whois_finds_peers_by_any_address() {
+        let nm = whois_netmap();
+        for ip in ["100.64.0.1", "fd7a:115c:a1e0::1"] {
+            let w = whois(&nm, ip.parse().unwrap()).unwrap();
+            assert_eq!(w.node.id, 1, "{ip}");
+            assert_eq!(w.user_profile.as_ref().unwrap().login_name, "lab");
+        }
+        let w = whois(&nm, "100.64.0.1".parse().unwrap()).unwrap();
+        assert_eq!(
+            serde_json::to_value(&w.cap_map).unwrap(),
+            serde_json::json!({ "tailscale.com/cap/relay": null })
+        );
+    }
+
+    #[test]
+    fn whois_self_unknown_user_and_missing() {
+        let nm = whois_netmap();
+        let me = whois(&nm, "100.64.0.2".parse().unwrap()).unwrap();
+        assert_eq!(me.node.id, 2);
+        assert!(me.cap_map.is_empty(), "the grant is only for 100.64.0.1");
+        let other = whois(&nm, "100.64.0.7".parse().unwrap()).unwrap();
+        assert_eq!(other.user_profile, None, "profile not in the netmap");
+        assert_eq!(whois(&nm, "100.64.99.99".parse().unwrap()), None);
+        assert_eq!(
+            whois(&NetMap::default(), "100.64.0.1".parse().unwrap()),
+            None
+        );
     }
 
     #[test]

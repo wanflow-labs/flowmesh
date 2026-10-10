@@ -1,0 +1,94 @@
+{
+  "Node": {
+    "ID": 1,
+    "StableID": "1",
+    "Name": "ts1.mesh.lab.internal.",
+    "User": 1,
+    "Key": "nodekey:eb0b5cd0c6d2755d28357e02f6c0c261c0b024633c9919ff83261f505eda840b",
+    "Machine": "mkey:5d8f5c40c6580d5535b1699b9a9c3d4135f21a7108d78f59877ce67849fe8d5f",
+    "DiscoKey": "discokey:bf3403893897458331d50dfd1d084cd6e5a081002e242f3364a9b4d72573887b",
+    "Addresses": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0::1/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0::1/128"
+    ],
+    "Endpoints": [
+      "172.29.0.21:59419"
+    ],
+    "HomeDERP": 1000,
+    "Hostinfo": {
+      "IPNVersion": "1.94.2-t2de4d317a",
+      "BackendLogID": "a73788d891a70ebb7974a90a4d749542c8f9d1c5d75e469db1bc541035cec66e",
+      "OS": "linux",
+      "OSVersion": "6.10.14-linuxkit",
+      "Container": true,
+      "Distro": "alpine",
+      "DistroVersion": "3.22.3",
+      "Desktop": false,
+      "Package": "container",
+      "Hostname": "ts1",
+      "NoLogsNoSupport": true,
+      "Machine": "aarch64",
+      "GoArch": "arm64",
+      "GoArchVar": "v8.0",
+      "GoVersion": "go1.25.5",
+      "Services": [
+        {
+          "Proto": "peerapi4",
+          "Port": 58436
+        },
+        {
+          "Proto": "peerapi6",
+          "Port": 59780
+        },
+        {
+          "Proto": "peerapi-dns-proxy",
+          "Port": 1
+        }
+      ],
+      "NetInfo": {
+        "MappingVariesByDestIP": null,
+        "WorkingIPv6": false,
+        "OSHasIPv6": true,
+        "WorkingUDP": true,
+        "WorkingICMPv4": false,
+        "UPnP": false,
+        "PMP": false,
+        "PCP": false,
+        "PreferredDERP": 1000,
+        "DERPLatency": {
+          "1000-v4": 0.001521167
+        },
+        "FirewallMode": "ipt-default"
+      },
+      "Userspace": false,
+      "UserspaceRouter": false,
+      "AppConnector": false
+    },
+    "Cap": 131,
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "Online": true,
+    "MachineAuthorized": true,
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "ComputedName": "ts1",
+    "ComputedNameWithHost": "ts1"
+  },
+  "UserProfile": {
+    "ID": 1,
+    "LoginName": "lab",
+    "DisplayName": "lab"
+  },
+  "CapMap": {
+    "tailscale.com/cap/relay": null,
+    "tailscale.com/cap/relay-target": null
+  }
+}

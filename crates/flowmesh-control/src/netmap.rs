@@ -2,7 +2,7 @@
 //! Merge the map stream's initial full snapshot and later deltas into a current, complete network map (pure function).
 //! Message semantics in docs/protocol/control.md §5.
 
-use flowmesh_proto::control::{DnsConfig, MapResponse, Node};
+use flowmesh_proto::control::{DnsConfig, MapResponse, Node, UserProfile};
 use flowmesh_proto::derp::DerpMap;
 use flowmesh_proto::filter::FilterRule;
 use std::collections::BTreeMap;
@@ -17,6 +17,8 @@ pub struct NetMap {
     pub domain: String,
     /// Packet filter rule groups (`PacketFilters`); a key with a null value means "delete this group".
     pub packet_filters: BTreeMap<String, Vec<FilterRule>>,
+    /// Keyed by user ID. Each message carries the profiles it references; they accumulate.
+    pub user_profiles: BTreeMap<i64, UserProfile>,
 }
 
 /// Which parts a message touched, so the caller only redoes the parts that need it.
@@ -46,6 +48,9 @@ impl NetMap {
         }
         if !m.domain.is_empty() {
             self.domain = m.domain.clone();
+        }
+        for u in &m.user_profiles {
+            self.user_profiles.insert(u.id, u.clone());
         }
         if let Some(peers) = &m.peers {
             self.peers = peers.iter().map(|n| (n.id, n.clone())).collect();
@@ -299,5 +304,76 @@ mod tests {
         );
         assert!(nm.derp_map.regions.contains_key(&1000));
         assert!(!nm.filter_rules().is_empty());
+    }
+
+    #[test]
+    fn user_profiles_accumulate_and_update() {
+        let profile = |id: i64, name: &str| UserProfile {
+            id,
+            login_name: name.into(),
+            display_name: name.into(),
+        };
+        let mut nm = NetMap::default();
+        nm.apply(&MapResponse {
+            user_profiles: vec![profile(1, "lab")],
+            ..Default::default()
+        });
+        nm.apply(&MapResponse {
+            user_profiles: vec![profile(2, "ops")],
+            ..Default::default()
+        });
+        nm.apply(&MapResponse {
+            user_profiles: vec![profile(1, "lab2")],
+            ..Default::default()
+        });
+        nm.apply(&MapResponse::default());
+        assert_eq!(nm.user_profiles.len(), 2);
+        assert_eq!(nm.user_profiles[&1].login_name, "lab2");
+        assert_eq!(nm.user_profiles[&2].login_name, "ops");
+    }
+
+    #[test]
+    fn domain_survives_messages_without_it() {
+        let mut nm = NetMap::default();
+        nm.apply(&MapResponse {
+            domain: "lab".into(),
+            ..Default::default()
+        });
+        nm.apply(&MapResponse::default());
+        assert_eq!(nm.domain, "lab");
+        nm.apply(&MapResponse {
+            domain: "other".into(),
+            ..Default::default()
+        });
+        assert_eq!(nm.domain, "other");
+    }
+
+    #[test]
+    fn a_removal_alone_marks_peers_changed() {
+        let mut nm = NetMap::default();
+        nm.apply(&MapResponse {
+            peers: Some(vec![
+                Node {
+                    id: 1,
+                    ..Default::default()
+                },
+                Node {
+                    id: 2,
+                    ..Default::default()
+                },
+            ]),
+            ..Default::default()
+        });
+        let c = nm.apply(&MapResponse {
+            peers_removed: vec![2, 99],
+            ..Default::default()
+        });
+        assert!(c.peers);
+        assert_eq!(nm.peers.keys().copied().collect::<Vec<_>>(), vec![1]);
+        let c = nm.apply(&MapResponse {
+            peers_removed: vec![99],
+            ..Default::default()
+        });
+        assert!(!c.peers, "removing an unknown peer changes nothing");
     }
 }

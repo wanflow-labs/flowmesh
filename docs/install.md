@@ -23,8 +23,10 @@ sudo systemctl enable --now flowmeshd
 flowmesh **没有默认控制服务器**，第一次 `up` 必须给出 `--login-server`：
 
 ```bash
-sudo flowmesh up --login-server=https://<你的控制服务器> --auth-key=file:/root/flowmesh.key
+sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-key=file:/root/flowmesh.key
 ```
+
+- 控制地址目前只支持 `http://`（任何端口都直接使用，不会改走 443）；控制连接本身由 Noise 协议加密。`https://` 地址暂不支持。
 
 - `--auth-key` 可以直接写密钥，也可以写 `file:<路径>` 从文件读取（避免密钥出现在 shell 历史和进程列表里）。密钥只用于注册，不会写入磁盘。
 - `up` 会一直等到网络进入 Running（退出码 0）；控制服务器拒绝时退出码为 1，并打印登录地址（如果服务器给了）。可以用 `--timeout=30s` 限制等待时间。
@@ -41,6 +43,7 @@ sudo flowmesh up --login-server=https://<你的控制服务器> --auth-key=file:
 | `sudo flowmesh set --accept-routes=false` | 只修改给出的设置 |
 | `sudo flowmesh logout` | 注销本节点并把所有设置恢复为默认；需要能连上控制服务器 |
 | `flowmesh ping <主机名或IP>` | 探测到某个节点的路径（直连地址或中继）与延迟；默认最多 10 次，建立直连即停止 |
+| `flowmesh whois <IP>` | 查看某个地址属于哪个节点、哪个用户，以及它被授予的能力 |
 | `flowmesh debug prefs` | 查看当前设置 |
 | `flowmesh bugreport` | 在当前目录生成脱敏诊断包（只写本地文件，不会上传），由你决定是否发给技术支持 |
 

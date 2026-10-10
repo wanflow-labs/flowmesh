@@ -26,6 +26,10 @@ pub enum Command {
         target: String,
         opts: crate::ping::Options,
     },
+    Whois {
+        addr: String,
+        json: bool,
+    },
     /// `debug prefs`
     DebugPrefs,
     Bugreport {
@@ -47,7 +51,7 @@ pub struct Invocation {
     pub command: Command,
 }
 
-pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ping|debug|bugreport|version> [flags]";
+pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ping|whois|debug|bugreport|version> [flags]";
 
 /// Parse the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Invocation, String> {
@@ -83,6 +87,26 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
             Command::Status { json }
         }
         "ping" => ping_command(rest)?,
+        "whois" => {
+            let mut json = false;
+            let mut i = 0;
+            while let Some(a) = rest.get(i).filter(|a| a.starts_with('-')) {
+                let (name, inline) = split_flag(a)?;
+                match name {
+                    "json" => json = bool_value(name, inline)?,
+                    _ => return Err(format!("whois: unknown flag -{name}")),
+                }
+                i += 1;
+            }
+            match &rest[i.min(rest.len())..] {
+                [addr] => Command::Whois {
+                    addr: addr.clone(),
+                    json,
+                },
+                [] => return Err("missing argument, expected one peer".into()),
+                _ => return Err("too many arguments, expected one peer".into()),
+            }
+        }
         "debug" => match rest {
             [what] if what == "prefs" => Command::DebugPrefs,
             _ => return Err("usage: flowmesh debug prefs".into()),
@@ -462,6 +486,30 @@ mod tests {
         );
         assert!(p(&["ping", "-c", "x", "a"]).is_err());
         assert!(p(&["ping", "--bogus", "a"]).is_err());
+    }
+
+    #[test]
+    fn whois_arguments() {
+        assert_eq!(
+            cmd(&["whois", "100.64.0.1:22"]),
+            Command::Whois {
+                addr: "100.64.0.1:22".into(),
+                json: false
+            }
+        );
+        assert_eq!(
+            cmd(&["whois", "--json", "100.64.0.1"]),
+            Command::Whois {
+                addr: "100.64.0.1".into(),
+                json: true
+            }
+        );
+        assert_eq!(
+            p(&["whois"]).unwrap_err(),
+            "missing argument, expected one peer"
+        );
+        assert!(p(&["whois", "a", "b"]).is_err());
+        assert!(p(&["whois", "--bogus", "a"]).is_err());
     }
 
     #[test]

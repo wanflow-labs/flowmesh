@@ -6,7 +6,7 @@
 use flowmesh_daemon::api;
 use flowmesh_daemon::client::{ClientError, LocalClient};
 use flowmesh_daemon::daemon::{BoxFut, Daemon, Launcher, Options};
-use flowmesh_engine::command::{EngineCommand, PingError, PingPath, PingReply};
+use flowmesh_engine::command::{EngineCommand, PingError, PingPath, PingReply, WhoisReply};
 use flowmesh_engine::status::{EngineStatus, PeerStatus};
 use flowmesh_engine::{EngineConfig, EngineError};
 use serde_json::{Value, json};
@@ -36,6 +36,46 @@ struct World {
 
 #[derive(Clone, Default)]
 struct Fake(Arc<Mutex<World>>);
+
+/// The fake engine's answers. Ping: 100.64.0.1 answers directly, 100.64.0.2 over DERP,
+/// 100.64.0.3 never, anything else is not a peer. Whois: only 100.64.0.1 is known.
+fn answer(cmd: EngineCommand) {
+    match cmd {
+        EngineCommand::Whois { ip, reply } => {
+            let found = (ip.to_string() == "100.64.0.1").then(|| WhoisReply {
+                node: flowmesh_proto::control::Node {
+                    id: 1,
+                    name: "ts1.mesh.lab.internal.".into(),
+                    ..Default::default()
+                },
+                user_profile: None,
+                cap_map: [("tailscale.com/cap/relay".to_string(), Value::Null)].into(),
+            });
+            let _ = reply.send(found);
+        }
+        EngineCommand::Ping { ip, reply } => {
+            let via = match ip.to_string().as_str() {
+                "100.64.0.1" => Some(PingPath::Direct("172.29.0.21:41641".parse().unwrap())),
+                "100.64.0.2" => Some(PingPath::Derp {
+                    region: 1000,
+                    code: "r1000".into(),
+                }),
+                _ => None,
+            };
+            let result = match (ip.to_string().as_str(), via) {
+                ("100.64.0.3", _) => Err(PingError::Timeout),
+                (_, Some(via)) => Ok(PingReply {
+                    node_ip: ip,
+                    node_name: "peer".into(),
+                    via,
+                    latency: Duration::from_millis(3),
+                }),
+                (_, None) => Err(PingError::NoPeer),
+            };
+            let _ = reply.send(result);
+        }
+    }
+}
 
 impl Launcher for Fake {
     fn run(
@@ -86,25 +126,7 @@ impl Launcher for Fake {
             loop {
                 tokio::select! {
                     r = stop.changed() => if r.is_err() || *stop.borrow() { break },
-                    Some(EngineCommand::Ping { ip, reply }) = commands.recv() => {
-                        // 100.64.0.1 answers directly, 100.64.0.2 over DERP, 100.64.0.3 never.
-                        let via = match ip.to_string().as_str() {
-                            "100.64.0.1" => Some(PingPath::Direct("172.29.0.21:41641".parse().unwrap())),
-                            "100.64.0.2" => Some(PingPath::Derp { region: 1000, code: "r1000".into() }),
-                            _ => None,
-                        };
-                        let answer = match (ip.to_string().as_str(), via) {
-                            ("100.64.0.3", _) => Err(PingError::Timeout),
-                            (_, Some(via)) => Ok(PingReply {
-                                node_ip: ip,
-                                node_name: "peer".into(),
-                                via,
-                                latency: Duration::from_millis(3),
-                            }),
-                            (_, None) => Err(PingError::NoPeer),
-                        };
-                        let _ = reply.send(answer);
-                    }
+                    Some(cmd) = commands.recv() => answer(cmd),
                 }
             }
             world.lock().unwrap().stops += 1;
@@ -689,6 +711,79 @@ async fn ping_reports_official_fields() {
     h.client.post("down", &json!({})).await.unwrap();
     let (code, _) = api_error(h.client.post("ping", &json!({ "ip": "100.64.0.1" })).await);
     assert_eq!(code, 503);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn whois_by_address_forms() {
+    let h = start(temp_dir("whois"), Fake::default()).await;
+    let (code, _) = api_error(h.client.get("whois?addr=100.64.0.1").await);
+    assert_eq!(code, 503, "not running yet");
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    for q in ["100.64.0.1", "100.64.0.1:22", "100.64.0.1%3A22"] {
+        let w = h.client.get(&format!("whois?addr={q}")).await.unwrap();
+        assert_eq!(w["Node"]["ID"], 1, "{q}");
+        assert_eq!(w["Node"]["Name"], "ts1.mesh.lab.internal.");
+        assert_eq!(w["UserProfile"], Value::Null);
+        assert_eq!(w["CapMap"], json!({ "tailscale.com/cap/relay": null }));
+    }
+    let (code, msg) = api_error(h.client.get("whois?addr=100.64.99.99").await);
+    assert_eq!((code, msg.as_str()), (404, "peer not found"));
+    for bad in [
+        "whois?addr=notanip",
+        "whois",
+        "whois?other=1",
+        "whois?addr=%zz",
+    ] {
+        let (code, msg) = api_error(h.client.get(bad).await);
+        assert_eq!(
+            (code, msg.as_str()),
+            (400, "invalid 'addr' parameter"),
+            "{bad}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn mesh_services_learn_callers_from_the_netmap() {
+    use flowmesh_meshsvc::Directory;
+    let h = start(temp_dir("directory"), Fake::default()).await;
+    let dir = flowmesh_daemon::directory::DaemonDirectory(h.daemon.clone());
+    let known: std::net::SocketAddr = "100.64.0.1:40000".parse().unwrap();
+    assert_eq!(
+        dir.caller(known).await,
+        None,
+        "not running: nobody can be named"
+    );
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let c = dir.caller(known).await.unwrap();
+    assert_eq!(
+        (c.node_id, c.node_name.as_str(), c.addr),
+        (1, "ts1.mesh.lab.internal", known)
+    );
+    assert!(c.has_cap("tailscale.com/cap/relay"));
+    assert_eq!(dir.caller("100.64.99.99:1".parse().unwrap()).await, None);
+}
+
+#[test]
+fn whois_addr_parsing() {
+    let q = |s: &str| api::query_addr(Some(s)).map(|ip| ip.to_string());
+    assert_eq!(
+        q("addr=fd7a:115c:a1e0::1").as_deref(),
+        Some("fd7a:115c:a1e0::1")
+    );
+    assert_eq!(
+        q("addr=%5Bfd7a:115c:a1e0::1%5D:22").as_deref(),
+        Some("fd7a:115c:a1e0::1")
+    );
+    assert_eq!(q("x=1&addr=100.64.0.1").as_deref(), Some("100.64.0.1"));
+    assert_eq!(q("addr=100.64.0.1%"), None, "truncated escape");
+    assert_eq!(api::query_addr(None), None);
 }
 
 #[tokio::test(flavor = "multi_thread")]

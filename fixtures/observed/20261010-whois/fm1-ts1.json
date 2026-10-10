@@ -1,0 +1,56 @@
+{
+  "CapMap": {
+    "tailscale.com/cap/relay": null,
+    "tailscale.com/cap/relay-target": null
+  },
+  "Node": {
+    "Addresses": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0::1/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.1/32",
+      "fd7a:115c:a1e0::1/128"
+    ],
+    "Cap": 131,
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "Created": "0001-01-01T00:00:00Z",
+    "DERP": "127.3.3.40:1000",
+    "DiscoKey": "discokey:bf3403893897458331d50dfd1d084cd6e5a081002e242f3364a9b4d72573887b",
+    "Endpoints": [
+      "172.29.0.21:59419"
+    ],
+    "HomeDERP": 1000,
+    "Hostinfo": {
+      "Hostname": "ts1",
+      "IPNVersion": "1.94.2-t2de4d317a",
+      "Machine": "aarch64",
+      "NetInfo": {
+        "PreferredDERP": 1000
+      },
+      "OS": "linux",
+      "OSVersion": "6.10.14-linuxkit"
+    },
+    "ID": 1,
+    "Key": "nodekey:eb0b5cd0c6d2755d28357e02f6c0c261c0b024633c9919ff83261f505eda840b",
+    "KeyExpiry": "0001-01-01T00:00:00Z",
+    "Machine": "mkey:5d8f5c40c6580d5535b1699b9a9c3d4135f21a7108d78f59877ce67849fe8d5f",
+    "MachineAuthorized": true,
+    "Name": "ts1.mesh.lab.internal.",
+    "Online": true,
+    "StableID": "1",
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "User": 1
+  },
+  "UserProfile": {
+    "DisplayName": "lab",
+    "ID": 1,
+    "LoginName": "lab"
+  }
+}

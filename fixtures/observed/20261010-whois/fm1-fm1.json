@@ -1,0 +1,55 @@
+{
+  "CapMap": {
+    "tailscale.com/cap/relay": null,
+    "tailscale.com/cap/relay-target": null
+  },
+  "Node": {
+    "Addresses": [
+      "100.64.0.58/32",
+      "fd7a:115c:a1e0::3a/128"
+    ],
+    "AllowedIPs": [
+      "100.64.0.58/32",
+      "fd7a:115c:a1e0::3a/128"
+    ],
+    "Cap": 131,
+    "CapMap": {
+      "https://tailscale.com/cap/file-sharing": [],
+      "https://tailscale.com/cap/is-admin": [],
+      "https://tailscale.com/cap/ssh": []
+    },
+    "Created": "0001-01-01T00:00:00Z",
+    "DERP": "127.3.3.40:1000",
+    "DiscoKey": "discokey:17b96f6700607c34aed8b02501eedde4ddd9b847ef1e8fc6ffa3bafbb8b30640",
+    "Endpoints": [
+      "172.29.0.31:41641"
+    ],
+    "HomeDERP": 1000,
+    "Hostinfo": {
+      "Hostname": "fm1",
+      "IPNVersion": "flowmesh-0.1.0",
+      "Machine": "aarch64",
+      "NetInfo": {
+        "PreferredDERP": 1000
+      },
+      "OS": "linux"
+    },
+    "ID": 43,
+    "Key": "nodekey:9368758ae38367755057558fc3daf1b2b882f0b5020cf056d59b0dcaa2f0990a",
+    "KeyExpiry": "0001-01-01T00:00:00Z",
+    "LastSeen": "2026-10-10T05:26:44.393021254Z",
+    "Machine": "mkey:ee98e29ea561ea6c543166d4a038c531b6bcb8251ad34e6f2abf1ff2c2df045d",
+    "MachineAuthorized": true,
+    "Name": "fm1-4xfexlba.mesh.lab.internal.",
+    "StableID": "43",
+    "Tags": [
+      "tag:relay-enabled"
+    ],
+    "User": 1
+  },
+  "UserProfile": {
+    "DisplayName": "lab",
+    "ID": 1,
+    "LoginName": "lab"
+  }
+}

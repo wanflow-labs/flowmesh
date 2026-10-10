@@ -59,7 +59,9 @@ fn parse_addr(s: &str) -> Result<Option<IpNet>, CompileError> {
     Err(CompileError::BadAddress(s.to_string()))
 }
 
-fn parse_set<'a>(items: impl IntoIterator<Item = &'a str>) -> Result<AddrSet, CompileError> {
+pub(crate) fn parse_set<'a>(
+    items: impl IntoIterator<Item = &'a str>,
+) -> Result<AddrSet, CompileError> {
     let mut nets = Vec::new();
     for item in items {
         match parse_addr(item)? {

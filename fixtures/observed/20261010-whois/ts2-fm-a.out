@@ -1,0 +1,8 @@
+Machine:
+  Name:          fm-a.mesh.lab.internal
+  ID:            9
+  Addresses:     [100.64.0.9/32 fd7a:115c:a1e0::9/128]
+  Tags:          tag:relay-enabled
+Capabilities:
+  - tailscale.com/cap/relay
+  - tailscale.com/cap/relay-target

@@ -42,7 +42,7 @@ flowmesh-specific details of the output:
 - `Health` carries `"flowmesh is stopped."` while Stopped or NeedsLogin (the official text names its own product; the WanFlow gateway agent does not parse it), plus the latest engine error while one is pending.
 - `Version` is the flowmesh version. `User`, `CertDomains`, `Addrs`, `CapMap` and the other fields no consumer reads are omitted, not faked.
 
-## 4. `ping`
+## 3. `ping`
 
 Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit code match the official client in every case, latency and endpoints normalized).
 
@@ -58,10 +58,31 @@ Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit
 - The name shown is the first label of the peer's DNS name. Targets may be an IP, that short name, the host name, or the full DNS name; flowmesh resolves names from the netmap only (the official client also asks the system resolver).
 - Local API: `POST /localapi/v0/ping` with `{"ip": …}` returns the official field names (`IP NodeIP NodeName Err LatencySeconds Endpoint DERPRegionID DERPRegionCode`); open to every local user, 503 when not Running.
 
-## 5. `debug prefs` and `bugreport`
+## 4. `debug prefs` and `bugreport`
 
 - `debug prefs` prints the daemon's preferences (flowmesh's own field names; there is no compatibility requirement here).
 - `bugreport` writes a local JSON bundle (mode 0600, refuses to overwrite) with the status and preferences from the daemon, `uname -a`, `ip -o addr`, `ip route show table all`, `ip rule`, `/etc/resolv.conf` and the last 300 journal lines of `flowmeshd`. Each item records its own failure instead of aborting (e.g. no journalctl). Every `nodekey:`/`discokey:`/`mkey:`/`privkey:` value is shortened to 8 hex digits. **Deviation from the official client**, which uploads logs and prints an ID: flowmesh never uploads anything (deviation #3); the user decides whether to share the file.
+
+## 5. `whois` and mesh services
+
+Source: `OBS-20261010-whois` (`lab/scripts/whois_diff.sh`; text, stderr and exit codes match the official client for IPv4, `ip:port`, IPv6, this node itself, a NATed peer, an unknown address and a malformed one; the JSON `CapMap`, `UserProfile` and node ID/Name/Addresses/Tags match).
+
+```
+Machine:
+  Name:          ts1.mesh.lab.internal
+  ID:            1
+  Addresses:     [100.64.0.1/32 fd7a:115c:a1e0::1/128]
+  Tags:          tag:relay-enabled
+Capabilities:
+  - tailscale.com/cap/relay
+  - tailscale.com/cap/relay-target
+```
+
+- `CapMap` is **not** the node's own capability map: it is what the packet filter's `CapGrant` rules grant from that address to this node (rules whose `SrcIPs` match the address and whose `Dsts` contain one of this node's addresses). A name listed in `Caps` has the value `null`; `CapMap` values are concatenated. With WanFlow's control server this is where the high-performance relay grants (`tailscale.com/cap/relay`, `…/relay-target`) show up.
+- Failures go to stderr with exit 1: `peer not found`; `400 Bad Request: invalid 'addr' parameter`; `missing argument, expected one peer`.
+- Tagged nodes show `Tags` and no user. For untagged nodes flowmesh prints a `User:` section (`Name`/`ID`); every lab node is tagged, so that layout is **not yet verified** against the official client.
+- Local API: `GET /localapi/v0/whois?addr=<ip | ip:port | [v6]:port>` → `{"Node", "UserProfile", "CapMap"}`; 404 `peer not found`, 400 for a bad address, 503 when not Running; open to every local user.
+- `flowmesh-meshsvc` uses the same lookup: a mesh service gets a `Caller` (node, tags, user, caps) for each connection and never sees a connection whose source the netmap cannot name. Access control stays in the packet filter.
 
 ## 6. Lab notes
 

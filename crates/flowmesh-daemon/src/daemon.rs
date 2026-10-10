@@ -5,7 +5,7 @@
 use crate::prefs::{Prefs, PrefsError, PrefsUpdate};
 use crate::state::{BackendState, Facts, derive};
 use crate::status_json;
-use flowmesh_engine::command::{EngineCommand, PingError, PingReply};
+use flowmesh_engine::command::{EngineCommand, PingError, PingReply, WhoisReply};
 use flowmesh_engine::status::EngineStatus;
 use flowmesh_engine::{EngineConfig, EngineError};
 use serde::{Deserialize, Serialize};
@@ -298,6 +298,24 @@ impl<L: Launcher> Daemon<L> {
             // The engine stopped, or never answered: report it like an unanswered ping.
             Ok(Err(_)) | Err(_) => Ok(Err(PingError::Timeout)),
         }
+    }
+
+    /// Who owns `ip` according to the current netmap (`None`: nobody).
+    pub async fn whois(&self, ip: std::net::IpAddr) -> Result<Option<WhoisReply>, DaemonError> {
+        if self.backend_state().await != BackendState::Running {
+            return Err(DaemonError::NotRunning);
+        }
+        let tx = self
+            .commands
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or(DaemonError::NotRunning)?;
+        let (reply, rx) = oneshot::channel();
+        tx.send(EngineCommand::Whois { ip, reply })
+            .await
+            .map_err(|_| DaemonError::NotRunning)?;
+        rx.await.map_err(|_| DaemonError::NotRunning)
     }
 
     pub async fn prefs(&self) -> Prefs {

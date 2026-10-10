@@ -4,6 +4,7 @@
 pub mod api;
 pub mod client;
 pub mod daemon;
+pub mod directory;
 pub mod prefs;
 pub mod state;
 pub mod status_json;

@@ -99,6 +99,34 @@ fn daemon_error(e: &DaemonError) -> Response<Full<Bytes>> {
     error(code, e)
 }
 
+/// The `addr` query parameter of `whois`: an IP, `ip:port`, or `[v6]:port` (official accepts all three).
+pub fn query_addr(query: Option<&str>) -> Option<std::net::IpAddr> {
+    let raw = query?.split('&').find_map(|kv| kv.strip_prefix("addr="))?;
+    let value = percent_decode(raw)?;
+    value
+        .parse::<std::net::IpAddr>()
+        .ok()
+        .or_else(|| value.parse::<std::net::SocketAddr>().ok().map(|s| s.ip()))
+}
+
+/// Minimal percent-decoding for query values (`%3A` in IPv6 addresses, `%5B`/`%5D` brackets).
+fn percent_decode(s: &str) -> Option<String> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            let hex = std::str::from_utf8(bytes.get(i + 1..i + 3)?).ok()?;
+            out.push(u8::from_str_radix(hex, 16).ok()?);
+            i += 3;
+        } else {
+            out.push(bytes[i]);
+            i += 1;
+        }
+    }
+    String::from_utf8(out).ok()
+}
+
 /// Ping result with the official field names (`/localapi/v0/ping`), so existing tools can read it.
 pub fn ping_json(
     ip: std::net::IpAddr,
@@ -144,6 +172,7 @@ where
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
     let method = req.method().clone();
+    let req_query = req.uri().query().map(str::to_owned);
     let Some(name) = req.uri().path().strip_prefix(PREFIX).map(str::to_owned) else {
         return error(StatusCode::NOT_FOUND, "not found");
     };
@@ -153,6 +182,19 @@ where
     };
     match (&method, name.as_str()) {
         (&Method::GET, "status") => reply(StatusCode::OK, &d.status_json().await),
+        (&Method::GET, "whois") => {
+            let Some(ip) = query_addr(req_query.as_deref()) else {
+                return error(StatusCode::BAD_REQUEST, "invalid 'addr' parameter");
+            };
+            match d.whois(ip).await {
+                Ok(Some(w)) => reply(
+                    StatusCode::OK,
+                    &json!({ "Node": w.node, "UserProfile": w.user_profile, "CapMap": w.cap_map }),
+                ),
+                Ok(None) => error(StatusCode::NOT_FOUND, "peer not found"),
+                Err(e) => daemon_error(&e),
+            }
+        }
         (&Method::GET, "prefs") => match serde_json::to_value(d.prefs().await) {
             Ok(v) => reply(StatusCode::OK, &v),
             Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e),

@@ -506,6 +506,8 @@ version = "0.1.0"
 dependencies = [
  "bytes",
  "flowmesh-engine",
+ "flowmesh-meshsvc",
+ "flowmesh-proto",
  "flowmesh-state",
  "http-body-util",
  "hyper",
@@ -588,6 +590,7 @@ dependencies = [
  "flowmesh-stun",
  "getrandom 0.3.4",
  "ipnet",
+ "serde_json",
  "thiserror",
  "tokio",
  "tun-rs",
@@ -602,6 +605,15 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "flowmesh-meshsvc"
+version = "0.1.0"
+dependencies = [
+ "flowmesh-proto",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

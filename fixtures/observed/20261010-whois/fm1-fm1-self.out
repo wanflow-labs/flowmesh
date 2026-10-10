@@ -1,0 +1,8 @@
+Machine:
+  Name:          fm1-4xfexlba.mesh.lab.internal
+  ID:            43
+  Addresses:     [100.64.0.58/32 fd7a:115c:a1e0::3a/128]
+  Tags:          tag:relay-enabled
+Capabilities:
+  - tailscale.com/cap/relay
+  - tailscale.com/cap/relay-target

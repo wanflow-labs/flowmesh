@@ -1,0 +1,8 @@
+Machine:
+  Name:          ts1.mesh.lab.internal
+  ID:            1
+  Addresses:     [100.64.0.1/32 fd7a:115c:a1e0::1/128]
+  Tags:          tag:relay-enabled
+Capabilities:
+  - tailscale.com/cap/relay
+  - tailscale.com/cap/relay-target
