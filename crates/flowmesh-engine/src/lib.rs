@@ -2,6 +2,7 @@
 //! flowmesh network engine. Linux-only implementation; on other platforms it only exposes types (so the workspace still builds on the dev machine).
 
 pub mod command;
+pub mod control_loop;
 pub mod status;
 
 use flowmesh_control::client::ControlClient;

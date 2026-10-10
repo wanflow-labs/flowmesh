@@ -47,6 +47,8 @@ case_() {
 }
 
 case_ direct   last -c 5 ts1
+# Both sides failing alike would also "match": the official client must actually reach ts1 here.
+[ "$(cat "$out/ts2-direct.rc")" = 0 ] || { echo "FAIL: the official client cannot reach ts1; the lab is unhealthy, comparison void"; exit 1; }
 # Only the relay path to ts1 (the DERP server is a different host, so it stays reachable).
 for s in ts2 fm1; do dc "$s" ip route add blackhole 172.29.0.21/32; done
 sleep 7   # let any direct path expire (trust window 6.5 s)

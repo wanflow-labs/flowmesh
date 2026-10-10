@@ -6,6 +6,7 @@
 use crate::command::{
     EngineCommand, PendingPing, PingError, deliver_pings, expire_pings, short_name,
 };
+use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::status::{EngineStatus, PeerStatus};
 use crate::{EngineConfig, EngineError};
 use flowmesh_control::client::ControlClient;
@@ -413,6 +414,30 @@ fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
 }
 
 /// Send a one-shot, non-streaming map update to the control server (home relay and endpoints).
+/// The live netmap stream, as the reconnect loop sees it.
+struct Live(flowmesh_control::client::MapStream);
+
+impl MessageStream for Live {
+    fn next(&mut self) -> LoopFut<'_, Result<Option<MapResponse>, String>> {
+        Box::pin(async move {
+            self.0
+                .next()
+                .await
+                .map(|m| m.map(|m| m.parsed))
+                .map_err(|e| format!("map stream: {e}"))
+        })
+    }
+}
+
+/// Aborts the task when the engine returns, whichever way it returns.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 fn report(client: Arc<ControlClient>, req: MapRequest) {
     tokio::spawn(async move {
         match client.map(&req).await {
@@ -652,20 +677,43 @@ pub async fn run(
         .await
         .map_err(|e| e.to_string())?;
 
-    let (map_tx, mut map_rx) = mpsc::channel::<MapResponse>(64);
-    tokio::spawn(async move {
-        loop {
-            match stream.next().await {
-                Ok(Some(m)) => {
-                    if map_tx.send(m.parsed).await.is_err() {
-                        return;
-                    }
-                }
-                Ok(None) => return log("map stream closed"),
-                Err(e) => return log(format!("map stream: {e}")),
+    // The netmap stream is kept alive by the reconnect loop (design §7.2): a redial opens a new
+    // Noise connection, which `report` then uses too, and streams with the latest host info.
+    let (client_tx, client_rx) = watch::channel(client.clone());
+    let (stream_req_tx, stream_req_rx) = watch::channel(MapRequest {
+        hostinfo: hostinfo.clone(),
+        endpoints: endpoints.clone(),
+        ..base_req.clone()
+    });
+    let (ctl_tx, mut ctl_rx) = mpsc::channel::<ControlEvent>(64);
+    let dial = {
+        let server = args.login_server.clone();
+        let machine = keys.machine.clone();
+        move || {
+            let server = server.clone();
+            let machine = machine.clone();
+            let req = stream_req_rx.borrow().clone();
+            let client_tx = client_tx.clone();
+            async move {
+                let c = Arc::new(
+                    ControlClient::connect(&server, &machine)
+                        .await
+                        .map_err(|e| format!("control connect: {e}"))?,
+                );
+                let s = c.map(&req).await.map_err(|e| format!("map: {e}"))?;
+                let _ = client_tx.send(c);
+                Ok(Live(s))
             }
         }
-    });
+    };
+    let _control_loop = AbortOnDrop(tokio::spawn(crate::control_loop::run(
+        Some(Live(stream)),
+        dial,
+        ctl_tx,
+        Backoff::default(),
+    )));
+    let mut control_health: Option<String> = None;
+    let mut peer_ids: Vec<i64> = Vec::new();
 
     let mut dp = Dataplane::new(keys.node.clone());
     let mut ctx = Ctx {
@@ -803,10 +851,15 @@ pub async fn run(
                                 endpoints = next;
                                 ctx.ps.set_my_endpoints(endpoints.clone());
                                 log(format!("STUN: external address {mapped}; endpoints {endpoints:?}"));
-                                report(client.clone(), MapRequest {
+                                report(client_rx.borrow().clone(), MapRequest {
                                     hostinfo: hostinfo.clone(),
                                     endpoints: endpoints.clone(),
                                     ..lite.clone()
+                                });
+                                stream_req_tx.send_replace(MapRequest {
+                                    hostinfo: hostinfo.clone(),
+                                    endpoints: endpoints.clone(),
+                                    ..base_req.clone()
                                 });
                             }
                         }
@@ -840,7 +893,22 @@ pub async fn run(
                 }
                 _ => Vec::new(),
             },
-            Some(m) = map_rx.recv() => {
+            Some(ev) = ctl_rx.recv() => {
+                let m = match ev {
+                    ControlEvent::Map(m) => *m,
+                    ControlEvent::Up => {
+                        control_health = None;
+                        log("control: connected again");
+                        continue;
+                    }
+                    ControlEvent::Down(reason) => {
+                        log(format!("control: {reason}; reconnecting"));
+                        control_health = Some(format!(
+                            "not connected to the control server ({reason}); reconnecting, the mesh keeps working on the last network map"
+                        ));
+                        continue;
+                    }
+                };
                 let changed = ctx.nm.apply(&m);
                 if changed.peers || changed.dns || changed.self_node {
                     view = dns_view(&ctx.nm, answer_aaaa);
@@ -853,23 +921,33 @@ pub async fn run(
                 }
                 if changed.peers || changed.filter || changed.derp || changed.self_node {
                     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
-                    let summary: Vec<String> = ctx
-                        .nm
-                        .peers
-                        .values()
-                        .map(|n| format!("{}{:?}", n.hostinfo.hostname, n.endpoints))
-                        .collect();
-                    log(format!("netmap: {} peers {summary:?}", ctx.nm.peers.len()));
+                    // Online/last-seen patches arrive constantly; log only when the peer set changes.
+                    let ids: Vec<i64> = ctx.nm.peers.keys().copied().collect();
+                    if ids != peer_ids {
+                        let summary: Vec<String> = ctx
+                            .nm
+                            .peers
+                            .values()
+                            .map(|n| format!("{}{:?}", n.hostinfo.hostname, n.endpoints))
+                            .collect();
+                        log(format!("netmap: {} peers {summary:?}", ctx.nm.peers.len()));
+                        peer_ids = ids;
+                    }
                     let next_mode = mode_of(&ctx.nm);
                     if next_mode != mode {
                         mode = next_mode;
                         endpoints = endpoints_for(mode, &local, stun_mapped);
                         ctx.ps.set_my_endpoints(endpoints.clone());
                         log(format!("relay mode now {mode:?}; endpoints {endpoints:?}"));
-                        report(client.clone(), MapRequest {
+                        report(client_rx.borrow().clone(), MapRequest {
                             hostinfo: hostinfo.clone(),
                             endpoints: endpoints.clone(),
                             ..lite.clone()
+                        });
+                        stream_req_tx.send_replace(MapRequest {
+                            hostinfo: hostinfo.clone(),
+                            endpoints: endpoints.clone(),
+                            ..base_req.clone()
                         });
                     }
                 }
@@ -913,7 +991,9 @@ pub async fn run(
                 ctx.run_actions(acts).await;
                 if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
                     last_publish = Some(now);
-                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &health));
+                    let mut all_health = health.clone();
+                    all_health.extend(control_health.clone());
+                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health));
                 }
                 dp.tick()
             }
