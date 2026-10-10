@@ -3,7 +3,7 @@
   "captured_at": "2026-10-09T23:03:12+00:00",
   "official_client": "1.94.2",
   "headscale": "lab control server @964cf55b (built by lab/scripts/build-images.sh)",
-  "derp_image": "${FLOWMESH_LAB_DERP_IMAGE}",
+  "derp_image": "lab relay image (lab/.env)",
   "files": [
     "headscale-nodes.json",
     "headscale-policy.json",

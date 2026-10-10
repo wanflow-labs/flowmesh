@@ -33,7 +33,7 @@ services:
         aliases: [headscale.lab]
 
   derp:
-    image: ${FLOWMESH_LAB_DERP_IMAGE}
+    image: ${FLOWMESH_LAB_DERP_IMAGE:?set it in lab/.env (see lab/.env.example)}
     platform: linux/amd64
     command:
       - --hostname=derp.lab
@@ -54,7 +54,7 @@ services:
 
   # Second relay region (1001), for home-region failover tests.
   derp2:
-    image: ${FLOWMESH_LAB_DERP_IMAGE}
+    image: ${FLOWMESH_LAB_DERP_IMAGE:?set it in lab/.env (see lab/.env.example)}
     platform: linux/amd64
     command:
       - --hostname=derp2.lab

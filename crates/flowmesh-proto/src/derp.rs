@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 中继地图（DERP map）。字段名与 control server 的 derp-map.yaml 一一对应
+//! 中继地图（DERP map）。字段名与控制服务器的 derp-map.yaml 一一对应
 //! （lab/headscale/derp-map.yaml 中使用的是小写形式），线上 JSON 采用 PascalCase。
 
 use serde::{Deserialize, Serialize};

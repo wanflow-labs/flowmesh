@@ -1,5 +1,7 @@
 # SPDX-License-Identifier: Apache-2.0
-REFS ?= ../wanflow-mesh ../control-server
+# Reference trees for the similarity scan are local: put `REFS = <dir> ...` in local.mk (not committed).
+-include local.mk
+REFS ?=
 
 .PHONY: check fmt clippy test deny similarity lab-up lab-smoke lab-capture lab-down fuzz release reproduce
 
@@ -18,6 +20,7 @@ deny:
 	cargo deny check
 
 similarity:
+	@[ -n "$(REFS)" ] || { echo "similarity: set REFS in local.mk"; exit 1; }
 	cargo xtask similarity $(foreach r,$(REFS),--reference $(r)) \
 		--allowlist docs/similarity-allowlist.txt crates xtask fuzz
 

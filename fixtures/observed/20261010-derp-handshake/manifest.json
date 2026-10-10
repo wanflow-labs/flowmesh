@@ -1,7 +1,7 @@
 {
   "label": "derp-handshake",
   "captured_at": "2026-10-10T00:40:00+00:00",
-  "server": "${FLOWMESH_LAB_DERP_IMAGE} (lab, self-signed cert, no verify-client)",
+  "server": "lab relay image (lab/.env; self-signed cert, no verify-client)",
   "client": "flowmesh-derp tests/lab_relay.rs",
   "files": ["server-info.json"],
   "findings": [

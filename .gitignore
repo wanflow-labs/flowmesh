@@ -8,3 +8,5 @@ build/cache/
 __pycache__/
 # Internal planning notes stay out of the repository.
 /docs/superpowers/
+/lab/.env
+/local.mk

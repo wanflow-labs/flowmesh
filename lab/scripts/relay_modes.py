@@ -12,7 +12,7 @@ import time
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "acl-diff"))
 import run as base  # noqa: E402
 
-# Same tag combinations as production (the WanFlow backend the production configuration prefer = relay-force; strict = relay-force + relay-strict).
+# Same tag combinations as production (prefer = relay-force; strict = relay-force + relay-strict).
 MODES = [
     ("auto", ["tag:relay-enabled"]),
     ("prefer", ["tag:relay-enabled", "tag:relay-force"]),

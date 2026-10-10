@@ -56,7 +56,7 @@ Source: `OBS-20261010-stun`. STUN is unencrypted, so the official client's reque
 
 ## 6. Relay modes (WanFlow tag semantics)
 
-Production tag combinations (the WanFlow backend the production configuration): prefer = `relay-force`; strict = `relay-force` + `relay-strict`.
+Tag combinations used in production: prefer = `relay-force`; strict = `relay-force` + `relay-strict`.
 What a node sees under each combination (observed via wanflow-mesh's netmap):
 
 | Mode | DERP STUN port | Peer endpoints this node sees |

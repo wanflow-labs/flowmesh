@@ -29,7 +29,7 @@ json.dump({
     "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
     "official_client": ts_version,
     "headscale": f"lab control server @{hs_commit} (built by lab/scripts/build-images.sh)",
-    "derp_image": "${FLOWMESH_LAB_DERP_IMAGE}",
+    "derp_image": "lab relay image (lab/.env)",
     "files": files,
     "note": "lab-only keys; captured from flowmesh lab, see lab/README.md",
 }, open(os.path.join(out, "manifest.json"), "w"), indent=2)

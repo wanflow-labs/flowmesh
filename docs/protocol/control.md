@@ -52,7 +52,7 @@
 | 首条消息包含 `Node`、`Peers`（完整列表）、`DERPMap`、`DNSConfig`、`PacketFilters`、`UserProfiles`、`Domain`、`Debug`、`CollectServices`、`ControlTime` | 已观测 | map-0000.json |
 | 后续消息是增量：`PeersChangedPatch`（如 `{"NodeID":3,"Online":true}`）、`PeersChanged`、`DERPMap`、`DNSConfig`、`Node` 等 | 已观测 | map-0001.json … map-0004.json |
 | 对端节点同时带有 `HomeDERP`（整数区域号）和旧式 `DERP`（`127.3.3.40:<区域号>`）；尚无 home 时自身节点的 `DERP` 为 `127.3.3.40:0` | 已观测 | map-0000.json |
-| headscale 发送的是 `PacketFilters`（`{"base":[...]}`），不发送 `PacketFilter`。`base` 组中除 ACL 规则外，还有 WanFlow control server 无条件追加的 peer relay `CapGrant` 规则 | 已观测 | map-0000.json |
+| headscale 发送的是 `PacketFilters`（`{"base":[...]}`），不发送 `PacketFilter`。`base` 组中除 ACL 规则外，还有 WanFlow 控制服务器无条件追加的 peer relay `CapGrant` 规则 | 已观测 | map-0000.json |
 
 ## 6. 留待后续里程碑
 

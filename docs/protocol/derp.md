@@ -1,7 +1,7 @@
 # DERP relay
 
 Status notation is the same as control.md: **observed** / **interop-verified** / **pending**.
-Evidence for "interop-verified": `crates/flowmesh-derp/tests/lab_relay.rs` passes against the lab lab-relay (OBS-20261010-derp-handshake), and in M4 Task 3 traffic is exchanged end to end with the official client.
+Evidence for "interop-verified": `crates/flowmesh-derp/tests/lab_relay.rs` passes against the lab relay (OBS-20261010-derp-handshake), and in M4 Task 3 traffic is exchanged end to end with the official client.
 
 ## 1. Connection
 
