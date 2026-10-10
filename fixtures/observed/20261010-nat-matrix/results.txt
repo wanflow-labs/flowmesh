@@ -1,0 +1,8 @@
+# lab/nat/matrix.sh (2026-10-10). Observer ts-b (official 1.94.2) is behind NAT B; subject fm-a (flowmesh) and reference ts-a (official) are both behind NAT A.
+# NAT types: easy = full cone (DNAT); pr = Linux default MASQUERADE (port-restricted, crossing punches change the port); hard = --random-fully (symmetric)
+easy:easy  flowmesh(fm-a)=direct  official(ts-a)=direct  same
+easy:pr    flowmesh(fm-a)=relay   official(ts-a)=relay   same
+pr:pr      flowmesh(fm-a)=relay   official(ts-a)=relay   same
+easy:hard  flowmesh(fm-a)=relay   official(ts-a)=relay   same
+pr:hard    flowmesh(fm-a)=relay   official(ts-a)=relay   same
+hard:hard  flowmesh(fm-a)=relay   official(ts-a)=relay   same

@@ -1,0 +1,10 @@
+{
+  "label": "nat-matrix",
+  "captured_at": "2026-10-10T05:30:00+00:00",
+  "method": "lab/nat/matrix.sh with lab/nat/compose.nat.yaml (routers: lab/nat/router.sh)",
+  "files": ["results.txt"],
+  "notes": [
+    "pr (Linux default MASQUERADE) does not hole-punch even for official<->official in this lab: crossing punch packets create a reverse conntrack entry that occupies the mapped port, so the outbound mapping changes port.",
+    "One earlier run showed the observer ts-b keeping a stale disco key for fm-a (subject started <1s after observer login, ~30 stale nodes in headscale). Not reproduced by lab/nat/disco_staleness.sh for either official or flowmesh."
+  ]
+}

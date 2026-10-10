@@ -74,3 +74,20 @@ Behavior differential (OBS-20261010-relay-modes, peer is official ts1, same LAN)
 | strict | **direct (leak)** | relay | **intentional deviation**, see deviation list #6 |
 
 Strict-mode leak mechanism (lab/scripts/strict_leak.sh): with flowmesh (which sends no CallMeMaybe) as the peer, strict wm1 stays on relay; with official ts1 as the peer, it goes direct. So the leak comes from **the strict node accepting CallMeMaybe from the non-strict peer and pinging back**. In production, a strict CPE and an auto-mode CPE will therefore go P2P, which contradicts the product promise of "always relay, no P2P".
+
+## 7. NAT matrix (OBS-20261010-nat-matrix)
+
+| NAT A (subject side) : NAT B (observer side) | flowmesh | official | |
+|---|---|---|---|
+| easy : easy (full cone) | direct | direct | same |
+| easy : pr | relay | relay | same |
+| pr : pr (Linux default MASQUERADE) | relay | relay | same |
+| easy : hard | relay | relay | same |
+| pr : hard | relay | relay | same |
+| hard : hard (symmetric) | relay | relay | same |
+
+Lab notes (each one was a source of misleading results):
+- Routers must have NAT tools baked into the image: if installed at startup, the client sends traffic before the rules exist, conntrack pins those flows to "no NAT", and NAT never takes effect.
+- Packets toward another LAN's private address must be dropped on the router's WAN side, or the Docker host routes them straight there and bypasses NAT.
+- Linux default MASQUERADE: crossing punch packets create a reverse conntrack entry that occupies the mapped port, so the outbound mapping changes port. Official and flowmesh both stay on relay.
+- The subject and the reference must log in at the same relative time to the observer. Observed once: the observer's netmap kept the subject's old disco key (subject started within 1 s of the observer logging in, with many stale nodes in headscale). Not reproduced in the simplified test (lab/nat/disco_staleness.sh, official and flowmesh both FRESH); kept as an open item.

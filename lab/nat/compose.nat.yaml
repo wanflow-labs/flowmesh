@@ -1,12 +1,19 @@
 # SPDX-License-Identifier: Apache-2.0
 # NAT simulation overlay: docker compose -f lab/compose.yaml -f lab/nat/compose.nat.yaml up -d
-# NAT_A / NAT_B pick each side's NAT type (easy | hard).
+# NAT_A / NAT_B select each side's NAT type (easy | pr | hard; see nat/router.sh).
 x-router: &router
-  image: alpine:3.20
+  # Tools are baked into the image: if they were installed at startup, the clients would send traffic before the NAT rule existed,
+  # those flows' conntrack entries would be pinned to "no NAT", and NAT would never take effect.
+  build:
+    context: ./nat
+    dockerfile_inline: |
+      FROM alpine:3.20
+      RUN apk add --no-cache iptables iproute2 conntrack-tools
+  image: flowmesh-lab/nat-router:local
   cap_add: [NET_ADMIN]
   sysctls:
     net.ipv4.ip_forward: "1"
-  entrypoint: ["/bin/sh", "-c", "apk add --no-cache iptables iproute2 >/dev/null && exec /nat/router.sh"]
+  entrypoint: ["/nat/router.sh"]
   volumes: ["./nat/router.sh:/nat/router.sh:ro"]
 
 x-behind: &behind
@@ -16,13 +23,13 @@ x-behind: &behind
 services:
   nat-a:
     <<: *router
-    environment: { NAT_MODE: "${NAT_A:-easy}" }
+    environment: { NAT_MODE: "${NAT_A:-pr}", FULLCONE: "41641:10.10.1.31 *:10.10.1.21" }
     networks:
       lab: { ipv4_address: 172.29.0.51 }
       lan-a: { ipv4_address: 10.10.1.2 }
   nat-b:
     <<: *router
-    environment: { NAT_MODE: "${NAT_B:-easy}" }
+    environment: { NAT_MODE: "${NAT_B:-pr}", FULLCONE: "*:10.10.2.21" }
     networks:
       lab: { ipv4_address: 172.29.0.52 }
       lan-b: { ipv4_address: 10.10.2.2 }
@@ -34,6 +41,7 @@ services:
     environment: { TS_NO_LOGS_NO_SUPPORT: "true" }
     entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.1.2 && mkdir -p /var/run/tailscale /var/lib/tailscale && exec tailscaled --state=/var/lib/tailscale/tailscaled.state"]
     depends_on: [nat-a]
+    volumes: [ts-a-state:/var/lib/tailscale]
     networks:
       lan-a: { ipv4_address: 10.10.1.21 }
   ts-b:
@@ -43,6 +51,7 @@ services:
     environment: { TS_NO_LOGS_NO_SUPPORT: "true" }
     entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.2.2 && mkdir -p /var/run/tailscale /var/lib/tailscale && exec tailscaled --state=/var/lib/tailscale/tailscaled.state"]
     depends_on: [nat-b]
+    volumes: [ts-b-state:/var/lib/tailscale]
     networks:
       lan-b: { ipv4_address: 10.10.2.21 }
   fm-a:
@@ -58,6 +67,10 @@ services:
     depends_on: [nat-a]
     networks:
       lan-a: { ipv4_address: 10.10.1.31 }
+
+volumes:
+  ts-a-state:
+  ts-b-state:
 
 networks:
   lan-a:
