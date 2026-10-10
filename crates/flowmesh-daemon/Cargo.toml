@@ -1,0 +1,17 @@
+[package]
+name = "flowmesh-daemon"
+description = "flowmesh daemon (flowmeshd): preferences, backend state machine, local API"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+ipnet = { version = "2.12.2", features = ["serde"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+thiserror = "2.0.21"

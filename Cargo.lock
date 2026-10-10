@@ -491,6 +491,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowmesh-daemon"
+version = "0.1.0"
+dependencies = [
+ "ipnet",
+ "serde",
+ "serde_json",
+ "thiserror",
+]
+
+[[package]]
 name = "flowmesh-dataplane"
 version = "0.1.0"
 dependencies = [
