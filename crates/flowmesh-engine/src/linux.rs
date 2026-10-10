@@ -32,6 +32,8 @@ use tokio::sync::{mpsc, watch};
 
 const TICK: Duration = Duration::from_millis(250);
 const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+/// Home may be down this long (a redial) before the health report mentions it.
+const HOME_HEALTH_GRACE: Duration = Duration::from_secs(5);
 const MTU: u16 = 1280;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
@@ -93,6 +95,8 @@ struct Relays {
     ready: mpsc::Sender<(u32, Result<DerpSender, String>)>,
     plan: RelayPlan,
     epoch: Instant,
+    /// The last connection error per region, for the health report.
+    last_error: HashMap<u32, String>,
 }
 
 impl Relays {
@@ -100,20 +104,58 @@ impl Relays {
         self.epoch.elapsed()
     }
 
-    /// Start-up only: connect home inline, so the engine does not come up without a relay.
-    async fn connect_home(&mut self, region: u32, dm: &DerpMap) -> Result<DerpSender, String> {
-        let node = relay_node(region, dm).ok_or("no usable DERP region")?;
-        let c = DerpClient::connect(&node, &self.me)
+    /// Start-up: try home once inline, so the first packets usually find a relay. If it cannot be
+    /// reached the engine still comes up (peers may be reachable directly) and the plan keeps
+    /// retrying and fails over; the outage shows in the health report.
+    async fn connect_home(&mut self, region: u32, dm: &DerpMap) {
+        let result = match relay_node(region, dm) {
+            None => Err("region not in the DERP map".to_string()),
+            Some(node) => match tokio::time::timeout(
+                RELAY_CONNECT_TIMEOUT,
+                DerpClient::connect(&node, &self.me),
+            )
             .await
-            .map_err(|e| format!("cannot reach home DERP region {region}: {e}"))?;
-        log(format!(
-            "connected to DERP region {region} ({})",
-            node.host_name
-        ));
-        let s = forward_events(region, c, self.events.clone());
-        self.senders.insert(region, s.clone());
-        s.note_preferred(true).await.map_err(|e| e.to_string())?;
-        Ok(s)
+            {
+                Ok(Ok(c)) => {
+                    log(format!(
+                        "connected to DERP region {region} ({})",
+                        node.host_name
+                    ));
+                    Ok(forward_events(region, c, self.events.clone()))
+                }
+                Ok(Err(e)) => Err(format!("{}: {e}", node.host_name)),
+                Err(_) => Err(format!(
+                    "{}: no answer within {RELAY_CONNECT_TIMEOUT:?}",
+                    node.host_name
+                )),
+            },
+        };
+        match result {
+            Ok(s) => {
+                self.senders.insert(region, s.clone());
+                let _ = s.note_preferred(true).await;
+            }
+            Err(e) => {
+                log(format!(
+                    "cannot reach home DERP region {region}: {e}; retrying in the background"
+                ));
+                self.plan = RelayPlan::start_unreachable(region, self.now());
+                self.last_error.insert(region, e);
+            }
+        }
+    }
+
+    /// Health line while home has been unreachable for a while (a quick redial stays silent).
+    fn health(&self) -> Option<String> {
+        let down = self.plan.home_down_for(self.now())?;
+        if down < HOME_HEALTH_GRACE {
+            return None;
+        }
+        let home = self.plan.home();
+        Some(match self.last_error.get(&home) {
+            Some(e) => format!("cannot reach home DERP region {home}: {e}"),
+            None => format!("cannot reach home DERP region {home}"),
+        })
     }
 
     fn spawn_connect(&self, region: u32, dm: &DerpMap) {
@@ -170,6 +212,7 @@ impl Relays {
                 let now = self.now();
                 self.plan.on_failed(region, now);
                 log(format!("DERP region {region}: {e}"));
+                self.last_error.insert(region, e);
             }
         }
     }
@@ -663,8 +706,9 @@ pub async fn run(
         ready: ready_tx,
         plan: RelayPlan::new(home),
         epoch: Instant::now(),
+        last_error: HashMap::new(),
     };
-    relays.connect_home(home, &nm.derp_map).await?;
+    relays.connect_home(home, &nm.derp_map).await;
 
     // The netmap stream is kept alive by the reconnect loop (design §7.2): a redial opens a new
     // Noise connection, which `report` then uses too, and streams with the latest host info.
@@ -1027,6 +1071,7 @@ pub async fn run(
                         last_publish = Some(now);
                         let mut all_health = health.clone();
                         all_health.extend(control_health.clone());
+                        all_health.extend(ctx.relays.health());
                         status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health));
                     }
                     dp.tick()

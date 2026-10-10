@@ -43,8 +43,27 @@ impl RelayPlan {
         }
     }
 
+    /// `home` was chosen at start-up but the first attempt to reach it failed at `now`: the engine
+    /// runs without a relay and the plan retries and fails over as for any outage.
+    pub fn start_unreachable(home: u32, now: Duration) -> Self {
+        let mut p = Self {
+            connected: BTreeSet::new(),
+            ..Self::new(home)
+        };
+        p.on_failed(home, now);
+        p
+    }
+
     pub fn home(&self) -> u32 {
         self.home
+    }
+
+    /// How long home has been unreachable, if it is.
+    pub fn home_down_for(&self, now: Duration) -> Option<Duration> {
+        if self.connected.contains(&self.home) {
+            return None;
+        }
+        self.home_down_since.map(|t| now.saturating_sub(t))
     }
 
     /// Read-only view for `flowmesh debug derp`.
@@ -396,6 +415,38 @@ mod tests {
         p.on_failed(1001, 100 * S);
         assert_eq!(p.tick(101 * S, &map), vec![RelayAction::Connect(1001)]);
         assert_eq!(p.home(), 1001);
+    }
+
+    /// Home unreachable at start-up: the engine comes up anyway and the plan takes over, retrying
+    /// home after the first backoff step and failing over like any later outage.
+    #[test]
+    fn start_with_home_unreachable() {
+        let map = two();
+        let mut p = RelayPlan::start_unreachable(1000, 5 * S);
+        assert!(!p.is_connected(1000));
+        assert_eq!(p.home_down_for(5 * S), Some(Duration::ZERO));
+        assert!(
+            p.tick(5 * S, &map).is_empty(),
+            "the failed attempt counts: wait 1 s"
+        );
+        assert_eq!(p.tick(6 * S, &map), vec![RelayAction::Connect(1000)]);
+        p.on_failed(1000, 6 * S);
+        assert_eq!(
+            p.tick(15 * S, &map),
+            vec![RelayAction::SetHome(1001), RelayAction::Connect(1001)]
+        );
+        p.on_connected(1001);
+        assert_eq!(p.home_down_for(16 * S), None);
+    }
+
+    #[test]
+    fn home_down_for_tracks_the_outage() {
+        let mut p = RelayPlan::new(1000);
+        assert_eq!(p.home_down_for(S), None);
+        p.on_closed(1000, 10 * S);
+        assert_eq!(p.home_down_for(13 * S), Some(3 * S));
+        p.on_connected(1000);
+        assert_eq!(p.home_down_for(14 * S), None);
     }
 
     #[test]
