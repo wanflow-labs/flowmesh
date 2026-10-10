@@ -57,6 +57,9 @@ for t in $targets; do
   done
   find crates -name '*_bin.cdx.json' -delete
 done
-grep -l "$PWD" "$out"/*.cdx.json && { echo "SBOM still names the build directory"; exit 1; }
+# Every workspace reference must be the mapped one (the build directory may itself be /flowmesh).
+if grep -ho 'path+file://[^"#]*' "$out"/*.cdx.json | grep -v '^path+file:///flowmesh/'; then
+  echo "SBOM names the build directory"; exit 1
+fi
 (cd "$out" && sha256sum flowmesh-*.tar.gz *.cdx.json */flowmeshd */flowmesh > SHA256SUMS)
 cat "$out/SHA256SUMS"
