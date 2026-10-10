@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-10-10T15:19:33+00:00",
+  "files": [
+    "failover.sh",
+    "idle-pcap.txt",
+    "idle.pcap",
+    "notes.md",
+    "ts1-netmap.json"
+  ],
+  "label": "peer-relay-behavior",
+  "method": "failover.sh (stop/start tsr while ts1 pings ts2 each second); 10-minute idle capture of tsr's relay port",
+  "note": "lab-only keys",
+  "official_client": "1.94.2"
+}
