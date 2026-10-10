@@ -11,6 +11,11 @@
 //! 给了 --disco-to 时，连上 DERP 后等 --disco-delay（默认 5 秒，让对端先拿到本次的新 disco 公钥），
 //! 再把每个 --disco-payload（类型字节 + 版本字节 + 正文）封装后发给该对端。payload 是十六进制，可含占位符
 //! `{self}`（本次的 disco 公钥）和 `{disco:<IP>}`（该节点当前的 disco 公钥），发送时按最新网络地图展开。
+//!
+//! peer relay 握手实验（--udp-payload，可重复）：程序记住最近收到的分配（0x09 或 0x07），--udp-delay
+//! （默认 12 秒）后把每个 payload 用分配里的服务器密钥封装、加 Geneve 头（--udp-control 置 O 位，VNI 取自
+//! 分配），经 UDP 发到分配的中继地址；UDP 回包解密后同样记入 disco.tsv。占位符另有 `{alloc.server}`、
+//! `{alloc.pair}`、`{alloc.gen}`、`{alloc.vni}`。
 
 mod disco;
 
@@ -39,6 +44,9 @@ struct Args {
     /// Payload templates: hex with `{self}` / `{disco:<ip>}` placeholders, expanded at send time.
     disco_payloads: Vec<String>,
     disco_delay: Duration,
+    udp_payloads: Vec<String>,
+    udp_delay: Duration,
+    udp_control: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -47,6 +55,8 @@ fn parse_args() -> Result<Args, String> {
     let mut duration = Duration::from_secs(30);
     let (mut derp_region, mut disco_to, mut disco_payloads) = (None, None, Vec::new());
     let mut disco_delay = Duration::from_secs(5);
+    let (mut udp_payloads, mut udp_delay, mut udp_control) =
+        (Vec::new(), Duration::from_secs(12), false);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -69,6 +79,13 @@ fn parse_args() -> Result<Args, String> {
                 disco_to = Some(v.parse().map_err(|_| format!("bad --disco-to {v}"))?);
             }
             "--disco-payload" => disco_payloads.push(val()?),
+            "--udp-payload" => udp_payloads.push(val()?),
+            "--udp-delay" => {
+                let v = val()?;
+                udp_delay =
+                    Duration::from_secs(v.parse().map_err(|_| format!("bad --udp-delay {v}"))?);
+            }
+            "--udp-control" => udp_control = true,
             "--disco-delay" => {
                 let v = val()?;
                 disco_delay =
@@ -91,6 +108,9 @@ fn parse_args() -> Result<Args, String> {
         disco_to,
         disco_payloads,
         disco_delay,
+        udp_payloads,
+        udp_delay,
+        udp_control,
     })
 }
 
@@ -114,6 +134,15 @@ fn write_private(path: &Path, data: &[u8]) -> Result<(), String> {
         .map_err(|e| format!("{}: {e}", path.display()))?;
     f.write_all(data)
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+fn append_line(path: &Path, line: &str) -> Result<(), String> {
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    writeln!(f, "{line}").map_err(|e| format!("{}: {e}", path.display()))
 }
 
 fn write(dir: &Path, name: &str, data: &[u8]) -> Result<(), String> {
@@ -226,10 +255,74 @@ async fn run(args: Args) -> Result<(), String> {
     let mut received = 0usize;
     let mut pending: Option<(tokio::time::Instant, IpAddr)> = None;
     let mut peers: Vec<flowmesh_proto::control::Node> = Vec::new();
+    // Peer relay handshake experiments: the latest allocation seen, a UDP socket and its receive loop.
+    let mut alloc: Option<disco::Alloc> = None;
+    let (udp_tx, mut udp_rx) = tokio::sync::mpsc::channel::<(std::net::SocketAddr, Vec<u8>)>(256);
+    let udp = if args.udp_payloads.is_empty() {
+        None
+    } else {
+        let sock = std::sync::Arc::new(
+            tokio::net::UdpSocket::bind("0.0.0.0:0")
+                .await
+                .map_err(|e| format!("udp bind: {e}"))?,
+        );
+        let rx = sock.clone();
+        tokio::spawn(async move {
+            let mut buf = vec![0u8; 2048];
+            while let Ok((n, from)) = rx.recv_from(&mut buf).await {
+                if udp_tx.send((from, buf[..n].to_vec())).await.is_err() {
+                    break;
+                }
+            }
+        });
+        Some(sock)
+    };
+    let mut udp_at = udp.as_ref().map(|_| start + args.udp_delay);
     loop {
         let send_at = pending.as_ref().map(|(t, _)| *t);
         tokio::select! {
             _ = tokio::time::sleep_until(deadline) => break,
+            _ = tokio::time::sleep_until(udp_at.unwrap_or(deadline)), if udp_at.is_some() => {
+                udp_at = None;
+                let (Some(sock), Some(a)) = (udp.as_ref(), alloc.as_ref()) else {
+                    println!("no allocation received before --udp-delay: nothing sent over UDP");
+                    continue;
+                };
+                let to = *a.addrs.first().ok_or("allocation without an address")?;
+                for template in &args.udp_payloads {
+                    let payload =
+                        disco::parse_hex(&disco::expand(template, &disco.public(), &peers, Some(a))?)?;
+                    let mut nonce = [0u8; 24];
+                    getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+                    let sealed = flowmesh_disco::envelope::seal(&disco, &a.server, &payload, nonce)
+                        .map_err(|e| e.to_string())?;
+                    let packet = [&disco::geneve(a.vni, args.udp_control, 0x7a11)[..], &sealed].concat();
+                    sock.send_to(&packet, to).await.map_err(|e| format!("udp send: {e}"))?;
+                    println!(
+                        "{}\tudp sent {} bytes (payload {}) to {to} vni {}",
+                        start.elapsed().as_millis(),
+                        packet.len(),
+                        payload.len(),
+                        a.vni
+                    );
+                }
+            }
+            Some((from, data)) = udp_rx.recv() => {
+                let t = start.elapsed().as_millis();
+                let (head, inner) = data.split_at(data.len().min(8));
+                let who = format!("udp:{from} hdr={}", head.iter().map(|b| format!("{b:02x}")).collect::<String>());
+                let line = if inner.starts_with(&flowmesh_disco::envelope::MAGIC) {
+                    match flowmesh_disco::envelope::open(&disco, inner) {
+                        Ok((_, plain)) => disco::tsv_line(t, &who, &plain),
+                        Err(e) => format!("{t}\t{who}\tundecryptable: {e}"),
+                    }
+                } else {
+                    disco::tsv_line(t, &format!("{who} raw"), inner)
+                };
+                println!("{line}");
+                append_line(&args.dump.join("disco.tsv"), &line)?;
+                received += 1;
+            }
             _ = tokio::time::sleep_until(send_at.unwrap_or(deadline)), if send_at.is_some() => {
                 let (Some((_, ip)), Some(dm)) = (pending.take(), derp_map.as_ref()) else {
                     continue;
@@ -245,7 +338,7 @@ async fn run(args: Args) -> Result<(), String> {
                 }
                 let sender = senders.get(&region).ok_or("DERP sender missing")?;
                 for template in &args.disco_payloads {
-                    let payload = disco::parse_hex(&disco::expand(template, &disco.public(), &peers)?)?;
+                    let payload = disco::parse_hex(&disco::expand(template, &disco.public(), &peers, alloc.as_ref())?)?;
                     let mut nonce = [0u8; 24];
                     getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
                     let sealed =
@@ -305,16 +398,16 @@ async fn run(args: Args) -> Result<(), String> {
                     write(&args.dump, &format!("derp-{t:010}.bin"), &data)?;
                     let from = names.get(&src).cloned().unwrap_or_else(|| src.to_string());
                     let line = match flowmesh_disco::envelope::open(&disco, &data) {
-                        Ok((_, plain)) => disco::tsv_line(t, &from, &plain),
+                        Ok((_, plain)) => {
+                            if let Some(a) = disco::parse_alloc(&plain) {
+                                alloc = Some(a);
+                            }
+                            disco::tsv_line(t, &from, &plain)
+                        }
                         Err(e) => format!("{t}\t{from}\tundecryptable: {e}"),
                     };
                     println!("{line}");
-                    let mut f = std::fs::OpenOptions::new()
-                        .create(true)
-                        .append(true)
-                        .open(args.dump.join("disco.tsv"))
-                        .map_err(|e| format!("disco.tsv: {e}"))?;
-                    writeln!(f, "{line}").map_err(|e| format!("disco.tsv: {e}"))?;
+                    append_line(&args.dump.join("disco.tsv"), &line)?;
                     received += 1;
                 }
                 other => println!("derp: {other:?}"),

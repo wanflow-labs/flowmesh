@@ -4,7 +4,7 @@
 use flowmesh_proto::control::{MapResponse, Node};
 use flowmesh_proto::derp::{DerpMap, DerpNode};
 use flowmesh_proto::key::DiscoPublic;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 
 /// The peer that owns `ip` (any of its addresses).
 pub fn find_peer(peers: &[Node], ip: IpAddr) -> Option<&Node> {
@@ -44,7 +44,12 @@ pub fn apply_map(peers: &mut Vec<Node>, m: &MapResponse) {
 
 /// Expand the placeholders of a payload template into hex: `{self}` is this node's disco public
 /// key, `{disco:<tailnet IP>}` that peer's current disco public key. The result goes to [`parse_hex`].
-pub fn expand(template: &str, me: &DiscoPublic, peers: &[Node]) -> Result<String, String> {
+pub fn expand(
+    template: &str,
+    me: &DiscoPublic,
+    peers: &[Node],
+    alloc: Option<&Alloc>,
+) -> Result<String, String> {
     let mut out = String::new();
     let mut rest = template;
     while let Some(open) = rest.find('{') {
@@ -54,6 +59,19 @@ pub fn expand(template: &str, me: &DiscoPublic, peers: &[Node]) -> Result<String
             .ok_or(format!("unclosed {{ in {template:?}"))?
             + open;
         let token = &rest[open + 1..close];
+        if let Some(field) = token.strip_prefix("alloc.") {
+            let a = alloc.ok_or(format!("{{{token}}} before any allocation was received"))?;
+            let bytes: Vec<u8> = match field {
+                "server" => a.server.0.to_vec(),
+                "pair" => [a.pair[0].0, a.pair[1].0].concat(),
+                "gen" => a.generation.to_be_bytes().to_vec(),
+                "vni" => a.vni.to_be_bytes().to_vec(),
+                _ => return Err(format!("unknown placeholder {{{token}}}")),
+            };
+            out.extend(bytes.iter().map(|b| format!("{b:02x}")));
+            rest = &rest[close + 1..];
+            continue;
+        }
         let key = if token == "self" {
             *me
         } else if let Some(ip) = token.strip_prefix("disco:") {
@@ -71,6 +89,65 @@ pub fn expand(template: &str, me: &DiscoPublic, peers: &[Node]) -> Result<String
     }
     out.push_str(rest);
     Ok(out)
+}
+
+/// A peer relay allocation, as the relay server reports it (disco 0x09, after the echoed counter)
+/// or a client forwards it to the other member of the pair (0x07).
+/// Layout: OBS-20261010-peer-relay-alloc-response, OBS-20261010-peer-relay-forward.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Alloc {
+    pub server: DiscoPublic,
+    pub pair: [DiscoPublic; 2],
+    pub generation: u64,
+    pub vni: u32,
+    pub addrs: Vec<SocketAddr>,
+}
+
+/// Parse a decrypted disco payload (type, version, body) of type 0x09 or 0x07.
+pub fn parse_alloc(payload: &[u8]) -> Option<Alloc> {
+    let body = match payload.first()? {
+        0x09 => payload.get(6..)?,
+        0x07 => payload.get(2..)?,
+        _ => return None,
+    };
+    if body.len() < 124 || (body.len() - 124) % flowmesh_disco::message::ADDR_LEN != 0 {
+        return None;
+    }
+    let key = |at: usize| {
+        let mut k = [0u8; 32];
+        k.copy_from_slice(&body[at..at + 32]);
+        DiscoPublic(k)
+    };
+    let addrs = body[124..]
+        .chunks(flowmesh_disco::message::ADDR_LEN)
+        .map(flowmesh_disco::message::parse_addr)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    Some(Alloc {
+        server: key(0),
+        pair: [key(32), key(64)],
+        generation: u64::from_be_bytes(body[96..104].try_into().ok()?),
+        vni: u32::from_be_bytes(body[104..108].try_into().ok()?),
+        addrs,
+    })
+}
+
+/// The 8-byte header of a relayed packet (Geneve, RFC 8926): O bit for messages to the relay server
+/// itself, the protocol type (0x7a11 disco, 0x7a12 WireGuard), the 24-bit VNI.
+/// Layout: OBS-20261010-peer-relay-datapath.
+pub fn geneve(vni: u32, control: bool, protocol: u16) -> [u8; 8] {
+    let v = vni.to_be_bytes();
+    let p = protocol.to_be_bytes();
+    [
+        0,
+        if control { 0x80 } else { 0 },
+        p[0],
+        p[1],
+        v[1],
+        v[2],
+        v[3],
+        0,
+    ]
 }
 
 /// The peer's home DERP region: `HomeDERP`, else the legacy `DERP` field `127.3.3.40:<region>`.
@@ -186,20 +263,77 @@ mod tests {
     fn expand_fills_self_and_peer_keys() {
         let peers = vec![with_id(2, "b", "100.64.0.2", 0xbb)];
         let me = DiscoPublic([0xaa; 32]);
-        let out = expand("08 00 {self} {disco:100.64.0.2} 00000001", &me, &peers).unwrap();
+        let out = expand(
+            "08 00 {self} {disco:100.64.0.2} 00000001",
+            &me,
+            &peers,
+            None,
+        )
+        .unwrap();
         assert_eq!(
             parse_hex(&out).unwrap(),
             [&[0x08, 0x00][..], &[0xaa; 32], &[0xbb; 32], &[0, 0, 0, 1]].concat()
         );
-        assert_eq!(expand("0800", &me, &peers).unwrap(), "0800");
+        assert_eq!(expand("0800", &me, &peers, None).unwrap(), "0800");
     }
 
     #[test]
     fn expand_rejects_unknown_peers_and_placeholders() {
         let me = DiscoPublic([0xaa; 32]);
-        assert!(expand("{disco:100.64.0.9}", &me, &[]).is_err());
-        assert!(expand("{other}", &me, &[]).is_err());
-        assert!(expand("{self", &me, &[]).is_err());
+        assert!(expand("{disco:100.64.0.9}", &me, &[], None).is_err());
+        assert!(expand("{other}", &me, &[], None).is_err());
+        assert!(
+            expand("{alloc.vni}", &me, &[], None).is_err(),
+            "no allocation yet"
+        );
+        assert!(expand("{self", &me, &[], None).is_err());
+    }
+
+    /// Layout of the 0x07 ts1 forwarded to a probe (OBS-20261010-peer-relay-forward), with the
+    /// pair's keys replaced by ...01 and ...02 and the generation by 0x0102030405060708 (captured
+    /// generations equal the VNI, which would hide a swapped field); every other byte as captured.
+    const FORWARD_07: &str = "0700b5d722848c2ae1ad169cdaee015cdbd5fd7a7efbd899d1ae6d9bf022c170be7f\
+        0000000000000000000000000000000000000000000000000000000000000001\
+        0000000000000000000000000000000000000000000000000000000000000002\
+        01020304050607080000000500000006fc23ac0000000045d964b80000000000000000000000ffff\
+        ac1d00179c40";
+
+    #[test]
+    fn parses_a_forwarded_allocation_and_the_server_reply() {
+        let p = parse_hex(&FORWARD_07.replace(' ', "")).unwrap();
+        let a = parse_alloc(&p).unwrap();
+        assert_eq!(a.server.0[..4], [0xb5, 0xd7, 0x22, 0x84]);
+        assert_eq!(a.pair[0].0[31], 1);
+        assert_eq!(a.pair[1].0[31], 2);
+        assert_eq!((a.generation, a.vni), (0x0102_0304_0506_0708, 5));
+        assert_eq!(a.addrs, vec!["172.29.0.23:40000".parse().unwrap()]);
+        // The server's 0x09 reply is the same body after a 4-byte counter.
+        let reply = [&[0x09, 0x00, 0, 0, 0, 7][..], &p[2..]].concat();
+        assert_eq!(parse_alloc(&reply), Some(a));
+        assert_eq!(parse_alloc(&p[..p.len() - 1]), None, "truncated address");
+        assert_eq!(parse_alloc(&[0x01, 0x00]), None, "not an allocation");
+    }
+
+    #[test]
+    fn geneve_header_layout() {
+        assert_eq!(geneve(4, false, 0x7a11), [0, 0, 0x7a, 0x11, 0, 0, 4, 0]);
+        assert_eq!(
+            geneve(0x01_02_03, true, 0x7a12),
+            [0, 0x80, 0x7a, 0x12, 1, 2, 3, 0]
+        );
+    }
+
+    #[test]
+    fn expand_fills_allocation_fields() {
+        let a = parse_alloc(&parse_hex(&FORWARD_07.replace(' ', "")).unwrap()).unwrap();
+        let me = DiscoPublic([0xaa; 32]);
+        let out =
+            parse_hex(&expand("{alloc.gen}{alloc.vni}", &me, &[], Some(&a)).unwrap()).unwrap();
+        assert_eq!(out, [1, 2, 3, 4, 5, 6, 7, 8, 0, 0, 0, 5]);
+        let pair = parse_hex(&expand("{alloc.pair}", &me, &[], Some(&a)).unwrap()).unwrap();
+        assert_eq!(pair, [a.pair[0].0, a.pair[1].0].concat());
+        let server = parse_hex(&expand("{alloc.server}", &me, &[], Some(&a)).unwrap()).unwrap();
+        assert_eq!(server, a.server.0);
     }
 
     #[test]
