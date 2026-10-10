@@ -1,0 +1,13 @@
+{
+  "captured_at": "2026-10-10T14:48:53+00:00",
+  "files": [
+    "disco.tsv",
+    "map-0000.json",
+    "notes.md",
+    "own-discokey.txt"
+  ],
+  "label": "peer-relay-forward",
+  "method": "ts1 runs `tailscale ping` to a listening flowmesh-probe (no UDP endpoints) while tsr serves as relay; probe decrypts what arrives over DERP",
+  "note": "lab-only keys; public keys only",
+  "official_client": "1.94.2"
+}
