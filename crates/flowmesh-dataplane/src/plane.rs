@@ -40,6 +40,12 @@ pub struct Dataplane {
     peers: HashMap<NodePublic, Peer>,
     filter: Filter,
     next_index: u32,
+    /// AllowedIPs that are single addresses (/32, /128): the usual tailnet case, one hash lookup.
+    hosts: HashMap<IpAddr, NodePublic>,
+    /// The other AllowedIPs (subnet routes), longest prefix first.
+    subnets: Vec<(IpNet, NodePublic)>,
+    /// Encapsulation/decapsulation output, allocated once; outputs copy out exactly what they need.
+    scratch: Vec<u8>,
 }
 
 struct Peer {
@@ -55,6 +61,9 @@ impl Dataplane {
             peers: HashMap::new(),
             filter: Filter::new(vec![]),
             next_index: 1,
+            hosts: HashMap::new(),
+            subnets: Vec::new(),
+            scratch: vec![0u8; MAX_PACKET + BUF_OVERHEAD],
         }
     }
 
@@ -86,20 +95,30 @@ impl Dataplane {
             next.insert(cfg.key, peer);
         }
         self.peers = next;
+        self.hosts.clear();
+        self.subnets.clear();
+        for (k, p) in &self.peers {
+            for n in &p.allowed {
+                if n.prefix_len() == n.max_prefix_len() {
+                    self.hosts.insert(n.addr(), *k);
+                } else {
+                    self.subnets.push((*n, *k));
+                }
+            }
+        }
+        self.subnets
+            .sort_by_key(|(n, _)| std::cmp::Reverse(n.prefix_len()));
     }
 
-    /// Longest-prefix match on AllowedIPs.
+    /// Longest-prefix match on AllowedIPs: a single address is the longest prefix there is, so the
+    /// host table answers first, then the first containing subnet in longest-first order.
     fn route(&self, dst: IpAddr) -> Option<NodePublic> {
-        self.peers
-            .iter()
-            .flat_map(|(k, p)| {
-                p.allowed
-                    .iter()
-                    .filter(|n| n.contains(&dst))
-                    .map(move |n| (n.prefix_len(), *k))
-            })
-            .max_by_key(|(len, _)| *len)
-            .map(|(_, k)| k)
+        self.hosts.get(&dst).copied().or_else(|| {
+            self.subnets
+                .iter()
+                .find(|(n, _)| n.contains(&dst))
+                .map(|(_, k)| *k)
+        })
     }
 
     pub fn set_filter_rules(&mut self, rules: Vec<CompiledRule>) {
@@ -117,8 +136,7 @@ impl Dataplane {
         let Some(peer) = self.peers.get_mut(&key) else {
             return Vec::new();
         };
-        let mut buf = vec![0u8; pkt.len() + BUF_OVERHEAD];
-        match peer.tunn.encapsulate(pkt, &mut buf) {
+        match peer.tunn.encapsulate(pkt, &mut self.scratch) {
             TunnResult::WriteToNetwork(out) => vec![Output::ToPeer(key, out.to_vec())],
             _ => Vec::new(),
         }
@@ -129,10 +147,9 @@ impl Dataplane {
             return Vec::new();
         };
         let mut outputs = Vec::new();
-        let mut buf = vec![0u8; MAX_PACKET + BUF_OVERHEAD];
         let mut datagram: &[u8] = data;
         loop {
-            match peer.tunn.decapsulate(None, datagram, &mut buf) {
+            match peer.tunn.decapsulate(None, datagram, &mut self.scratch) {
                 TunnResult::WriteToNetwork(out) => {
                     outputs.push(Output::ToPeer(src, out.to_vec()));
                     // After a handshake reply, keep calling with an empty input to flush packets queued while waiting for the handshake.
@@ -169,9 +186,8 @@ impl Dataplane {
     /// Drive WireGuard timers (rekey, keepalive). Call roughly every 250 ms.
     pub fn tick(&mut self) -> Vec<Output> {
         let mut outputs = Vec::new();
-        let mut buf = vec![0u8; BUF_OVERHEAD + 256];
         for (key, peer) in &mut self.peers {
-            if let TunnResult::WriteToNetwork(out) = peer.tunn.update_timers(&mut buf) {
+            if let TunnResult::WriteToNetwork(out) = peer.tunn.update_timers(&mut self.scratch) {
                 outputs.push(Output::ToPeer(*key, out.to_vec()));
             }
         }
@@ -358,6 +374,92 @@ mod tests {
             matches!(retry.as_slice(), [Output::ToPeer(k, m)] if *k == pb && m[0] == 1),
             "{retry:?}"
         );
+    }
+
+    /// Many packets of varying length both ways through one session: each arrives intact, so a reused
+    /// buffer never leaks a previous packet's bytes or length.
+    #[test]
+    fn many_packets_both_directions_arrive_intact() {
+        let (mut a, pa, mut b, pb) = pair();
+        a.set_filter_rules(allow_all());
+        b.set_filter_rules(allow_all());
+        let (sa, sb) = (
+            "100.64.0.1:5000".parse().unwrap(),
+            "100.64.0.2:5001".parse().unwrap(),
+        );
+        let first = a.outbound(&ippkt::build_udp4(sa, sb, b"hello"), Duration::ZERO);
+        run(&mut a, pa, &mut b, pb, first);
+        for i in 0..10_000u32 {
+            let payload: Vec<u8> = (0..(i % 1400) + 1).map(|j| (i + j) as u8).collect();
+            let ab = ippkt::build_udp4(sa, sb, &payload);
+            let wire = wire_of(a.outbound(&ab, Duration::ZERO), i);
+            assert_eq!(
+                b.inbound(pa, &wire, Duration::ZERO),
+                vec![Output::ToTun(ab)],
+                "A->B {i}"
+            );
+            let ba = ippkt::build_udp4(sb, sa, &payload);
+            let wire = wire_of(b.outbound(&ba, Duration::ZERO), i);
+            assert_eq!(
+                a.inbound(pb, &wire, Duration::ZERO),
+                vec![Output::ToTun(ba)],
+                "B->A {i}"
+            );
+        }
+    }
+
+    /// The one encrypted datagram an outbound call must produce.
+    fn wire_of(outs: Vec<Output>, i: u32) -> Vec<u8> {
+        match <[Output; 1]>::try_from(outs) {
+            Ok([Output::ToPeer(_, wire)]) => wire,
+            other => panic!("packet {i}: {other:?}"),
+        }
+    }
+
+    fn picked(dp: &mut Dataplane, dst: [u8; 4]) -> Option<NodePublic> {
+        dp.route(IpAddr::from(dst))
+    }
+
+    /// Longest prefix wins between a host address and an overlapping subnet route, for both orders of
+    /// arrival, and routing follows a peer set change.
+    #[test]
+    fn longest_prefix_wins_and_follows_peer_changes() {
+        let me = NodePrivate::generate().unwrap();
+        let (b, c) = (
+            NodePrivate::generate().unwrap().public(),
+            NodePrivate::generate().unwrap().public(),
+        );
+        let mut dp = Dataplane::new(me);
+        let host = |k| PeerConfig {
+            key: k,
+            allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+        };
+        let subnet = |k| PeerConfig {
+            key: k,
+            allowed_ips: vec![
+                "100.64.0.0/24".parse().unwrap(),
+                "fd7a:115c:a1e0::/48".parse().unwrap(),
+            ],
+        };
+        dp.set_peers(vec![host(b), subnet(c)]);
+        assert_eq!(picked(&mut dp, B_IP), Some(b));
+        assert_eq!(picked(&mut dp, [100, 64, 0, 9]), Some(c));
+        assert_eq!(
+            picked(&mut dp, B_IP),
+            Some(b),
+            "a lookup of another address must not disturb this one"
+        );
+        dp.set_peers(vec![subnet(b), host(c)]);
+        assert_eq!(picked(&mut dp, B_IP), Some(c), "the host route moved to C");
+        assert_eq!(picked(&mut dp, [100, 64, 0, 9]), Some(b));
+        dp.set_peers(vec![subnet(b)]);
+        assert_eq!(
+            picked(&mut dp, B_IP),
+            Some(b),
+            "host route gone: the subnet route takes over"
+        );
+        dp.set_peers(vec![]);
+        assert_eq!(picked(&mut dp, B_IP), None);
     }
 
     #[test]

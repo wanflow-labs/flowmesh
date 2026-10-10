@@ -74,7 +74,10 @@ run() { # client daemon label target extra-iperf-args
   local c0 c1 bps
   c0=$(cpu "$c" "$d")
   bps=$(docker run --rm --network "container:$c" "$shoot" iperf3 -c "$t" -t "$secs" -J "$@" |
-    python3 -c 'import json,sys; print(json.load(sys.stdin)["end"]["sum_received"]["bits_per_second"])')
+    python3 -c 'import json,sys
+d=json.load(sys.stdin)
+if "error" in d: sys.exit("iperf3: " + d["error"])
+print(d["end"]["sum_received"]["bits_per_second"])')
   c1=$(cpu "$c" "$d")
   python3 -c "print('%-30s %8.0f Mbit/s   daemon CPU %5.1f%%' % ('$label', $bps/1e6, ($c1-$c0)/$tick/$secs*100))"
 }
