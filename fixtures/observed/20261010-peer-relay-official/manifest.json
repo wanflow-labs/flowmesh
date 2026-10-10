@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-10-10T14:07:55+00:00",
+  "files": [
+    "ts1-ping.txt",
+    "ts1-status.json",
+    "tsr-status.json"
+  ],
+  "label": "peer-relay-official",
+  "method": "lab/scripts/peer_relay_up.sh: tsr (official 1.94.2) runs `tailscale set --relay-server-port=40000`; direct UDP between ts1 (172.29.0.21) and ts2 (172.29.0.22) dropped with iptables in both containers; ts1 pings ts2 until the official client reports a peer-relay path, then status --json of ts1 and tsr and a 5-ping run.",
+  "note": "lab-only keys; ts2 PeerRelay = 172.29.0.23:40000:vni:1, CurAddr empty; the first ping went via DERP, the second via the peer relay",
+  "official_client": "1.94.2"
+}

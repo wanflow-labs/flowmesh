@@ -87,6 +87,17 @@ services:
       lab:
         ipv4_address: 172.29.0.22
 
+  # Official client acting as a peer relay server (tailscale set --relay-server-port).
+  # Not started by default: lab/scripts/peer_relay_up.sh.
+  tsr:
+    <<: *official-client
+    profiles: [peer-relay]
+    hostname: tsr
+    volumes: [tsr-state:/var/lib/tailscale]
+    networks:
+      lab:
+        ipv4_address: 172.29.0.23
+
   wm1:
     # wanflow-mesh (WanFlow's Tailscale fork), reference implementation for WanFlow-specific semantics.
     image: flowmesh-lab/wanflow-mesh:native
@@ -154,3 +165,4 @@ volumes:
   headscale-run:
   ts1-state:
   ts2-state:
+  tsr-state:
