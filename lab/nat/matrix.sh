@@ -3,6 +3,7 @@
 # NAT matrix differential: for each NAT type combination, ts-b (official, behind NAT B) pings fm-a (flowmesh) and ts-a (official reference) behind NAT A,
 # and records the path ts-b sees for each. flowmesh is consistent with official when both get the same path class (direct/relay).
 # Usage: lab/nat/matrix.sh [combo ...]   combos like easy:easy pr:pr hard:hard; default is the full set below
+#   NETEM="delay 40ms 10ms loss 2%" adds that impairment (tc netem) on both routers' WAN links.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DC=(docker compose -f compose.yaml -f nat/compose.nat.yaml)
@@ -18,6 +19,11 @@ for combo in "${combos[@]}"; do
   a=${combo%:*}; b=${combo#*:}
   NAT_A=$a NAT_B=$b "${DC[@]}" up -d --force-recreate nat-a nat-b ts-a ts-b fm-a >/dev/null 2>&1
   sleep 3
+  if [ -n "${NETEM:-}" ]; then
+    for r in nat-a nat-b; do
+      "${DC[@]}" exec -T "$r" sh -c "wan=\$(ip route get 172.29.0.10 | awk '{for(i=1;i<=NF;i++) if(\$i==\"dev\") print \$(i+1)}'); tc qdisc replace dev \$wan root netem $NETEM"
+    done
+  fi
   # Fairness: the reference ts-a and the subject fm-a are both on the line before the observer ts-b logs in (same relative order),
   # otherwise "who connected first" makes the observer miss the subject's disco-key update (see disco.md §7).
   "${DC[@]}" exec -T ts-a tailscale up --login-server=$LOGIN --authkey="$(cat .authkey)" --hostname=ts-a --accept-dns=false --timeout=60s >/dev/null

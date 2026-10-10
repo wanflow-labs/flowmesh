@@ -19,6 +19,12 @@ fm1_ip=$(fm1 status --json | python3 -c 'import json,sys; print(json.load(sys.st
 fm_a=$(ts2 ip -4 fm-a 2>/dev/null | tr -d '\r' || true)
 
 fails=0
+capsorted() { python3 -c '
+import sys
+lines=sys.stdin.read().splitlines()
+caps=sorted(l for l in lines if l.startswith("  - "))
+it=iter(caps)
+print("\n".join(next(it) if l.startswith("  - ") else l for l in lines))'; }
 check() {
   local name=$1; shift
   for side in ts2 fm1; do
@@ -27,8 +33,9 @@ check() {
     echo "$rc" > "$out/$side-$name.rc"
   done
   local a b
-  a="$(cat "$out/ts2-$name.out")|$(cat "$out/ts2-$name.err")|rc=$(cat "$out/ts2-$name.rc")"
-  b="$(cat "$out/fm1-$name.out")|$(cat "$out/fm1-$name.err")|rc=$(cat "$out/fm1-$name.rc")"
+  # The official client lists capabilities in Go map order, which is random: compare them as a set.
+  a="$(capsorted < "$out/ts2-$name.out")|$(cat "$out/ts2-$name.err")|rc=$(cat "$out/ts2-$name.rc")"
+  b="$(capsorted < "$out/fm1-$name.out")|$(cat "$out/fm1-$name.err")|rc=$(cat "$out/fm1-$name.rc")"
   if [ "$a" = "$b" ]; then echo "ok   $name"; else
     echo "FAIL $name"; diff <(echo "$a") <(echo "$b") || true; fails=$((fails + 1)); fi
 }

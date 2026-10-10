@@ -19,7 +19,7 @@ deny:
 
 similarity:
 	cargo xtask similarity $(foreach r,$(REFS),--reference $(r)) \
-		--allowlist docs/similarity-allowlist.txt crates xtask
+		--allowlist docs/similarity-allowlist.txt crates xtask fuzz
 
 lab-up:
 	lab/scripts/up.sh

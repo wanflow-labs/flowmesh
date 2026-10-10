@@ -11,7 +11,7 @@ case "$(uname -m)" in
   *) echo "unsupported host $(uname -m)"; exit 1 ;;
 esac
 if ! command -v rustup >/dev/null 2>&1 && [ ! -x "$HOME/.cargo/bin/rustup" ]; then
-  curl -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
+  curl -sSf --retry 5 --retry-all-errors https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
 rustup toolchain install 1.88.0 --profile minimal \
@@ -19,7 +19,7 @@ rustup toolchain install 1.88.0 --profile minimal \
 zig_dir="$HOME/.local/zig-$ZIG"
 if [ ! -x "$zig_dir/zig" ]; then
   tmp=$(mktemp -d)
-  curl -sSfL -o "$tmp/zig.tar.xz" "https://ziglang.org/download/$ZIG/zig-linux-$zig_arch-$ZIG.tar.xz"
+  curl -sSfL --retry 5 --retry-all-errors -o "$tmp/zig.tar.xz" "https://ziglang.org/download/$ZIG/zig-linux-$zig_arch-$ZIG.tar.xz"
   echo "$zig_sum  $tmp/zig.tar.xz" | sha256sum -c -
   mkdir -p "$zig_dir"
   tar -xJf "$tmp/zig.tar.xz" -C "$zig_dir" --strip-components=1
