@@ -92,6 +92,10 @@ pub fn paths(nm: &NetMap, ps: &PathSock, now: Duration) -> Value {
                     "lastDirectPong": x.last_direct_pong.map(|(a, age)| json!({ "addr": a.to_string(), "secondsAgo": age.as_secs_f64() })),
                     "lastDiscoverySecondsAgo": secs(x.last_discovery),
                     "lastActiveSecondsAgo": secs(x.last_active),
+                    "peerRelay": x.relay.map(|(server, vni, age)| json!({
+                        "endpoint": format!("{server}:vni:{vni}"),
+                        "lastPongSecondsAgo": secs(age),
+                    })),
                 })
             })
             .collect(),
@@ -209,6 +213,18 @@ mod tests {
                 .contains("no direct attempt yet")
         );
         assert_eq!(v[0]["lastActiveSecondsAgo"], Value::Null);
+        assert_eq!(v[0]["peerRelay"], Value::Null, "no relay bound");
+        // A bound peer relay shows its endpoint (not yet answered: no pong age).
+        ps.set_relay(
+            NodePublic([1; 32]),
+            Some(("172.29.0.23:40000".parse().unwrap(), 5)),
+        );
+        let bound = paths(&nm, &ps, Duration::ZERO);
+        assert_eq!(
+            bound[0]["peerRelay"],
+            json!({ "endpoint": "172.29.0.23:40000:vni:5", "lastPongSecondsAgo": null })
+        );
+        ps.set_relay(NodePublic([1; 32]), None);
         // After sending to the peer at t=1 s, the ages are reported in seconds.
         struct Seq(u8);
         impl flowmesh_pathsock::Random for Seq {
