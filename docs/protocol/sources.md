@@ -11,3 +11,10 @@
 | OBS-20261010-official-http-control | 观测 | 官方 v1.94.2 客户端在 `http://` 控制地址使用非 80 端口时强制改用 TLS 443；解析控制主机名时还会向 `*.tailscale.com` 发起 bootstrap DNS 查询 |
 | OBS-20261010-peer-relay-official | 观测 | 官方 v1.94.2 客户端 tsr 作 peer relay 服务器（`--relay-server-port=40000`），ts1↔ts2 的直连 UDP 被丢弃后，ts1 经 `peer-relay(172.29.0.23:40000:vni:1)` 到达 ts2；`status --json` 的 `PeerRelay` 为同一字符串 |
 | OBS-20261010-probe-disco-mode | 观测 | flowmesh-probe disco 模式经 DERP 向 ts1 发 Ping 并收到 Pong；只发流式 MapRequest 时 ts1 看不到探针的 DiscoKey；DERP 只投递给连在同一中继上的客户端（否则回 PeerGone） |
+| OBS-20261010-peer-relay-alloc-request | 观测 | 官方客户端发给候选中继服务器的分配请求 0x08：正文、重发与轮次、发送条件 |
+| OBS-20261010-peer-relay-alloc-response | 观测 | 中继服务器对 0x08 的回复 0x09：逐字段解码与变体实验 |
+| OBS-20261010-peer-relay-forward | 观测 | 客户端把分配转给对端的 0x07 |
+| OBS-20261010-peer-relay-datapath | 观测 | 中继端口抓包：Geneve 头、握手时序、数据路径 |
+| OBS-20261010-peer-relay-handshake | 观测 | 以探针为客户端尝试与中继服务器握手（尚无回复） |
+| OBS-20261010-peer-relay-behavior | 观测 | 中继失效与恢复、闲置、与 prefer/strict 模式的配合 |
+| PUB-6 | 公开标准 | RFC 8926 Geneve — https://www.rfc-editor.org/rfc/rfc8926 |
