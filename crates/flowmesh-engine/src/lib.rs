@@ -3,6 +3,7 @@
 
 pub mod command;
 pub mod control_loop;
+mod logic;
 pub mod status;
 
 use flowmesh_control::client::ControlClient;

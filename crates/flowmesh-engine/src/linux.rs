@@ -7,18 +7,22 @@ use crate::command::{
     EngineCommand, PendingPing, PingError, deliver_pings, expire_pings, short_name,
 };
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
-use crate::status::{EngineStatus, PeerStatus};
+use crate::logic::{
+    apply_netmap, dns_upstreams, dns_view, endpoints_for, looks_like_wireguard, mode_of, peer_home,
+    pick_home, snapshot, subnet_routes,
+};
+use crate::status::EngineStatus;
 use crate::{EngineConfig, EngineError};
 use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
-use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
+use flowmesh_dataplane::plane::{Dataplane, Output};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
-use flowmesh_pathsock::{Action, Mode, PING_TIMEOUT, PathSock, PeerInfo, Random, Route, Source};
+use flowmesh_pathsock::{Action, Mode, PING_TIMEOUT, PathSock, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
-    Hostinfo, MapRequest, MapResponse, NetInfo, Node, RegisterAuth, RegisterRequest,
+    Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
 };
-use flowmesh_proto::derp::{DerpMap, DerpNode};
+use flowmesh_proto::derp::DerpMap;
 use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -44,70 +48,6 @@ impl Random for OsRandom {
             panic!("system random source failed");
         }
     }
-}
-
-/// Choose the home relay: the lowest-numbered region that may be home and has a non-STUN-only node.
-fn pick_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
-    dm.regions
-        .iter()
-        .filter(|(_, r)| !r.no_measure_no_home)
-        .find_map(|(id, r)| {
-            r.nodes
-                .iter()
-                .find(|n| !n.stun_only)
-                .map(|n| (*id, n.clone()))
-        })
-}
-
-/// relay-only (deviation #1): every DERP node has STUNPort == -1.
-fn relay_only(dm: &DerpMap) -> bool {
-    let mut nodes = dm.regions.values().flat_map(|r| r.nodes.iter()).peekable();
-    nodes.peek().is_some() && nodes.all(|n| n.stun_port == -1)
-}
-
-/// Relay mode: strict if the self node carries `tag:relay-strict`; prefer if every DERP node has STUNPort == -1; otherwise auto.
-fn mode_of(nm: &NetMap) -> Mode {
-    let strict = nm
-        .self_node
-        .as_ref()
-        .is_some_and(|n| n.tags.iter().any(|t| t == "tag:relay-strict"));
-    if strict {
-        Mode::Strict
-    } else if relay_only(&nm.derp_map) {
-        Mode::Prefer
-    } else {
-        Mode::Auto
-    }
-}
-
-/// Endpoints to report in each mode: auto = local + STUN; prefer = local only (no STUN); strict = none.
-fn endpoints_for(mode: Mode, local: &[SocketAddr], stun: Option<SocketAddr>) -> Vec<SocketAddr> {
-    let mut v = match mode {
-        Mode::Strict => return Vec::new(),
-        Mode::Prefer | Mode::Auto => local.to_vec(),
-    };
-    if mode == Mode::Auto {
-        if let Some(s) = stun.filter(|s| !v.contains(s)) {
-            v.push(s);
-        }
-    }
-    v
-}
-
-/// A peer's home relay: prefer `HomeDERP`, otherwise parse the legacy `127.3.3.40:<region>`.
-fn peer_home(n: &Node) -> Option<u32> {
-    if n.home_derp != 0 {
-        return Some(n.home_derp);
-    }
-    n.legacy_derp
-        .strip_prefix("127.3.3.40:")
-        .and_then(|r| r.parse().ok())
-        .filter(|r| *r != 0)
-}
-
-/// A WireGuard message starts with a type byte 1–4 followed by three zero bytes (WireGuard whitepaper §5.4, PUB-2).
-fn looks_like_wireguard(b: &[u8]) -> bool {
-    b.len() >= 4 && (1..=4).contains(&b[0]) && b[1..4] == [0, 0, 0]
 }
 
 fn ip(args: &[&str]) -> Result<(), String> {
@@ -200,33 +140,6 @@ const QUAD100: std::net::Ipv4Addr = std::net::Ipv4Addr::new(100, 100, 100, 100);
 const RESOLV: &str = "/etc/resolv.conf";
 const DNS_FORWARD_TIMEOUT: Duration = Duration::from_secs(3);
 
-fn dns_view(nm: &NetMap, answer_aaaa: bool) -> flowmesh_dns::DnsView {
-    let Some(dns) = &nm.dns else {
-        return flowmesh_dns::DnsView::default();
-    };
-    let routes: Vec<(String, bool)> = dns
-        .routes
-        .iter()
-        .map(|(k, v)| (k.clone(), v.is_empty()))
-        .collect();
-    let nodes: Vec<flowmesh_dns::HostEntry> = nm
-        .peers
-        .values()
-        .chain(nm.self_node.iter())
-        .map(|n| flowmesh_dns::HostEntry {
-            fqdn: n.name.clone(),
-            addrs: n.addresses.iter().map(|a| a.addr()).collect(),
-        })
-        .collect();
-    flowmesh_dns::DnsView::new(
-        &dns.domains,
-        &routes,
-        &nodes,
-        &dns.extra_records,
-        answer_aaaa,
-    )
-}
-
 /// Whether the host has a global IPv6 address (excluding our own TUN); used to decide whether to answer AAAA (dns.md §2, pending verification).
 fn host_has_ipv6(tun: &str) -> bool {
     std::process::Command::new("ip")
@@ -238,21 +151,6 @@ fn host_has_ipv6(tun: &str) -> bool {
                 .any(|l| l.split_whitespace().nth(1) != Some(tun))
         })
         .unwrap_or(false)
-}
-
-/// Forwarding upstreams: `DNSConfig.Resolvers` first, otherwise the host's original nameservers.
-fn dns_upstreams(nm: &NetMap, host: &[IpAddr]) -> Vec<IpAddr> {
-    let from_config: Vec<IpAddr> = nm
-        .dns
-        .iter()
-        .flat_map(|d| d.resolvers.iter())
-        .filter_map(|r| r.addr.parse().ok())
-        .collect();
-    if from_config.is_empty() {
-        host.to_vec()
-    } else {
-        from_config
-    }
 }
 
 /// Forward a query to the first upstream; wrap the answer as a packet from 100.100.100.100 back to the querier and send it to the main loop to write to TUN.
@@ -284,17 +182,6 @@ fn forward_dns(
     });
 }
 
-/// Subnet routes advertised by peers: prefixes in AllowedIPs outside the mesh address ranges, excluding default routes (exit nodes are a separate feature).
-fn subnet_routes(nm: &NetMap) -> std::collections::BTreeSet<ipnet::IpNet> {
-    let mesh4: ipnet::IpNet = "100.64.0.0/10".parse().unwrap_or_default();
-    let mesh6: ipnet::IpNet = "fd7a:115c:a1e0::/48".parse().unwrap_or_default();
-    nm.peers
-        .values()
-        .flat_map(|n| n.allowed_ips.iter().copied())
-        .filter(|p| p.prefix_len() != 0 && !mesh4.contains(p) && !mesh6.contains(p))
-        .collect()
-}
-
 /// Bring the installed subnet routes in line with `want` (via the TUN).
 fn sync_routes(
     tun: &str,
@@ -322,98 +209,6 @@ fn sync_routes(
 /// How often the status snapshot is refreshed.
 const STATUS_INTERVAL: Duration = Duration::from_secs(1);
 
-fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
-    let relay = peer_home(n)
-        .and_then(|r| nm.derp_map.regions.get(&r))
-        .map(|r| r.region_code.clone())
-        .unwrap_or_default();
-    PeerStatus {
-        id: n.id,
-        public_key: n.key.to_string(),
-        host_name: n.hostinfo.hostname.clone(),
-        dns_name: n.name.clone(),
-        os: n.hostinfo.os.clone(),
-        tailscale_ips: n.addresses.iter().map(|a| a.addr()).collect(),
-        online: n.online.unwrap_or(false),
-        last_seen: n.last_seen.clone(),
-        relay,
-        exit_node_option: n.allowed_ips.iter().any(|p| p.prefix_len() == 0),
-        ..Default::default()
-    }
-}
-
-fn snapshot(
-    nm: &NetMap,
-    ps: &PathSock,
-    dp: &Dataplane,
-    now: Duration,
-    health: &[String],
-) -> EngineStatus {
-    let stats: HashMap<NodePublic, (u64, u64)> = dp
-        .stats()
-        .into_iter()
-        .map(|(k, tx, rx)| (k, (tx, rx)))
-        .collect();
-    let peers = nm
-        .peers
-        .values()
-        .map(|n| {
-            let mut s = peer_status(n, nm);
-            if let Route::Direct(addr) = ps.current_route(n.key, now) {
-                s.cur_addr = Some(addr);
-            }
-            if let Some((tx, rx)) = stats.get(&n.key) {
-                s.tx_bytes = *tx;
-                s.rx_bytes = *rx;
-                s.active = *tx + *rx > 0;
-            }
-            s
-        })
-        .collect();
-    let suffix = nm
-        .dns
-        .as_ref()
-        .and_then(|d| d.domains.first().cloned())
-        .unwrap_or_default();
-    EngineStatus {
-        self_node: nm.self_node.as_ref().map(|n| peer_status(n, nm)),
-        peers,
-        magic_dns_suffix: suffix.clone(),
-        tailnet_name: suffix,
-        health: health.to_vec(),
-    }
-}
-
-fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
-    dp.set_peers(
-        nm.peers
-            .values()
-            .map(|n| PeerConfig {
-                key: n.key,
-                allowed_ips: n.allowed_ips.clone(),
-            })
-            .collect(),
-    );
-    ps.set_peers(
-        nm.peers
-            .values()
-            .map(|n| PeerInfo {
-                node: n.key,
-                disco: n.disco_key,
-                home_region: peer_home(n),
-                endpoints: n.endpoints.clone(),
-            })
-            .collect(),
-    );
-    ps.set_mode(mode_of(nm));
-    match flowmesh_filter::compile::compile(&nm.filter_rules()) {
-        Ok(rules) => dp.set_filter_rules(rules),
-        // fail-closed: keep the previous valid rules (design doc §7.2).
-        Err(e) => log(format!("filter rules rejected, keeping previous: {e}")),
-    }
-}
-
-/// Send a one-shot, non-streaming map update to the control server (home relay and endpoints).
 /// The live netmap stream, as the reconnect loop sees it.
 struct Live(flowmesh_control::client::MapStream);
 
@@ -438,6 +233,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
+/// Send a one-shot, non-streaming map update to the control server (home relay and endpoints).
 fn report(client: Arc<ControlClient>, req: MapRequest) {
     tokio::spawn(async move {
         match client.map(&req).await {
@@ -724,7 +520,9 @@ pub async fn run(
         home,
         rng: OsRandom,
     };
-    apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
+    if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm) {
+        log(e);
+    }
     ctx.ps.set_my_endpoints(endpoints.clone());
 
     // The backup lives in the state directory, so /etc needs to be writable only for resolv.conf itself
@@ -794,210 +592,212 @@ pub async fn run(
     loop {
         let now = start.elapsed();
         let outputs = tokio::select! {
-            r = tun.recv(&mut tun_buf) => {
-                let n = r.map_err(|e| format!("tun read: {e}"))?;
-                let pkt = &tun_buf[..n];
-                match flowmesh_dataplane::ippkt::udp4_payload(pkt).filter(|(_, d, _)| *d == quad100_dns) {
-                    Some((client, _, query)) => {
-                        match flowmesh_dns::handle(&view, query) {
-                            flowmesh_dns::Decision::Local(resp) => {
-                                let reply = flowmesh_dataplane::ippkt::build_udp4(quad100_dns, client, &resp);
-                                if let Err(e) = tun.send(&reply).await {
-                                    log(format!("tun write: {e}"));
+                r = tun.recv(&mut tun_buf) => {
+                    let n = r.map_err(|e| format!("tun read: {e}"))?;
+                    let pkt = &tun_buf[..n];
+                    match flowmesh_dataplane::ippkt::udp4_payload(pkt).filter(|(_, d, _)| *d == quad100_dns) {
+                        Some((client, _, query)) => {
+                            match flowmesh_dns::handle(&view, query) {
+                                flowmesh_dns::Decision::Local(resp) => {
+                                    let reply = flowmesh_dataplane::ippkt::build_udp4(quad100_dns, client, &resp);
+                                    if let Err(e) = tun.send(&reply).await {
+                                        log(format!("tun write: {e}"));
+                                    }
                                 }
+                                flowmesh_dns::Decision::Forward => forward_dns(
+                                    dns_upstreams(&ctx.nm, &host_upstreams),
+                                    query.to_vec(),
+                                    client,
+                                    quad100_dns,
+                                    dns_tx.clone(),
+                                ),
+                                flowmesh_dns::Decision::Drop => {}
                             }
-                            flowmesh_dns::Decision::Forward => forward_dns(
-                                dns_upstreams(&ctx.nm, &host_upstreams),
-                                query.to_vec(),
-                                client,
-                                quad100_dns,
-                                dns_tx.clone(),
-                            ),
-                            flowmesh_dns::Decision::Drop => {}
+                            Vec::new()
                         }
-                        Vec::new()
+                        None => dp.outbound(pkt, now),
                     }
-                    None => dp.outbound(pkt, now),
                 }
-            }
-            Some(reply) = dns_rx.recv() => {
-                if let Err(e) = tun.send(&reply).await {
-                    log(format!("tun write: {e}"));
-                }
-                Vec::new()
-            }
-            r = stop.changed() => {
-                if r.is_err() || *stop.borrow() {
-                    restore_dns();
-                    return Ok(());
-                }
-                Vec::new()
-            }
-            r = udp.recv_from(&mut udp_buf) => {
-                let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
-                let data = &udp_buf[..n];
-                if flowmesh_disco::envelope::is_disco(data) {
-                    tap("udp-disco", data, now);
-                    let acts = ctx.ps.on_disco(Source::Udp(from), data, now, &mut ctx.rng);
-                    deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
-                    ctx.run_actions(acts).await;
-                    Vec::new()
-                } else if flowmesh_stun::is_stun(data) {
-                    match flowmesh_stun::parse_response(data) {
-                        Ok((tx, mapped)) if Some(tx) == stun_tx => {
-                            stun_mapped = Some(mapped);
-                            let next = endpoints_for(mode, &local, stun_mapped);
-                            if next != endpoints {
-                                endpoints = next;
-                                ctx.ps.set_my_endpoints(endpoints.clone());
-                                log(format!("STUN: external address {mapped}; endpoints {endpoints:?}"));
-                                report(client_rx.borrow().clone(), MapRequest {
-                                    hostinfo: hostinfo.clone(),
-                                    endpoints: endpoints.clone(),
-                                    ..lite.clone()
-                                });
-                                stream_req_tx.send_replace(MapRequest {
-                                    hostinfo: hostinfo.clone(),
-                                    endpoints: endpoints.clone(),
-                                    ..base_req.clone()
-                                });
-                            }
-                        }
-                        other => log(format!("ignoring STUN message: {other:?}")),
+                Some(reply) = dns_rx.recv() => {
+                    if let Err(e) = tun.send(&reply).await {
+                        log(format!("tun write: {e}"));
                     }
                     Vec::new()
-                } else if let Some(peer) = ctx.ps.peer_for_addr(from) {
-                    dp.inbound(peer, data, now)
-                } else {
+                }
+                r = stop.changed() => {
+                    if r.is_err() || *stop.borrow() {
+                        restore_dns();
+                        return Ok(());
+                    }
                     Vec::new()
                 }
-            }
-            Some((region, ev)) = ev_rx.recv() => match ev {
-                Event::Packet { src, data } => {
-                    if flowmesh_disco::envelope::is_disco(&data) {
-                        tap("derp-disco", &data, now);
-                        let acts = ctx.ps.on_disco(Source::Derp { node: src, region }, &data, now, &mut ctx.rng);
+                r = udp.recv_from(&mut udp_buf) => {
+                    let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
+                    let data = &udp_buf[..n];
+                    if flowmesh_disco::envelope::is_disco(data) {
+                        tap("udp-disco", data, now);
+                        let acts = ctx.ps.on_disco(Source::Udp(from), data, now, &mut ctx.rng);
                         deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
                         ctx.run_actions(acts).await;
                         Vec::new()
-                    } else {
-                        if !looks_like_wireguard(&data) {
-                            tap("derp-other", &data, now);
+                    } else if flowmesh_stun::is_stun(data) {
+                        match flowmesh_stun::parse_response(data) {
+                            Ok((tx, mapped)) if Some(tx) == stun_tx => {
+                                stun_mapped = Some(mapped);
+                                let next = endpoints_for(mode, &local, stun_mapped);
+                                if next != endpoints {
+                                    endpoints = next;
+                                    ctx.ps.set_my_endpoints(endpoints.clone());
+                                    log(format!("STUN: external address {mapped}; endpoints {endpoints:?}"));
+                                    report(client_rx.borrow().clone(), MapRequest {
+                                        hostinfo: hostinfo.clone(),
+                                        endpoints: endpoints.clone(),
+                                        ..lite.clone()
+                                    });
+                                    stream_req_tx.send_replace(MapRequest {
+                                        hostinfo: hostinfo.clone(),
+                                        endpoints: endpoints.clone(),
+                                        ..base_req.clone()
+                                    });
+                                }
+                            }
+                            other => log(format!("ignoring STUN message: {other:?}")),
                         }
-                        dp.inbound(src, &data, now)
+                        Vec::new()
+                    } else if let Some(peer) = ctx.ps.peer_for_addr(from) {
+                        dp.inbound(peer, data, now)
+                    } else {
+                        Vec::new()
                     }
                 }
-                Event::Closed(reason) => {
-                    log(format!("DERP connection closed: {reason}"));
+                Some((region, ev)) = ev_rx.recv() => match ev {
+                    Event::Packet { src, data } => {
+                        if flowmesh_disco::envelope::is_disco(&data) {
+                            tap("derp-disco", &data, now);
+                            let acts = ctx.ps.on_disco(Source::Derp { node: src, region }, &data, now, &mut ctx.rng);
+                            deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
+                            ctx.run_actions(acts).await;
+                            Vec::new()
+                        } else {
+                            if !looks_like_wireguard(&data) {
+                                tap("derp-other", &data, now);
+                            }
+                            dp.inbound(src, &data, now)
+                        }
+                    }
+                    Event::Closed(reason) => {
+                        log(format!("DERP connection closed: {reason}"));
+                        Vec::new()
+                    }
+                    _ => Vec::new(),
+                },
+                Some(ev) = ctl_rx.recv() => {
+                    let m = match ev {
+                        ControlEvent::Map(m) => *m,
+                        ControlEvent::Up => {
+                            control_health = None;
+                            log("control: connected again");
+                            continue;
+                        }
+                        ControlEvent::Down(reason) => {
+                            log(format!("control: {reason}; reconnecting"));
+                            control_health = Some(format!(
+                                "not connected to the control server ({reason}); reconnecting, the mesh keeps working on the last network map"
+                            ));
+                            continue;
+                        }
+                    };
+                    let changed = ctx.nm.apply(&m);
+                    if changed.peers || changed.dns || changed.self_node {
+                        view = dns_view(&ctx.nm, answer_aaaa);
+                        if take_dns && changed.dns {
+                            take_over_dns(&ctx.nm)?;
+                        }
+                    }
+                    if args.accept_routes && changed.peers {
+                        sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
+                    }
+                    if changed.peers || changed.filter || changed.derp || changed.self_node {
+                        if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm) {
+            log(e);
+        }
+                        // Online/last-seen patches arrive constantly; log only when the peer set changes.
+                        let ids: Vec<i64> = ctx.nm.peers.keys().copied().collect();
+                        if ids != peer_ids {
+                            let summary: Vec<String> = ctx
+                                .nm
+                                .peers
+                                .values()
+                                .map(|n| format!("{}{:?}", n.hostinfo.hostname, n.endpoints))
+                                .collect();
+                            log(format!("netmap: {} peers {summary:?}", ctx.nm.peers.len()));
+                            peer_ids = ids;
+                        }
+                        let next_mode = mode_of(&ctx.nm);
+                        if next_mode != mode {
+                            mode = next_mode;
+                            endpoints = endpoints_for(mode, &local, stun_mapped);
+                            ctx.ps.set_my_endpoints(endpoints.clone());
+                            log(format!("relay mode now {mode:?}; endpoints {endpoints:?}"));
+                            report(client_rx.borrow().clone(), MapRequest {
+                                hostinfo: hostinfo.clone(),
+                                endpoints: endpoints.clone(),
+                                ..lite.clone()
+                            });
+                            stream_req_tx.send_replace(MapRequest {
+                                hostinfo: hostinfo.clone(),
+                                endpoints: endpoints.clone(),
+                                ..base_req.clone()
+                            });
+                        }
+                    }
                     Vec::new()
                 }
-                _ => Vec::new(),
-            },
-            Some(ev) = ctl_rx.recv() => {
-                let m = match ev {
-                    ControlEvent::Map(m) => *m,
-                    ControlEvent::Up => {
-                        control_health = None;
-                        log("control: connected again");
-                        continue;
-                    }
-                    ControlEvent::Down(reason) => {
-                        log(format!("control: {reason}; reconnecting"));
-                        control_health = Some(format!(
-                            "not connected to the control server ({reason}); reconnecting, the mesh keeps working on the last network map"
-                        ));
-                        continue;
-                    }
-                };
-                let changed = ctx.nm.apply(&m);
-                if changed.peers || changed.dns || changed.self_node {
-                    view = dns_view(&ctx.nm, answer_aaaa);
-                    if take_dns && changed.dns {
-                        take_over_dns(&ctx.nm)?;
-                    }
-                }
-                if args.accept_routes && changed.peers {
-                    sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
-                }
-                if changed.peers || changed.filter || changed.derp || changed.self_node {
-                    apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
-                    // Online/last-seen patches arrive constantly; log only when the peer set changes.
-                    let ids: Vec<i64> = ctx.nm.peers.keys().copied().collect();
-                    if ids != peer_ids {
-                        let summary: Vec<String> = ctx
-                            .nm
-                            .peers
-                            .values()
-                            .map(|n| format!("{}{:?}", n.hostinfo.hostname, n.endpoints))
-                            .collect();
-                        log(format!("netmap: {} peers {summary:?}", ctx.nm.peers.len()));
-                        peer_ids = ids;
-                    }
-                    let next_mode = mode_of(&ctx.nm);
-                    if next_mode != mode {
-                        mode = next_mode;
-                        endpoints = endpoints_for(mode, &local, stun_mapped);
-                        ctx.ps.set_my_endpoints(endpoints.clone());
-                        log(format!("relay mode now {mode:?}; endpoints {endpoints:?}"));
-                        report(client_rx.borrow().clone(), MapRequest {
-                            hostinfo: hostinfo.clone(),
-                            endpoints: endpoints.clone(),
-                            ..lite.clone()
-                        });
-                        stream_req_tx.send_replace(MapRequest {
-                            hostinfo: hostinfo.clone(),
-                            endpoints: endpoints.clone(),
-                            ..base_req.clone()
-                        });
-                    }
-                }
-                Vec::new()
-            }
-            Some(cmd) = commands.recv() => {
-                match cmd {
-                    EngineCommand::Whois { ip, reply } => {
-                        let _ = reply.send(crate::command::whois(&ctx.nm, ip));
-                    }
-                    EngineCommand::Ping { ip, reply } => {
-                        let found = ctx
-                            .nm
-                            .peers
-                            .values()
-                            .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
-                            .map(|n| (n.key, n.addresses.first().map(|a| a.addr()), short_name(n)));
-                        match found {
-                            Some((peer, node_ip, node_name)) => {
-                                let acts = ctx.ps.probe(peer, now, &mut ctx.rng);
-                                ctx.run_actions(acts).await;
-                                pings.push(PendingPing {
-                                    peer,
-                                    node_ip: node_ip.unwrap_or(ip),
-                                    node_name,
-                                    deadline: now + PING_TIMEOUT,
-                                    reply,
-                                });
-                            }
-                            None => {
-                                let _ = reply.send(Err(PingError::NoPeer));
+                Some(cmd) = commands.recv() => {
+                    match cmd {
+                        EngineCommand::Whois { ip, reply } => {
+                            let _ = reply.send(crate::command::whois(&ctx.nm, ip));
+                        }
+                        EngineCommand::Ping { ip, reply } => {
+                            let found = ctx
+                                .nm
+                                .peers
+                                .values()
+                                .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
+                                .map(|n| (n.key, n.addresses.first().map(|a| a.addr()), short_name(n)));
+                            match found {
+                                Some((peer, node_ip, node_name)) => {
+                                    let acts = ctx.ps.probe(peer, now, &mut ctx.rng);
+                                    ctx.run_actions(acts).await;
+                                    pings.push(PendingPing {
+                                        peer,
+                                        node_ip: node_ip.unwrap_or(ip),
+                                        node_name,
+                                        deadline: now + PING_TIMEOUT,
+                                        reply,
+                                    });
+                                }
+                                None => {
+                                    let _ = reply.send(Err(PingError::NoPeer));
+                                }
                             }
                         }
                     }
+                    Vec::new()
                 }
-                Vec::new()
-            }
-            _ = ticker.tick() => {
-                expire_pings(&mut pings, now);
-                let acts = ctx.ps.tick(now, &mut ctx.rng);
-                ctx.run_actions(acts).await;
-                if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
-                    last_publish = Some(now);
-                    let mut all_health = health.clone();
-                    all_health.extend(control_health.clone());
-                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health));
+                _ = ticker.tick() => {
+                    expire_pings(&mut pings, now);
+                    let acts = ctx.ps.tick(now, &mut ctx.rng);
+                    ctx.run_actions(acts).await;
+                    if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
+                        last_publish = Some(now);
+                        let mut all_health = health.clone();
+                        all_health.extend(control_health.clone());
+                        status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health));
+                    }
+                    dp.tick()
                 }
-                dp.tick()
-            }
-        };
+            };
         for out in outputs {
             match out {
                 Output::ToTun(p) => {
