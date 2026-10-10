@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Node key state file: generated on first run, the same keys are read back afterwards. Permissions 0600, atomic writes.
 
-use flowmesh_proto::key::{DiscoPrivate, KeyError, MachinePrivate, NodePrivate};
+use flowmesh_proto::key::{KeyError, MachinePrivate, NodePrivate};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -19,14 +19,14 @@ pub enum StateError {
 struct StateFile {
     machine_private: String,
     node_private: String,
-    disco_private: String,
 }
 
 #[derive(Debug, PartialEq, Eq)]
+/// Persisted identity keys. The disco key is deliberately **not** persisted: it is regenerated on every process start, the same as
+/// the official client (disco.md §3, observed), so peers can tell from the key change that this end restarted and reset the WireGuard session immediately.
 pub struct NodeState {
     pub machine: MachinePrivate,
     pub node: NodePrivate,
-    pub disco: DiscoPrivate,
 }
 
 pub fn load_or_create(path: &Path) -> Result<NodeState, StateError> {
@@ -36,21 +36,18 @@ pub fn load_or_create(path: &Path) -> Result<NodeState, StateError> {
             Ok(NodeState {
                 machine: MachinePrivate::from_hex(&f.machine_private)?,
                 node: NodePrivate::from_hex(&f.node_private)?,
-                disco: DiscoPrivate::from_hex(&f.disco_private)?,
             })
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
             let state = NodeState {
                 machine: MachinePrivate::generate()?,
                 node: NodePrivate::generate()?,
-                disco: DiscoPrivate::generate()?,
             };
             write_private(
                 path,
                 &serde_json::to_vec_pretty(&StateFile {
                     machine_private: state.machine.to_hex(),
                     node_private: state.node.to_hex(),
-                    disco_private: state.disco.to_hex(),
                 })?,
             )?;
             Ok(state)
@@ -98,6 +95,23 @@ mod tests {
         let second = load_or_create(&path).unwrap();
         assert_eq!(first, second);
         assert_ne!(first.machine.public().0, first.node.public().0);
+    }
+
+    /// Old state files contained disco_private; on load it is ignored rather than rejected.
+    #[test]
+    fn legacy_file_with_disco_key_still_loads() {
+        let path = temp_path("legacy");
+        let m = MachinePrivate::generate().unwrap();
+        let n = NodePrivate::generate().unwrap();
+        let legacy = format!(
+            r#"{{"machine_private":"{}","node_private":"{}","disco_private":"{}"}}"#,
+            m.to_hex(),
+            n.to_hex(),
+            "11".repeat(32)
+        );
+        std::fs::write(&path, legacy).unwrap();
+        let s = load_or_create(&path).unwrap();
+        assert_eq!((s.machine, s.node), (m, n));
     }
 
     #[test]

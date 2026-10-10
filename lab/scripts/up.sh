@@ -30,8 +30,10 @@ user_id=$(hs users list -o json | python3 -c 'import json,sys; print([u["id"] fo
 hs preauthkeys create --user "$user_id" --reusable --expiration 24h --tags tag:relay-enabled -o json \
   | python3 -c 'import json,sys; print(json.load(sys.stdin)["key"])' > .authkey
 
-for c in ts1 ts2; do
-  docker compose exec -T "$c" tailscale up \
+for c in ts1 ts2 wm1; do
+  cli=tailscale
+  [ "$c" = wm1 ] && cli=wanflow-mesh
+  docker compose exec -T "$c" "$cli" up \
     --login-server=http://headscale.lab \
     --authkey="$(cat .authkey)" --hostname="$c" --accept-dns=false --timeout=60s
 done

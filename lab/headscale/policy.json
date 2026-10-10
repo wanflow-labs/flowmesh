@@ -1,6 +1,8 @@
 {
   "tagOwners": {
-    "tag:relay-enabled": ["lab@"]
+    "tag:relay-enabled": ["lab@"],
+    "tag:relay-force": ["lab@"],
+    "tag:relay-strict": ["lab@"]
   },
   "acls": [
     { "action": "accept", "src": ["*"], "dst": ["*:*"] }

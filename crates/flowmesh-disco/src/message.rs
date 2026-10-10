@@ -23,6 +23,9 @@ pub enum Message {
         tx_id: [u8; TX_ID_LEN],
         src: SocketAddr,
     },
+    /// Observed: type 0x03, version 0, followed by zero or more 18-byte addresses (same encoding as Pong):
+    /// the sender's endpoints, asking the receiver to ping them (OBS-20261010-disco/decrypted-callmemaybe.tsv).
+    CallMeMaybe { endpoints: Vec<SocketAddr> },
     /// A type this module doesn't recognize yet (e.g. 0x08 peer-relay endpoint allocation, belongs to v2); preserved as-is.
     Unknown { ty: u8, version: u8, body: Vec<u8> },
 }
@@ -39,6 +42,13 @@ pub fn encode(m: &Message) -> Vec<u8> {
             let mut v = vec![TYPE_PONG, 0];
             v.extend_from_slice(tx_id);
             v.extend_from_slice(&addr_bytes(src));
+            v
+        }
+        Message::CallMeMaybe { endpoints } => {
+            let mut v = vec![TYPE_CALL_ME_MAYBE, 0];
+            for e in endpoints {
+                v.extend_from_slice(&addr_bytes(e));
+            }
             v
         }
         Message::Unknown { ty, version, body } => {
@@ -77,6 +87,16 @@ pub fn decode(b: &[u8]) -> Result<Message, Error> {
                     .ok_or(Error::Truncated)?,
             )?;
             Ok(Message::Pong { tx_id, src })
+        }
+        TYPE_CALL_ME_MAYBE => {
+            if body.len() % ADDR_LEN != 0 {
+                return Err(Error::Truncated);
+            }
+            let endpoints = body
+                .chunks(ADDR_LEN)
+                .map(parse_addr)
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(Message::CallMeMaybe { endpoints })
         }
         _ => Ok(Message::Unknown {
             ty,
@@ -165,6 +185,25 @@ mod tests {
             src: "[fd7a:115c:a1e0::1]:41641".parse().unwrap(),
         };
         assert_eq!(decode(&encode(&m)).unwrap(), m);
+    }
+
+    /// Real CallMeMaybe from wanflow-mesh (wm1) (OBS-20261010-disco/decrypted-callmemaybe.tsv): one endpoint 172.29.0.41:41641.
+    #[test]
+    fn decodes_observed_call_me_maybe() {
+        let raw = hex("030000000000000000000000ffffac1d0029a2a9");
+        let m = decode(&raw).unwrap();
+        assert_eq!(
+            m,
+            Message::CallMeMaybe {
+                endpoints: vec!["172.29.0.41:41641".parse().unwrap()]
+            }
+        );
+        assert_eq!(encode(&m), raw);
+        assert_eq!(
+            decode(&hex("0300")).unwrap(),
+            Message::CallMeMaybe { endpoints: vec![] }
+        );
+        assert_eq!(decode(&hex("0300aabb")), Err(Error::Truncated));
     }
 
     #[test]

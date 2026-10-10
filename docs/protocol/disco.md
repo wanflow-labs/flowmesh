@@ -20,7 +20,7 @@ Source: `OBS-20261010-disco`. flowmesh-dev decrypts the disco messages that offi
 |---|---|---|---|
 | 0x01 | Ping | 12-byte transaction ID + 32-byte **sender node key** (46 bytes total) | Observed |
 | 0x02 | Pong | 12-byte transaction ID (same as the ping) + the source address the replier saw: 16-byte IPv6 form (IPv4 as `::ffff:a.b.c.d`) + 2-byte big-endian port (32 bytes total) | Observed |
-| 0x03 | CallMeMaybe | Pending (will be observed once endpoints are reported in M5 Task 4) | Pending |
+| 0x03 | CallMeMaybe | Zero or more 18-byte addresses (same encoding as Pong): the sender's endpoints, asking the receiver to ping them. Sent via DERP | Observed (OBS-20261010-disco/decrypted-callmemaybe.tsv, sent by wanflow-mesh) |
 | 0x08 | (peer relay) endpoint allocation request | sender disco key (32) + another disco key (32) + 4-byte incrementing counter. Official clients send this to peers granted `cap/relay` (wanflow headscale grants it to all nodes unconditionally). v1 ignores it and does not reply; the official client keeps working normally | Observed (semantics inferred) |
 
 ## 3. Behavior
@@ -45,3 +45,32 @@ Source: `OBS-20261010-stun`. STUN is unencrypted, so the official client's reque
 | The request carries **SOFTWARE `tailnode`** and **FINGERPRINT** (RFC 5389 §15.5) attributes, 40 bytes total. The derper does not answer a plain request missing these two attributes | Observed (flowmesh generates a request byte-identical to the official client's) |
 | The response has only XOR-MAPPED-ADDRESS, and an IPv4 address is given as an IPv4-mapped IPv6 address (family 0x02, `::ffff:a.b.c.d`) | Observed (flowmesh normalizes it to IPv4) |
 | Docker Desktop on macOS does not reliably forward UDP published ports; STUN interop tests must run inside a lab container | Lab note |
+
+## 5. Disco key lifetime
+
+| Fact | Status |
+|---|---|
+| **Official clients and wanflow-mesh generate a new disco key on every process start** (the peer's DiscoKey in the netmap changes after a restart) | Observed |
+| Peers use the key change to detect "the other side restarted" and reset the WireGuard session right away: after wanflow-mesh restarts, peer pings recover within about 1.0 s | Observed (lab/scripts/restart_recovery.sh) |
+| flowmesh originally persisted the disco key, so peers did not notice the restart and kept sending on the stale session until it timed out and re-handshook: recovery took **15.4 s**. After switching to a per-run key it takes **0.6 s** | Fixed |
+
+## 6. Relay modes (WanFlow tag semantics)
+
+Production tag combinations (the WanFlow backend the production configuration): prefer = `relay-force`; strict = `relay-force` + `relay-strict`.
+What a node sees under each combination (observed via wanflow-mesh's netmap):
+
+| Mode | DERP STUN port | Peer endpoints this node sees |
+|---|---|---|
+| auto | 3478 | visible |
+| prefer | **-1** (wanflow-mesh relay-only triggers) | visible |
+| strict | **3478 (back on)** | **cleared** |
+
+Behavior differential (OBS-20261010-relay-modes, peer is official ts1, same LAN):
+
+| Mode | wanflow-mesh (wm1) | flowmesh (fm1) | Note |
+|---|---|---|---|
+| auto | direct | direct | same |
+| prefer | direct (ts1→wm1 direct; wm1 only replies with pongs over UDP and never initiates) | direct (same pattern) | same; matches the product comment "LAN still P2P" |
+| strict | **direct (leak)** | relay | **intentional deviation**, see deviation list #6 |
+
+Strict-mode leak mechanism (lab/scripts/strict_leak.sh): with flowmesh (which sends no CallMeMaybe) as the peer, strict wm1 stays on relay; with official ts1 as the peer, it goes direct. So the leak comes from **the strict node accepting CallMeMaybe from the non-strict peer and pinging back**. In production, a strict CPE and an auto-mode CPE will therefore go P2P, which contradicts the product promise of "always relay, no P2P".

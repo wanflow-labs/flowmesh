@@ -15,3 +15,19 @@ trap 'rm -rf "$tmp"' EXIT
 cp "$src/Dockerfile" "$tmp/"
 docker build -q --platform "linux/$goarch" --label "flowmesh.lab.headscale-commit=$commit" -t flowmesh-lab/headscale:native "$tmp" >/dev/null
 echo "built flowmesh-lab/headscale:native ($goarch, lab control server @$commit)"
+
+# wanflow-mesh (WanFlow's Tailscale fork): reference implementation for WanFlow-specific semantics (relay-only, etc.).
+# Needs Go 1.25, so it is built inside the official Go container.
+mesh_src=$(cd ../../wanflow-mesh && pwd)
+mesh_commit=$(git -C "$mesh_src" rev-parse --short HEAD)
+mtmp=$(mktemp -d)
+docker run --rm -v "$mesh_src:/src:ro" -v "$mtmp:/out" -w /src -e CGO_ENABLED=0 -e GOFLAGS=-buildvcs=false golang:1.25.5 \
+  sh -c 'go build -o /out/wanflow-meshd ./cmd/tailscaled && go build -o /out/wanflow-mesh ./cmd/tailscale'
+cat > "$mtmp/Dockerfile" <<'DOCKERFILE'
+FROM alpine:3.20
+RUN apk add --no-cache iptables ip6tables iproute2 ca-certificates
+COPY wanflow-meshd wanflow-mesh /usr/local/bin/
+DOCKERFILE
+docker build -q --label "flowmesh.lab.wanflow-mesh-commit=$mesh_commit" -t flowmesh-lab/wanflow-mesh:native "$mtmp" >/dev/null
+rm -rf "$mtmp"
+echo "built flowmesh-lab/wanflow-mesh:native (wanflow-mesh@$mesh_commit)"

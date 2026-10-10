@@ -92,7 +92,8 @@ def substitute(obj, mapping):
 
 
 def apply_policy(acls):
-    policy = {"tagOwners": {"tag:relay-enabled": ["lab@"]}, "acls": acls}
+    owners = {t: ["lab@"] for t in ("tag:relay-enabled", "tag:relay-force", "tag:relay-strict")}
+    policy = {"tagOwners": owners, "acls": acls}
     compose("headscale", "sh", "-c", "cat > /tmp/acl-diff-policy.json", stdin=json.dumps(policy))
     compose("headscale", "headscale", "policy", "set", "-f", "/tmp/acl-diff-policy.json")
     return policy

@@ -23,6 +23,8 @@ pub const DISCOVERY_INTERVAL: Duration = Duration::from_secs(5);
 pub const PING_TIMEOUT: Duration = Duration::from_secs(5);
 /// A peer counts as active if data was sent to it within this window; heartbeats stop for idle peers. Provisional.
 pub const ACTIVE_WINDOW: Duration = Duration::from_secs(45);
+/// Upper bound on endpoints accepted from CallMeMaybe per peer, so a peer cannot make us ping many addresses.
+pub const MAX_CMM_ENDPOINTS: usize = 16;
 /// Source address used in a pong sent over DERP: 127.3.3.40:<region> (observed).
 pub const DERP_MAGIC_IP: Ipv4Addr = Ipv4Addr::new(127, 3, 3, 40);
 
@@ -58,6 +60,20 @@ pub enum Source {
     Derp { node: NodePublic, region: u32 },
 }
 
+/// Relay mode (disco.md §5; WanFlow tag semantics).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Mode {
+    /// Discover direct paths normally, sending and accepting CallMeMaybe.
+    #[default]
+    Auto,
+    /// prefer (`relay-force`; all DERP STUNPort == -1, deviation #1): never initiates direct traffic and ignores CallMeMaybe,
+    /// but still answers UDP pings, so LAN peers can still go P2P (same as wanflow-mesh).
+    Prefer,
+    /// strict (self node has `tag:relay-strict`): no direct traffic of any kind, no answers to UDP pings,
+    /// CallMeMaybe ignored. Stricter than wanflow-mesh, matches the product promise of "always relayed" (deviation #6).
+    Strict,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PeerInfo {
     pub node: NodePublic,
@@ -69,6 +85,8 @@ pub struct PeerInfo {
 #[derive(Debug, Clone)]
 struct PeerPath {
     info: PeerInfo,
+    /// Endpoints learned from the peer's CallMeMaybe (Auto mode only).
+    cmm_endpoints: Vec<SocketAddr>,
     best: Option<(SocketAddr, Duration)>,
     last_discovery: Option<Duration>,
     last_heartbeat: Option<Duration>,
@@ -85,7 +103,8 @@ struct Pending {
 pub struct PathSock {
     me: DiscoPrivate,
     my_node: NodePublic,
-    relay_only: bool,
+    mode: Mode,
+    my_endpoints: Vec<SocketAddr>,
     peers: HashMap<NodePublic, PeerPath>,
     by_disco: HashMap<DiscoPublic, NodePublic>,
     pending: HashMap<[u8; TX_ID_LEN], Pending>,
@@ -96,21 +115,27 @@ impl PathSock {
         Self {
             me,
             my_node,
-            relay_only: false,
+            mode: Mode::Auto,
+            my_endpoints: Vec::new(),
             peers: HashMap::new(),
             by_disco: HashMap::new(),
             pending: HashMap::new(),
         }
     }
 
-    /// relay-only (deviation #1): no direct traffic of any kind.
-    pub fn set_relay_only(&mut self, on: bool) {
-        self.relay_only = on;
-        if on {
+    /// Any mode change drops established direct paths; after returning to Auto, paths are rediscovered.
+    pub fn set_mode(&mut self, mode: Mode) {
+        if self.mode != mode {
             for p in self.peers.values_mut() {
                 p.best = None;
             }
         }
+        self.mode = mode;
+    }
+
+    /// This node's endpoints, advertised to peers via CallMeMaybe in discovery rounds.
+    pub fn set_my_endpoints(&mut self, endpoints: Vec<SocketAddr>) {
+        self.my_endpoints = endpoints;
     }
 
     /// Replace the peer set; peers whose node key is unchanged keep their established path state.
@@ -126,6 +151,7 @@ impl PathSock {
                 }
                 None => PeerPath {
                     info,
+                    cmm_endpoints: Vec::new(),
                     best: None,
                     last_discovery: None,
                     last_heartbeat: None,
@@ -145,7 +171,7 @@ impl PathSock {
         now: Duration,
         rng: &mut dyn Random,
     ) -> (Route, Vec<Action>) {
-        let relay_only = self.relay_only;
+        let relay_only = self.mode != Mode::Auto;
         let Some(p) = self.peers.get_mut(&peer) else {
             return (Route::None, Vec::new());
         };
@@ -165,16 +191,27 @@ impl PathSock {
         }
         p.last_discovery = Some(now);
         let info = p.info.clone();
+        let mut candidates = info.endpoints.clone();
+        for e in &p.cmm_endpoints {
+            if !candidates.contains(e) {
+                candidates.push(*e);
+            }
+        }
         let mut actions = Vec::new();
         if !relay_only {
-            for ep in &info.endpoints {
-                if let Some(a) = self.ping(&info, Some(*ep), now, rng) {
+            for ep in candidates {
+                if let Some(a) = self.ping(&info, Some(ep), now, rng) {
                     actions.push(a);
                 }
             }
         }
         if let Some(a) = self.ping(&info, None, now, rng) {
             actions.push(a);
+        }
+        if !relay_only && !self.my_endpoints.is_empty() {
+            if let Some(a) = self.call_me_maybe(&info, rng) {
+                actions.push(a);
+            }
         }
         (route, actions)
     }
@@ -214,6 +251,20 @@ impl PathSock {
         }
     }
 
+    /// Send our endpoints to the peer via DERP, asking it to ping them (helps NAT hole punching from both sides).
+    fn call_me_maybe(&self, info: &PeerInfo, rng: &mut dyn Random) -> Option<Action> {
+        let region = info.home_region?;
+        let plain = message::encode(&Message::CallMeMaybe {
+            endpoints: self.my_endpoints.clone(),
+        });
+        let data = self.seal(&info.disco, &plain, rng)?;
+        Some(Action::Derp {
+            to: info.node,
+            region,
+            data,
+        })
+    }
+
     fn seal(&self, to: &DiscoPublic, plain: &[u8], rng: &mut dyn Random) -> Option<Vec<u8>> {
         let mut nonce = [0u8; envelope::NONCE_LEN];
         rng.fill(&mut nonce);
@@ -228,7 +279,7 @@ impl PathSock {
         now: Duration,
         rng: &mut dyn Random,
     ) -> Vec<Action> {
-        if self.relay_only && matches!(from, Source::Udp(_)) {
+        if self.mode == Mode::Strict && matches!(from, Source::Udp(_)) {
             return Vec::new();
         }
         let Ok((sender, plain)) = envelope::open(&self.me, bytes) else {
@@ -237,7 +288,34 @@ impl PathSock {
         let Some(&peer) = self.by_disco.get(&sender) else {
             return Vec::new();
         };
-        match message::decode(&plain) {
+        let decoded = message::decode(&plain);
+        // prefer: over UDP only Pings are answered (LAN peers can still go P2P); everything else is ignored.
+        if self.mode == Mode::Prefer
+            && matches!(from, Source::Udp(_))
+            && !matches!(decoded, Ok(Message::Ping { .. }))
+        {
+            return Vec::new();
+        }
+        match decoded {
+            Ok(Message::CallMeMaybe { endpoints }) => {
+                if self.mode != Mode::Auto {
+                    return Vec::new();
+                }
+                let Some(p) = self.peers.get_mut(&peer) else {
+                    return Vec::new();
+                };
+                for e in &endpoints {
+                    if !p.cmm_endpoints.contains(e) && p.cmm_endpoints.len() < MAX_CMM_ENDPOINTS {
+                        p.cmm_endpoints.push(*e);
+                    }
+                }
+                let info = p.info.clone();
+                endpoints
+                    .into_iter()
+                    .take(MAX_CMM_ENDPOINTS)
+                    .filter_map(|e| self.ping(&info, Some(e), now, rng))
+                    .collect()
+            }
             Ok(Message::Ping { tx_id, .. }) => {
                 let src = match from {
                     Source::Udp(a) => a,
@@ -279,7 +357,7 @@ impl PathSock {
     pub fn tick(&mut self, now: Duration, rng: &mut dyn Random) -> Vec<Action> {
         self.pending
             .retain(|_, p| now.saturating_sub(p.sent) <= PING_TIMEOUT);
-        if self.relay_only {
+        if self.mode != Mode::Auto {
             return Vec::new();
         }
         let mut due = Vec::new();
@@ -315,7 +393,7 @@ impl PathSock {
             .or_else(|| {
                 self.peers
                     .values()
-                    .find(|p| p.info.endpoints.contains(&addr))
+                    .find(|p| p.info.endpoints.contains(&addr) || p.cmm_endpoints.contains(&addr))
             })
             .map(|p| p.info.node)
     }
@@ -661,9 +739,55 @@ mod tests {
     }
 
     #[test]
-    fn relay_only_never_produces_udp() {
+    fn prefer_never_initiates_udp_but_answers_udp_pings() {
         let mut w = world(vec![E.parse().unwrap()]);
-        w.a.set_relay_only(true);
+        w.a.set_mode(Mode::Prefer);
+        let (r, acts) = w.a.route(w.b_node, 10 * S, &mut w.rng);
+        assert_eq!(r, Route::Derp(1000));
+        assert!(
+            acts.iter().all(|a| matches!(a, Action::Derp { .. })),
+            "{acts:?}"
+        );
+        // A LAN peer pings us directly: we answer over UDP (same as wanflow-mesh: in prefer, the LAN can still go P2P).
+        let from: SocketAddr = E.parse().unwrap();
+        let ping = b_says(
+            &w,
+            &Message::Ping {
+                tx_id: [6; TX_ID_LEN],
+                node_key: w.b_node,
+            },
+        );
+        let acts = w.a.on_disco(Source::Udp(from), &ping, 11 * S, &mut w.rng);
+        assert!(
+            matches!(acts.as_slice(), [Action::Udp { to, .. }] if *to == from),
+            "{acts:?}"
+        );
+        // CallMeMaybe is ignored and no direct ping is sent.
+        let cmm = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![E.parse().unwrap()],
+            },
+        );
+        assert!(
+            w.a.on_disco(
+                Source::Derp {
+                    node: w.b_node,
+                    region: 1000
+                },
+                &cmm,
+                11 * S,
+                &mut w.rng
+            )
+            .is_empty()
+        );
+        assert!(w.a.tick(20 * S, &mut w.rng).is_empty());
+    }
+
+    #[test]
+    fn strict_produces_no_udp_at_all() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        w.a.set_mode(Mode::Strict);
         let (r, acts) = w.a.route(w.b_node, 10 * S, &mut w.rng);
         assert_eq!(r, Route::Derp(1000));
         assert!(
@@ -681,11 +805,111 @@ mod tests {
             w.a.on_disco(Source::Udp(E.parse().unwrap()), &ping, 11 * S, &mut w.rng)
                 .is_empty()
         );
-        assert!(
-            w.a.tick(20 * S, &mut w.rng)
-                .iter()
-                .all(|a| matches!(a, Action::Derp { .. }))
+        let cmm = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![E.parse().unwrap()],
+            },
         );
+        assert!(
+            w.a.on_disco(
+                Source::Derp {
+                    node: w.b_node,
+                    region: 1000
+                },
+                &cmm,
+                11 * S,
+                &mut w.rng
+            )
+            .is_empty()
+        );
+        // Pings over DERP are still answered over DERP (latency probing, no direct path).
+        let acts = w.a.on_disco(
+            Source::Derp {
+                node: w.b_node,
+                region: 1000,
+            },
+            &ping,
+            11 * S,
+            &mut w.rng,
+        );
+        assert!(matches!(acts.as_slice(), [Action::Derp { .. }]), "{acts:?}");
+    }
+
+    #[test]
+    fn switching_away_from_auto_drops_direct_path() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        establish(&mut w, 10 * S);
+        w.a.set_mode(Mode::Prefer);
+        assert_eq!(w.a.route(w.b_node, 11 * S, &mut w.rng).0, Route::Derp(1000));
+    }
+
+    #[test]
+    fn auto_call_me_maybe_adds_candidates_and_pings_them() {
+        let mut w = world(vec![]);
+        let theirs: SocketAddr = "203.0.113.9:41641".parse().unwrap();
+        let cmm = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![theirs],
+            },
+        );
+        let acts = w.a.on_disco(
+            Source::Derp {
+                node: w.b_node,
+                region: 1000,
+            },
+            &cmm,
+            10 * S,
+            &mut w.rng,
+        );
+        let pings = udp_pings(&w, &acts);
+        assert_eq!(pings.iter().map(|p| p.0).collect::<Vec<_>>(), vec![theirs]);
+        let pong = b_says(
+            &w,
+            &Message::Pong {
+                tx_id: pings[0].1,
+                src: theirs,
+            },
+        );
+        w.a.on_disco(Source::Udp(theirs), &pong, 10 * S, &mut w.rng);
+        assert_eq!(
+            w.a.route(w.b_node, 10 * S, &mut w.rng).0,
+            Route::Direct(theirs)
+        );
+        assert_eq!(w.a.peer_for_addr(theirs), Some(w.b_node));
+    }
+
+    #[test]
+    fn auto_discovery_sends_call_me_maybe_with_my_endpoints() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let mine: SocketAddr = "172.29.0.31:41641".parse().unwrap();
+        w.a.set_my_endpoints(vec![mine]);
+        let (_, acts) = w.a.route(w.b_node, 10 * S, &mut w.rng);
+        let cmms: Vec<Message> = acts
+            .iter()
+            .filter_map(|a| match a {
+                Action::Derp { data, .. } => Some(b_reads(&w, data)),
+                _ => None,
+            })
+            .filter(|m| matches!(m, Message::CallMeMaybe { .. }))
+            .collect();
+        assert_eq!(
+            cmms,
+            vec![Message::CallMeMaybe {
+                endpoints: vec![mine]
+            }]
+        );
+    }
+
+    #[test]
+    fn no_call_me_maybe_without_my_endpoints() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let (_, acts) = w.a.route(w.b_node, 10 * S, &mut w.rng);
+        assert!(acts.iter().all(|a| match a {
+            Action::Derp { data, .. } => !matches!(b_reads(&w, data), Message::CallMeMaybe { .. }),
+            _ => true,
+        }));
     }
 
     #[test]
@@ -702,6 +926,78 @@ mod tests {
             endpoints: vec![],
         }]);
         assert_eq!(w.a.peer_for_addr(to), Some(w.b_node));
+    }
+
+    #[test]
+    fn mode_change_drops_direct_path_but_same_mode_keeps_it() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let to = establish(&mut w, 10 * S);
+        w.a.set_mode(Mode::Auto);
+        assert_eq!(w.a.route(w.b_node, 11 * S, &mut w.rng).0, Route::Direct(to));
+        w.a.set_mode(Mode::Prefer);
+        w.a.set_mode(Mode::Auto);
+        assert_eq!(
+            w.a.route(w.b_node, 11 * S, &mut w.rng).0,
+            Route::Derp(1000),
+            "must rediscover after a mode round-trip"
+        );
+    }
+
+    fn discovery_ping_targets(w: &mut World, t: Duration) -> Vec<SocketAddr> {
+        let (_, acts) = w.a.route(w.b_node, t, &mut w.rng);
+        let mut v: Vec<SocketAddr> = udp_pings(w, &acts).into_iter().map(|p| p.0).collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn call_me_maybe_endpoints_are_deduplicated() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let extra: SocketAddr = "203.0.113.9:41641".parse().unwrap();
+        for _ in 0..2 {
+            let cmm = b_says(
+                &w,
+                &Message::CallMeMaybe {
+                    endpoints: vec![extra, E.parse().unwrap()],
+                },
+            );
+            w.a.on_disco(
+                Source::Derp {
+                    node: w.b_node,
+                    region: 1000,
+                },
+                &cmm,
+                S,
+                &mut w.rng,
+            );
+        }
+        // Discovery round: each candidate is pinged once (a CallMeMaybe endpoint that duplicates a netmap endpoint is not pinged twice).
+        let mut expected = vec![E.parse().unwrap(), extra];
+        expected.sort();
+        assert_eq!(discovery_ping_targets(&mut w, 10 * S), expected);
+    }
+
+    #[test]
+    fn call_me_maybe_endpoints_are_capped_per_peer() {
+        let mut w = world(vec![]);
+        let many: Vec<SocketAddr> = (0..MAX_CMM_ENDPOINTS as u16 + 1)
+            .map(|i| SocketAddr::from(([203, 0, 113, 1], 40000 + i)))
+            .collect();
+        let cmm = b_says(&w, &Message::CallMeMaybe { endpoints: many });
+        let immediate = w.a.on_disco(
+            Source::Derp {
+                node: w.b_node,
+                region: 1000,
+            },
+            &cmm,
+            S,
+            &mut w.rng,
+        );
+        assert_eq!(udp_pings(&w, &immediate).len(), MAX_CMM_ENDPOINTS);
+        assert_eq!(
+            discovery_ping_targets(&mut w, 10 * S).len(),
+            MAX_CMM_ENDPOINTS
+        );
     }
 
     #[test]

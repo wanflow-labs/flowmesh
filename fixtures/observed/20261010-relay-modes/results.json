@@ -1,0 +1,174 @@
+[
+  {
+    "target": "wm1",
+    "mode": "auto",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 24,
+    "udp_target_to_ts1": 26
+  },
+  {
+    "target": "wm1",
+    "mode": "auto/fresh",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 22,
+    "udp_target_to_ts1": 22
+  },
+  {
+    "target": "wm1",
+    "mode": "prefer",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 21,
+    "udp_target_to_ts1": 4
+  },
+  {
+    "target": "wm1",
+    "mode": "prefer/fresh",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 19,
+    "udp_target_to_ts1": 3
+  },
+  {
+    "target": "wm1",
+    "mode": "strict",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force",
+      "tag:relay-strict"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 26,
+    "udp_target_to_ts1": 25
+  },
+  {
+    "target": "wm1",
+    "mode": "strict/fresh",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force",
+      "tag:relay-strict"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 22,
+    "udp_target_to_ts1": 23
+  },
+  {
+    "target": "wm1",
+    "mode": "auto-again",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 25,
+    "udp_target_to_ts1": 26
+  },
+  {
+    "target": "wm1",
+    "mode": "auto-again/fresh",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.41:41641",
+    "udp_ts1_to_target": 22,
+    "udp_target_to_ts1": 22
+  },
+  {
+    "target": "fm1",
+    "mode": "auto",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 25,
+    "udp_target_to_ts1": 24
+  },
+  {
+    "target": "fm1",
+    "mode": "auto/fresh",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 20,
+    "udp_target_to_ts1": 4
+  },
+  {
+    "target": "fm1",
+    "mode": "prefer",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 19,
+    "udp_target_to_ts1": 3
+  },
+  {
+    "target": "fm1",
+    "mode": "prefer/fresh",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 21,
+    "udp_target_to_ts1": 5
+  },
+  {
+    "target": "fm1",
+    "mode": "strict",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force",
+      "tag:relay-strict"
+    ],
+    "path_seen_by_ts1": "relay \"wanflow-relay-1000\"",
+    "udp_ts1_to_target": 21,
+    "udp_target_to_ts1": 0
+  },
+  {
+    "target": "fm1",
+    "mode": "strict/fresh",
+    "tags": [
+      "tag:relay-enabled",
+      "tag:relay-force",
+      "tag:relay-strict"
+    ],
+    "path_seen_by_ts1": "relay \"wanflow-relay-1000\"",
+    "udp_ts1_to_target": 20,
+    "udp_target_to_ts1": 0
+  },
+  {
+    "target": "fm1",
+    "mode": "auto-again",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 22,
+    "udp_target_to_ts1": 22
+  },
+  {
+    "target": "fm1",
+    "mode": "auto-again/fresh",
+    "tags": [
+      "tag:relay-enabled"
+    ],
+    "path_seen_by_ts1": "direct 172.29.0.31:41641",
+    "udp_ts1_to_target": 20,
+    "udp_target_to_ts1": 4
+  }
+]

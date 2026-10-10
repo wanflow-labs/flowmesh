@@ -1,0 +1,10 @@
+{
+  "label": "relay-modes",
+  "captured_at": "2026-10-10T01:59:17+00:00",
+  "method": "lab/scripts/relay_modes.py",
+  "reference": "wm1 = wanflow-mesh (WanFlow fork)",
+  "files": [
+    "results.json",
+    "*.pcap"
+  ]
+}

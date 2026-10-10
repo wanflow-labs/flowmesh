@@ -68,10 +68,30 @@ services:
       lab:
         ipv4_address: 172.29.0.22
 
+  wm1:
+    # wanflow-mesh (WanFlow's Tailscale fork), reference implementation for WanFlow-specific semantics.
+    image: flowmesh-lab/wanflow-mesh:native
+    hostname: wm1
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    environment:
+      TS_NO_LOGS_NO_SUPPORT: "true"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - mkdir -p /var/run/tailscale /var/lib/wanflow-mesh && exec wanflow-meshd --state=/var/lib/wanflow-mesh/wanflow-meshd.state --port=41641
+    volumes: [wm1-state:/var/lib/wanflow-mesh]
+    depends_on: [headscale, derp]
+    networks:
+      lab:
+        ipv4_address: 172.29.0.41
+
   fm1:
     build: ./dev
     image: flowmesh-lab/dev:local
     hostname: fm1
+    # PID 1 reaps background processes that exit, so restarts don't leave zombies behind.
+    init: true
     cap_add: [NET_ADMIN, NET_RAW]
     devices: ["/dev/net/tun:/dev/net/tun"]
     environment:
@@ -92,6 +112,7 @@ networks:
         - subnet: 172.29.0.0/24
 
 volumes:
+  wm1-state:
   fm1-target:
   fm1-cargo:
   headscale-data:

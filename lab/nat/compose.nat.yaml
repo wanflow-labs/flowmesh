@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: Apache-2.0
+# NAT simulation overlay: docker compose -f lab/compose.yaml -f lab/nat/compose.nat.yaml up -d
+# NAT_A / NAT_B pick each side's NAT type (easy | hard).
+x-router: &router
+  image: alpine:3.20
+  cap_add: [NET_ADMIN]
+  sysctls:
+    net.ipv4.ip_forward: "1"
+  entrypoint: ["/bin/sh", "-c", "apk add --no-cache iptables iproute2 >/dev/null && exec /nat/router.sh"]
+  volumes: ["./nat/router.sh:/nat/router.sh:ro"]
+
+x-behind: &behind
+  cap_add: [NET_ADMIN, NET_RAW]
+  devices: ["/dev/net/tun:/dev/net/tun"]
+
+services:
+  nat-a:
+    <<: *router
+    environment: { NAT_MODE: "${NAT_A:-easy}" }
+    networks:
+      lab: { ipv4_address: 172.29.0.51 }
+      lan-a: { ipv4_address: 10.10.1.2 }
+  nat-b:
+    <<: *router
+    environment: { NAT_MODE: "${NAT_B:-easy}" }
+    networks:
+      lab: { ipv4_address: 172.29.0.52 }
+      lan-b: { ipv4_address: 10.10.2.2 }
+
+  ts-a:
+    <<: *behind
+    image: tailscale/tailscale:v1.94.2
+    hostname: ts-a
+    environment: { TS_NO_LOGS_NO_SUPPORT: "true" }
+    entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.1.2 && mkdir -p /var/run/tailscale /var/lib/tailscale && exec tailscaled --state=/var/lib/tailscale/tailscaled.state"]
+    depends_on: [nat-a]
+    networks:
+      lan-a: { ipv4_address: 10.10.1.21 }
+  ts-b:
+    <<: *behind
+    image: tailscale/tailscale:v1.94.2
+    hostname: ts-b
+    environment: { TS_NO_LOGS_NO_SUPPORT: "true" }
+    entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.2.2 && mkdir -p /var/run/tailscale /var/lib/tailscale && exec tailscaled --state=/var/lib/tailscale/tailscaled.state"]
+    depends_on: [nat-b]
+    networks:
+      lan-b: { ipv4_address: 10.10.2.21 }
+  fm-a:
+    <<: *behind
+    image: flowmesh-lab/dev:local
+    hostname: fm-a
+    environment: { CARGO_TARGET_DIR: /target }
+    entrypoint: ["/bin/sh", "-c", "ip route replace default via 10.10.1.2 && exec sleep infinity"]
+    volumes:
+      - ..:/src
+      - fm1-target:/target
+      - fm1-cargo:/usr/local/cargo/registry
+    depends_on: [nat-a]
+    networks:
+      lan-a: { ipv4_address: 10.10.1.31 }
+
+networks:
+  lan-a:
+    ipam: { config: [{ subnet: 10.10.1.0/24 }] }
+  lan-b:
+    ipam: { config: [{ subnet: 10.10.2.0/24 }] }

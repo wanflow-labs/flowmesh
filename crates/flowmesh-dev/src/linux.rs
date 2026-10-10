@@ -7,7 +7,7 @@ use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
-use flowmesh_pathsock::{Action, PathSock, PeerInfo, Random, Route, Source};
+use flowmesh_pathsock::{Action, Mode, PathSock, PeerInfo, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, Node, RegisterAuth, RegisterRequest,
@@ -104,6 +104,35 @@ fn pick_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
 fn relay_only(dm: &DerpMap) -> bool {
     let mut nodes = dm.regions.values().flat_map(|r| r.nodes.iter()).peekable();
     nodes.peek().is_some() && nodes.all(|n| n.stun_port == -1)
+}
+
+/// Relay mode: strict if the self node carries `tag:relay-strict`; prefer if every DERP node has STUNPort == -1; otherwise auto.
+fn mode_of(nm: &NetMap) -> Mode {
+    let strict = nm
+        .self_node
+        .as_ref()
+        .is_some_and(|n| n.tags.iter().any(|t| t == "tag:relay-strict"));
+    if strict {
+        Mode::Strict
+    } else if relay_only(&nm.derp_map) {
+        Mode::Prefer
+    } else {
+        Mode::Auto
+    }
+}
+
+/// Endpoints to report in each mode: auto = local + STUN; prefer = local only (no STUN); strict = none.
+fn endpoints_for(mode: Mode, local: &[SocketAddr], stun: Option<SocketAddr>) -> Vec<SocketAddr> {
+    let mut v = match mode {
+        Mode::Strict => return Vec::new(),
+        Mode::Prefer | Mode::Auto => local.to_vec(),
+    };
+    if mode == Mode::Auto {
+        if let Some(s) = stun.filter(|s| !v.contains(s)) {
+            v.push(s);
+        }
+    }
+    v
 }
 
 /// A peer's home relay: prefer `HomeDERP`, otherwise parse the legacy `127.3.3.40:<region>`.
@@ -228,7 +257,7 @@ fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
             })
             .collect(),
     );
-    ps.set_relay_only(relay_only(&nm.derp_map));
+    ps.set_mode(mode_of(nm));
     match flowmesh_filter::compile::compile(&nm.filter_rules()) {
         Ok(rules) => dp.set_filter_rules(rules),
         // fail-closed: keep the previous valid rules (design doc §7.2).
@@ -317,6 +346,13 @@ async fn run(args: Args) -> Result<(), String> {
         .trim()
         .to_string();
     let keys = flowmesh_state::load_or_create(&args.state).map_err(|e| e.to_string())?;
+    // The disco key is regenerated on every start (see flowmesh-state).
+    let disco = flowmesh_proto::key::DiscoPrivate::generate().map_err(|e| e.to_string())?;
+    if let Some(dir) = &args.tap_dir {
+        // Lab observation only: save this run's disco private key so tapped disco messages can be decrypted offline.
+        std::fs::write(dir.join("disco.key"), disco.to_hex())
+            .map_err(|e| format!("tap key: {e}"))?;
+    }
     let client = Arc::new(
         ControlClient::connect(&args.login_server, &keys.machine)
             .await
@@ -350,7 +386,7 @@ async fn run(args: Args) -> Result<(), String> {
         compress: "zstd".into(),
         keep_alive: true,
         node_key: keys.node.public(),
-        disco_key: keys.disco.public(),
+        disco_key: disco.public(),
         stream: true,
         ..Default::default()
     };
@@ -378,12 +414,10 @@ async fn run(args: Args) -> Result<(), String> {
             .await
             .map_err(|e| format!("udp bind :{}: {e}", args.port))?,
     );
-    let relay_only_mode = relay_only(&nm.derp_map);
-    let mut endpoints = if relay_only_mode {
-        Vec::new()
-    } else {
-        local_endpoints(&args.tun, args.port)
-    };
+    let mut mode = mode_of(&nm);
+    let local = local_endpoints(&args.tun, args.port);
+    let mut stun_mapped: Option<SocketAddr> = None;
+    let mut endpoints = endpoints_for(mode, &local, stun_mapped);
     let lite = MapRequest {
         stream: false,
         omit_peers: true,
@@ -398,13 +432,13 @@ async fn run(args: Args) -> Result<(), String> {
         },
     );
     log(format!(
-        "home DERP region {home} ({}); relay-only={relay_only_mode}; local endpoints {endpoints:?}",
+        "home DERP region {home} ({}); mode={mode:?}; endpoints {endpoints:?}",
         home_node.host_name
     ));
 
     // STUN to learn the externally visible address (skipped in relay-only mode or when the node has STUNPort == -1).
     let mut stun_tx = None;
-    if !relay_only_mode && home_node.stun_port != -1 {
+    if mode == Mode::Auto && home_node.stun_port != -1 {
         let port = u16::try_from(home_node.stun_port)
             .ok()
             .filter(|p| *p != 0)
@@ -484,12 +518,13 @@ async fn run(args: Args) -> Result<(), String> {
     let mut ctx = Ctx {
         udp: udp.clone(),
         relays,
-        ps: PathSock::new(keys.disco.clone(), keys.node.public()),
+        ps: PathSock::new(disco.clone(), keys.node.public()),
         nm,
         home,
         rng: OsRandom,
     };
     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
+    ctx.ps.set_my_endpoints(endpoints.clone());
     let start = Instant::now();
     let mut ticker = tokio::time::interval(TICK);
     let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
@@ -512,8 +547,11 @@ async fn run(args: Args) -> Result<(), String> {
                 } else if flowmesh_stun::is_stun(data) {
                     match flowmesh_stun::parse_response(data) {
                         Ok((tx, mapped)) if Some(tx) == stun_tx => {
-                            if !endpoints.contains(&mapped) {
-                                endpoints.push(mapped);
+                            stun_mapped = Some(mapped);
+                            let next = endpoints_for(mode, &local, stun_mapped);
+                            if next != endpoints {
+                                endpoints = next;
+                                ctx.ps.set_my_endpoints(endpoints.clone());
                                 log(format!("STUN: external address {mapped}; endpoints {endpoints:?}"));
                                 report(client.clone(), MapRequest {
                                     hostinfo: hostinfo.clone(),
@@ -553,9 +591,27 @@ async fn run(args: Args) -> Result<(), String> {
             },
             Some(m) = map_rx.recv() => {
                 let changed = ctx.nm.apply(&m);
-                if changed.peers || changed.filter || changed.derp {
+                if changed.peers || changed.filter || changed.derp || changed.self_node {
                     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
-                    log(format!("netmap: {} peers", ctx.nm.peers.len()));
+                    let summary: Vec<String> = ctx
+                        .nm
+                        .peers
+                        .values()
+                        .map(|n| format!("{}{:?}", n.hostinfo.hostname, n.endpoints))
+                        .collect();
+                    log(format!("netmap: {} peers {summary:?}", ctx.nm.peers.len()));
+                    let next_mode = mode_of(&ctx.nm);
+                    if next_mode != mode {
+                        mode = next_mode;
+                        endpoints = endpoints_for(mode, &local, stun_mapped);
+                        ctx.ps.set_my_endpoints(endpoints.clone());
+                        log(format!("relay mode now {mode:?}; endpoints {endpoints:?}"));
+                        report(client.clone(), MapRequest {
+                            hostinfo: hostinfo.clone(),
+                            endpoints: endpoints.clone(),
+                            ..lite.clone()
+                        });
+                    }
                 }
                 Vec::new()
             }

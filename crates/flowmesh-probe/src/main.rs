@@ -69,6 +69,8 @@ async fn run(args: Args) -> Result<(), String> {
         .trim()
         .to_string();
     let keys = flowmesh_state::load_or_create(&args.state).map_err(|e| e.to_string())?;
+    // The disco key is regenerated on every start (see flowmesh-state).
+    let disco = flowmesh_proto::key::DiscoPrivate::generate().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&args.dump).map_err(|e| format!("create dump dir: {e}"))?;
 
     let client = ControlClient::connect(&args.login_server, &keys.machine)
@@ -120,7 +122,7 @@ async fn run(args: Args) -> Result<(), String> {
         compress: "zstd".into(),
         keep_alive: true,
         node_key: keys.node.public(),
-        disco_key: keys.disco.public(),
+        disco_key: disco.public(),
         hostinfo,
         stream: true,
         ..Default::default()
