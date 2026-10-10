@@ -11,7 +11,11 @@ version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 targets="x86_64-unknown-linux-musl aarch64-unknown-linux-musl"
 
 # Everything that could vary between builders is fixed here.
-export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct)}
+export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || true)}
+# An empty value would not fail on its own (zig cc rejects it deep inside the build): check it here.
+case "$SOURCE_DATE_EPOCH" in
+  ''|*[!0-9]*) echo "SOURCE_DATE_EPOCH must be the last commit's time (got '$SOURCE_DATE_EPOCH'; no git here? pass it in)"; exit 1 ;;
+esac
 export CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}
 export RUSTFLAGS="--remap-path-prefix=$PWD=/flowmesh --remap-path-prefix=$CARGO_HOME=/cargo -C strip=symbols"
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target/release-build}

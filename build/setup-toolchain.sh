@@ -14,12 +14,20 @@ if ! command -v rustup >/dev/null 2>&1 && [ ! -x "$HOME/.cargo/bin/rustup" ]; th
   curl -sSf --retry 5 --retry-all-errors https://sh.rustup.rs | sh -s -- -y --profile minimal --default-toolchain none --no-modify-path
 fi
 export PATH="$HOME/.cargo/bin:$PATH"
-rustup toolchain install 1.88.0 --profile minimal \
+# Pinned versions only: never let rustup update itself (the check can also hang on slow networks).
+rustup set auto-self-update disable
+rustup toolchain install 1.88.0 --profile minimal --no-self-update \
   --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
 zig_dir="$HOME/.local/zig-$ZIG"
 if [ ! -x "$zig_dir/zig" ]; then
   tmp=$(mktemp -d)
-  curl -sSfL --retry 5 --retry-all-errors -o "$tmp/zig.tar.xz" "https://ziglang.org/download/$ZIG/zig-linux-$zig_arch-$ZIG.tar.xz"
+  # A pre-downloaded tarball (ZIG_CACHE_DIR) is used if present; the checksum is verified either way.
+  cached="${ZIG_CACHE_DIR:-/nonexistent}/zig-linux-$zig_arch-$ZIG.tar.xz"
+  if [ -f "$cached" ]; then
+    cp "$cached" "$tmp/zig.tar.xz"
+  else
+    curl -sSfL --retry 5 --retry-all-errors -o "$tmp/zig.tar.xz" "https://ziglang.org/download/$ZIG/zig-linux-$zig_arch-$ZIG.tar.xz"
+  fi
   echo "$zig_sum  $tmp/zig.tar.xz" | sha256sum -c -
   mkdir -p "$zig_dir"
   tar -xJf "$tmp/zig.tar.xz" -C "$zig_dir" --strip-components=1

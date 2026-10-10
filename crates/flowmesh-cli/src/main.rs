@@ -9,6 +9,28 @@ use serde_json::{Value, json};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
+/// Write to stdout. A reader that went away (`flowmesh status | head -1`) ends the program quietly
+/// with success, as a closed pipe should; any other write error is reported.
+fn emit(args: std::fmt::Arguments<'_>) {
+    use std::io::Write;
+    let mut o = std::io::stdout().lock();
+    if let Err(e) = o.write_fmt(args).and_then(|()| o.flush()) {
+        if e.kind() == std::io::ErrorKind::BrokenPipe {
+            std::process::exit(0);
+        }
+        eprintln!("flowmesh: write: {e}");
+        std::process::exit(1);
+    }
+}
+
+macro_rules! out {
+    ($($t:tt)*) => { emit(format_args!($($t)*)) };
+}
+
+macro_rules! outln {
+    ($($t:tt)*) => { emit(format_args!("{}\n", format_args!($($t)*))) };
+}
+
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().skip(1).collect();
     let inv = match args::parse(&argv) {
@@ -79,14 +101,14 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                 .collect();
             match client.get(&format!("whois?addr={encoded}")).await {
                 Ok(w) if json => {
-                    println!(
+                    outln!(
                         "{}",
                         serde_json::to_string_pretty(&w).map_err(|e| e.to_string())?
                     );
                     Ok(0)
                 }
                 Ok(w) => {
-                    print!("{}", render::whois_text(&w));
+                    out!("{}", render::whois_text(&w));
                     Ok(0)
                 }
                 // Same wording as the official client for its two common failures.
@@ -110,7 +132,7 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                 .get(&format!("debug?topic={topic}"))
                 .await
                 .map_err(e)?;
-            println!(
+            outln!(
                 "{}",
                 serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?
             );
@@ -118,7 +140,7 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
         }
         Command::DebugPrefs => {
             let p = client.get("prefs").await.map_err(e)?;
-            println!(
+            outln!(
                 "{}",
                 serde_json::to_string_pretty(&p).map_err(|e| e.to_string())?
             );
@@ -141,25 +163,25 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                 &serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?,
             )
             .map_err(|e| format!("write {}: {e}", path.display()))?;
-            println!(
+            outln!(
                 "wrote {} (nothing was sent anywhere; review it before sharing)",
                 path.display()
             );
             Ok(0)
         }
         Command::Version => {
-            println!("{}", env!("CARGO_PKG_VERSION"));
+            outln!("{}", env!("CARGO_PKG_VERSION"));
             Ok(0)
         }
         Command::Status { json } => {
             let s = client.get("status").await.map_err(e)?;
             if json {
-                println!(
+                outln!(
                     "{}",
                     serde_json::to_string_pretty(&s).map_err(|e| e.to_string())?
                 );
             } else {
-                print!("{}", render::text(&s));
+                out!("{}", render::text(&s));
             }
             Ok(render::exit_code(&s))
         }

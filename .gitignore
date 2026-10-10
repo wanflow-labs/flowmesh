@@ -3,3 +3,4 @@
 /lab/.authkey
 /mutants.out/
 /mutants.out.old/
+build/cache/

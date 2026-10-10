@@ -42,7 +42,7 @@ fuzz:
 # Reproducible static release build in the pinned container (design §6.2).
 release:
 	docker build -q -f build/Dockerfile -t flowmesh-build:1 build
-	docker run --rm -v "$(CURDIR)":/flowmesh -e SOURCE_DATE_EPOCH flowmesh-build:1 build/release.sh dist
+	docker run --rm -v "$(CURDIR)":/flowmesh -e SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) flowmesh-build:1 build/release.sh dist
 
 # Rebuild and compare with published checksums: make reproduce SUMS=path/to/SHA256SUMS
 reproduce: release

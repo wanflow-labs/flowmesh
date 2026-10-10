@@ -8,6 +8,12 @@ RUN apt-get update \
 RUN useradd -m builder
 USER builder
 COPY --chown=builder setup-toolchain.sh /tmp/setup-toolchain.sh
-RUN bash /tmp/setup-toolchain.sh
+# Optional pre-downloaded tarballs (build/cache/, not in git); checksums are verified by the script.
+COPY --chown=builder cache/ /tmp/cache/
+RUN ZIG_CACHE_DIR=/tmp/cache bash /tmp/setup-toolchain.sh
+# Packaging tools (dpkg-deb ships with the base; rpmbuild needs rpm). After the toolchain so its layer stays cached.
+USER root
+RUN apt-get update && apt-get install -y --no-install-recommends rpm && rm -rf /var/lib/apt/lists/*
+USER builder
 ENV PATH=/home/builder/.local/zig-0.13.0:/home/builder/.cargo/bin:$PATH
 WORKDIR /flowmesh
