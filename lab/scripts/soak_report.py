@@ -79,11 +79,24 @@ print(f"BackendState samples: {states}")
 if any(s != "Running" for s in states):
     fails.append(f"not Running in {sum(v for k, v in states.items() if k != 'Running')} samples")
 
+# Traffic: ping's own final statistics (ping-summary.txt, fmsd then wm1) when the run finished. The
+# per-sample columns are only an estimate (sent = seconds elapsed, replies still in flight not yet
+# counted) and read low after slow replies: use them only for a run that did not finish.
+import os
+import re
+final = []
+if os.path.exists(f"{out}/ping-summary.txt"):
+    final = re.findall(r"(\d+) packets transmitted, (\d+) (?:packets )?received", open(f"{out}/ping-summary.txt").read())
 last = rows[-1]
-for peer in ("fmsd", "wm1"):
-    sent, got = int(last[f"ping_{peer}_tx"]), int(last[f"ping_{peer}_rx"])
+for i, peer in enumerate(("fmsd", "wm1")):
+    if len(final) == 2:
+        sent, got = map(int, final[i])
+        src = "final"
+    else:
+        sent, got = int(last[f"ping_{peer}_tx"]), int(last[f"ping_{peer}_rx"])
+        src = "estimate, run did not finish"
     ratio = got / sent if sent else 0
-    print(f"ping {peer}: {got}/{sent} answered ({ratio:.2%})")
+    print(f"ping {peer}: {got}/{sent} answered ({ratio:.2%}, {src})")
     if ratio < 0.99:
         fails.append(f"ping {peer} answered {ratio:.2%}")
 
