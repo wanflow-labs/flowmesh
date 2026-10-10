@@ -42,7 +42,7 @@ Body: the allocation alone. Sent twice after an allocation (Observed, OBS-202610
 
 | Bytes | Content | Status |
 |---|---|---|
-| 0–31 | the relay server's key for this role: constant across allocations, not the node's DiscoKey | Observed |
+| 0–31 | the relay server's key for this role: the same for every allocation while the server runs, regenerated when it restarts; not the node's DiscoKey | Observed (OBS-20261010-peer-relay-handshake) |
 | 32–95 | the pair, smaller key first | Observed |
 | 96–103 | u64 BE generation, increments per new allocation | Observed (name Inferred) |
 | 104–107 | u32 BE VNI; restarts at 1 when the server restarts | Observed |
@@ -57,12 +57,26 @@ Body: the allocation alone. Sent twice after an allocation (Observed, OBS-202610
 | Fact | Status | Source |
 |---|---|---|
 | Every packet starts with an 8-byte Geneve header (RFC 8926): byte 0 `00`; byte 1 `80` (O bit) for messages to the server itself, else `00`; bytes 2–3 protocol `7a11` (disco) or `7a12` (WireGuard); bytes 4–6 the VNI; byte 7 `00` | Observed (layout per RFC 8926) | OBS-20261010-peer-relay-datapath |
-| Before using the path, each client exchanges three O-bit disco messages with the server (client, server, client), all 160 bytes (74 bytes of plaintext), sealed between the client and the server key | Observed (sizes, order, keys) | same |
+| Before using the path, each client completes a three-message handshake with the server, all O-bit disco messages of 74 bytes of plaintext sealed between the client and the server key: Bind (0x04, client), Challenge (0x05, server), Answer (0x06, client). Layout below | Observed | OBS-20261010-peer-relay-datapath, OBS-20261010-peer-relay-handshake |
 | Then ordinary disco ping/pong and WireGuard between the clients run through the relay unchanged; the server does not rewrite payloads | Observed | same |
 | One 250-byte disco message goes from one client to the other through the relay after the handshake | Observed (size) | same |
 | The relay server learns its own address with STUN to the DERP servers | Observed | same |
 
-**Pending:** the handshake's message types and bodies, and the 250-byte message. Layouts tried without a server reply are listed in OBS-20261010-peer-relay-handshake.
+### Handshake messages (0x04 Bind, 0x05 Challenge, 0x06 Answer)
+
+Same 72-byte body for all three (Observed: a probe completed the handshake and its disco ping was forwarded, OBS-20261010-peer-relay-handshake):
+
+| Bytes | Field |
+|---|---|
+| 0–3 | VNI (u32 BE), must equal the Geneve header's VNI |
+| 4–7 | handshake generation (u32 BE): chosen by the client, nonzero, new for each handshake |
+| 8–39 | the other member's disco public key |
+| 40–71 | challenge: zero in Bind (padding: all three messages are the same size, so the server never answers with more than it received), set by the server in Challenge, echoed unchanged in Answer |
+
+- Each client of a pair binds separately and gets its own challenge (Observed).
+- After both members have answered, disco messages sealed to the other member and sent without the O bit are forwarded by the relay (Observed).
+
+**Pending:** the 250-byte message one official client sends the other after the handshake.
 
 ## 4. Behavior
 
@@ -76,7 +90,6 @@ Body: the allocation alone. Sent twice after an allocation (Observed, OBS-202610
 
 | Question | What would settle it |
 |---|---|
-| Handshake messages (types, bodies, how the third message answers the second) | A client whose disco private key we hold completing a handshake with the official server |
-| The 250-byte client-to-client message | The same, with both clients ours |
+| The 250-byte client-to-client message | An official client paired with a probe through the relay (the message is then sealed to the probe) |
 | Meaning of the 30 s and 300 s durations | Observing re-handshakes over longer active sessions |
 | Several relay addresses in one allocation | A relay server with more than one interface |

@@ -15,7 +15,9 @@
 //! peer relay 握手实验（--udp-payload，可重复）：程序记住最近收到的分配（0x09 或 0x07），--udp-delay
 //! （默认 12 秒）后把每个 payload 用分配里的服务器密钥封装、加 Geneve 头（--udp-control 置 O 位，VNI 取自
 //! 分配），经 UDP 发到分配的中继地址；UDP 回包解密后同样记入 disco.tsv。占位符另有 `{alloc.server}`、
-//! `{alloc.pair}`、`{alloc.gen}`、`{alloc.vni}`。
+//! `{alloc.pair}`、`{alloc.gen}`、`{alloc.vni}`，以及 `{node}`（本节点的 node 公钥）。--udp-answer：收到服务器的
+//! Challenge（0x05）时回 Answer（0x06，原样带回正文）。--relay-peer/--relay-payload：Answer 发出 1 秒后，把每个
+//! payload 用该对端的 disco 公钥封装、不置 O 位，经中继发出（验证中继转发）。
 
 mod disco;
 
@@ -47,6 +49,9 @@ struct Args {
     udp_payloads: Vec<String>,
     udp_delay: Duration,
     udp_control: bool,
+    udp_answer: bool,
+    relay_peer: Option<IpAddr>,
+    relay_payloads: Vec<String>,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -57,6 +62,7 @@ fn parse_args() -> Result<Args, String> {
     let mut disco_delay = Duration::from_secs(5);
     let (mut udp_payloads, mut udp_delay, mut udp_control) =
         (Vec::new(), Duration::from_secs(12), false);
+    let (mut udp_answer, mut relay_peer, mut relay_payloads) = (false, None, Vec::new());
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -86,6 +92,12 @@ fn parse_args() -> Result<Args, String> {
                     Duration::from_secs(v.parse().map_err(|_| format!("bad --udp-delay {v}"))?);
             }
             "--udp-control" => udp_control = true,
+            "--udp-answer" => udp_answer = true,
+            "--relay-peer" => {
+                let v = val()?;
+                relay_peer = Some(v.parse().map_err(|_| format!("bad --relay-peer {v}"))?);
+            }
+            "--relay-payload" => relay_payloads.push(val()?),
             "--disco-delay" => {
                 let v = val()?;
                 disco_delay =
@@ -111,6 +123,9 @@ fn parse_args() -> Result<Args, String> {
         udp_payloads,
         udp_delay,
         udp_control,
+        udp_answer,
+        relay_peer,
+        relay_payloads,
     })
 }
 
@@ -278,8 +293,17 @@ async fn run(args: Args) -> Result<(), String> {
         Some(sock)
     };
     let mut udp_at = udp.as_ref().map(|_| start + args.udp_delay);
+    let mut relay_at: Option<tokio::time::Instant> = None;
+    let node_hex: String = keys
+        .node
+        .public()
+        .0
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     loop {
         let send_at = pending.as_ref().map(|(t, _)| *t);
+        let relay_due = relay_at;
         tokio::select! {
             _ = tokio::time::sleep_until(deadline) => break,
             _ = tokio::time::sleep_until(udp_at.unwrap_or(deadline)), if udp_at.is_some() => {
@@ -307,13 +331,57 @@ async fn run(args: Args) -> Result<(), String> {
                     );
                 }
             }
+            _ = tokio::time::sleep_until(relay_due.unwrap_or(deadline)), if relay_due.is_some() => {
+                relay_at = None;
+                let (Some(sock), Some(a), Some(ip)) = (udp.as_ref(), alloc.as_ref(), args.relay_peer) else {
+                    continue;
+                };
+                let peer = disco::find_peer(&peers, ip).ok_or(format!("no peer with address {ip}"))?;
+                let to = *a.addrs.first().ok_or("allocation without an address")?;
+                for template in &args.relay_payloads {
+                    let template = template.replace("{node}", &node_hex);
+                    let payload =
+                        disco::parse_hex(&disco::expand(&template, &disco.public(), &peers, Some(a))?)?;
+                    let mut nonce = [0u8; 24];
+                    getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+                    let sealed = flowmesh_disco::envelope::seal(&disco, &peer.disco_key, &payload, nonce)
+                        .map_err(|e| e.to_string())?;
+                    let packet = [&disco::geneve(a.vni, false, 0x7a11)[..], &sealed].concat();
+                    sock.send_to(&packet, to).await.map_err(|e| format!("udp send: {e}"))?;
+                    println!(
+                        "{}\trelay sent {} bytes to {} via {to} vni {}",
+                        start.elapsed().as_millis(),
+                        payload.len(),
+                        peer.name,
+                        a.vni
+                    );
+                }
+            }
             Some((from, data)) = udp_rx.recv() => {
                 let t = start.elapsed().as_millis();
                 let (head, inner) = data.split_at(data.len().min(8));
                 let who = format!("udp:{from} hdr={}", head.iter().map(|b| format!("{b:02x}")).collect::<String>());
                 let line = if inner.starts_with(&flowmesh_disco::envelope::MAGIC) {
                     match flowmesh_disco::envelope::open(&disco, inner) {
-                        Ok((_, plain)) => disco::tsv_line(t, &who, &plain),
+                        Ok((_, plain)) => {
+                            // Handshake: answer the server's challenge by echoing its body as 0x06.
+                            if let (true, Some(0x05), Some(a), Some(sock)) =
+                                (args.udp_answer, plain.first().copied(), alloc.as_ref(), udp.as_ref())
+                            {
+                                let answer = [&[0x06, 0x00][..], &plain[2..]].concat();
+                                let mut nonce = [0u8; 24];
+                                getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+                                let sealed = flowmesh_disco::envelope::seal(&disco, &a.server, &answer, nonce)
+                                    .map_err(|e| e.to_string())?;
+                                let packet = [&disco::geneve(a.vni, true, 0x7a11)[..], &sealed].concat();
+                                sock.send_to(&packet, from).await.map_err(|e| format!("udp send: {e}"))?;
+                                println!("{}\tudp answered the challenge", start.elapsed().as_millis());
+                                if !args.relay_payloads.is_empty() {
+                                    relay_at = Some(tokio::time::Instant::now() + Duration::from_secs(1));
+                                }
+                            }
+                            disco::tsv_line(t, &who, &plain)
+                        }
                         Err(e) => format!("{t}\t{who}\tundecryptable: {e}"),
                     }
                 } else {
