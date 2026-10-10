@@ -4,10 +4,24 @@
 //!
 //! 用法：flowmesh-probe --login-server <url> --authkey-file <path> --state <path>
 //!       --hostname <name> --dump <dir> [--duration <秒>]
+//!       [--derp-region <id> [--disco-to <tailnet IP> --disco-payload <hex> ... [--disco-delay <秒>]]]
+//!
+//! disco 模式（--derp-region）：连上该区域的 DERP 并把它报为本节点的 home，记录对端经 DERP 发来的
+//! disco 消息（用本次运行的 disco 私钥解密，写入 disco.tsv；私钥存为 disco.key，不得放进 fixtures）。
+//! 给了 --disco-to 时，连上 DERP 后等 --disco-delay（默认 5 秒，让对端先拿到本次的新 disco 公钥），
+//! 再把每个 --disco-payload（类型字节 + 版本字节 + 正文）封装后发给该对端。
+
+mod disco;
 
 use flowmesh_control::client::ControlClient;
+use flowmesh_derp::client::{DerpClient, DerpSender, Event};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
-use flowmesh_proto::control::{Hostinfo, MapRequest, RegisterAuth, RegisterRequest};
+use flowmesh_proto::control::{Hostinfo, MapRequest, NetInfo, RegisterAuth, RegisterRequest};
+use flowmesh_proto::derp::DerpMap;
+use flowmesh_proto::key::{NodePrivate, NodePublic};
+use std::collections::HashMap;
+use std::io::Write as _;
+use std::net::IpAddr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
@@ -19,12 +33,18 @@ struct Args {
     hostname: String,
     dump: PathBuf,
     duration: Duration,
+    derp_region: Option<u32>,
+    disco_to: Option<IpAddr>,
+    disco_payloads: Vec<Vec<u8>>,
+    disco_delay: Duration,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let (mut login, mut authkey, mut state, mut host, mut dump) = (None, None, None, None, None);
     let mut duration = Duration::from_secs(30);
+    let (mut derp_region, mut disco_to, mut disco_payloads) = (None, None, Vec::new());
+    let mut disco_delay = Duration::from_secs(5);
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -38,8 +58,25 @@ fn parse_args() -> Result<Args, String> {
                 duration =
                     Duration::from_secs(v.parse().map_err(|_| format!("bad --duration {v}"))?);
             }
+            "--derp-region" => {
+                let v = val()?;
+                derp_region = Some(v.parse().map_err(|_| format!("bad --derp-region {v}"))?);
+            }
+            "--disco-to" => {
+                let v = val()?;
+                disco_to = Some(v.parse().map_err(|_| format!("bad --disco-to {v}"))?);
+            }
+            "--disco-payload" => disco_payloads.push(disco::parse_hex(&val()?)?),
+            "--disco-delay" => {
+                let v = val()?;
+                disco_delay =
+                    Duration::from_secs(v.parse().map_err(|_| format!("bad --disco-delay {v}"))?);
+            }
             other => return Err(format!("unknown argument {other}")),
         }
+    }
+    if disco_to.is_some() && derp_region.is_none() {
+        return Err("--disco-to needs --derp-region (disco messages go over DERP)".into());
     }
     Ok(Args {
         login_server: login.ok_or("--login-server is required")?,
@@ -48,6 +85,10 @@ fn parse_args() -> Result<Args, String> {
         hostname: host.ok_or("--hostname is required")?,
         dump: dump.ok_or("--dump is required")?,
         duration,
+        derp_region,
+        disco_to,
+        disco_payloads,
+        disco_delay,
     })
 }
 
@@ -87,8 +128,14 @@ async fn run(args: Args) -> Result<(), String> {
         os: os_name().into(),
         hostname: args.hostname.clone(),
         machine: std::env::consts::ARCH.into(),
+        // Peers send disco to our home region: make it the one we connect to.
+        net_info: args.derp_region.map(|r| NetInfo { preferred_derp: r }),
         ..Default::default()
     };
+    if args.derp_region.is_some() {
+        // Lab observation only: lets disco.tsv be checked offline. Never copy it into fixtures.
+        write(&args.dump, "disco.key", disco.to_hex().as_bytes())?;
+    }
     let mut reg = RegisterRequest {
         version: CAPABILITY_VERSION,
         node_key: keys.node.public(),
@@ -136,29 +183,152 @@ async fn run(args: Args) -> Result<(), String> {
         .map(&map_req)
         .await
         .map_err(|e| format!("map: {e}"))?;
-    let deadline = tokio::time::Instant::now() + args.duration;
-    let mut seq = 0usize;
-    loop {
-        let next = tokio::time::timeout_at(deadline, stream.next()).await;
-        let Ok(msg) = next else { break };
-        let Some(msg) = msg.map_err(|e| format!("map stream: {e}"))? else {
-            println!("map stream closed by server");
-            break;
+    // Also report in a non-streaming update, as flowmeshd does: with the streaming request alone,
+    // peers saw no DiscoKey for this node and dropped its disco messages.
+    {
+        let lite = MapRequest {
+            stream: false,
+            omit_peers: true,
+            ..map_req.clone()
         };
-        write(&args.dump, &format!("map-{seq:04}.json"), &msg.json)?;
-        let m = &msg.parsed;
-        println!(
-            "map #{seq}: keepalive={} self={:?} peers={:?} changed={} removed={}",
-            m.keep_alive,
-            m.node.as_ref().map(|n| n.name.as_str()),
-            m.peers.as_ref().map(Vec::len),
-            m.peers_changed.len(),
-            m.peers_removed.len()
-        );
-        seq += 1;
+        let mut s = client
+            .map(&lite)
+            .await
+            .map_err(|e| format!("map update: {e}"))?;
+        while let Ok(Some(_)) = s.next().await {}
     }
-    println!("done: {seq} map messages");
+    let start = tokio::time::Instant::now();
+    let deadline = start + args.duration;
+    let mut seq = 0usize;
+    // DERP events reach the loop through this channel once a connection exists; until then (or
+    // without --derp-region) nothing arrives on it.
+    let (ev_tx, mut ev_rx) = tokio::sync::mpsc::channel::<Event>(256);
+    // One connection per region: replies arrive on our home region, sends go through the peer's.
+    let mut senders: HashMap<u32, DerpSender> = HashMap::new();
+    let mut derp_map: Option<DerpMap> = None;
+    let mut names: HashMap<NodePublic, String> = HashMap::new();
+    let mut received = 0usize;
+    let mut pending: Option<(tokio::time::Instant, flowmesh_proto::control::Node)> = None;
+    loop {
+        let send_at = pending.as_ref().map(|(t, _)| *t);
+        tokio::select! {
+            _ = tokio::time::sleep_until(deadline) => break,
+            _ = tokio::time::sleep_until(send_at.unwrap_or(deadline)), if send_at.is_some() => {
+                let (Some((_, peer)), Some(dm)) = (pending.take(), derp_map.as_ref()) else {
+                    continue;
+                };
+                let region = disco::peer_region(&peer)
+                    .or(args.derp_region)
+                    .ok_or("no DERP region to reach the peer")?;
+                if let std::collections::hash_map::Entry::Vacant(e) = senders.entry(region) {
+                    e.insert(connect_region(dm, region, &keys.node, &ev_tx).await?);
+                }
+                let sender = senders.get(&region).ok_or("DERP sender missing")?;
+                for payload in &args.disco_payloads {
+                    let mut nonce = [0u8; 24];
+                    getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+                    let sealed =
+                        flowmesh_disco::envelope::seal(&disco, &peer.disco_key, payload, nonce)
+                            .map_err(|e| e.to_string())?;
+                    sender
+                        .send(peer.key, &sealed)
+                        .await
+                        .map_err(|e| format!("DERP send: {e}"))?;
+                    println!(
+                        "{}\tsent {} bytes to {} via region {region}",
+                        start.elapsed().as_millis(),
+                        payload.len(),
+                        peer.name
+                    );
+                }
+            }
+            msg = stream.next() => {
+                let Some(msg) = msg.map_err(|e| format!("map stream: {e}"))? else {
+                    println!("map stream closed by server");
+                    break;
+                };
+                write(&args.dump, &format!("map-{seq:04}.json"), &msg.json)?;
+                let m = &msg.parsed;
+                println!(
+                    "map #{seq}: keepalive={} self={:?} peers={:?} changed={} removed={}",
+                    m.keep_alive,
+                    m.node.as_ref().map(|n| n.name.as_str()),
+                    m.peers.as_ref().map(Vec::len),
+                    m.peers_changed.len(),
+                    m.peers_removed.len()
+                );
+                for p in m.peers.iter().flatten().chain(&m.peers_changed) {
+                    names.insert(p.key, p.name.clone());
+                }
+                if let Some(dm) = &m.derp_map {
+                    derp_map = Some(dm.clone());
+                }
+                if let (Some(home), Some(dm), true) =
+                    (args.derp_region, derp_map.as_ref(), senders.is_empty())
+                {
+                    let s = connect_region(dm, home, &keys.node, &ev_tx).await?;
+                    senders.insert(home, s);
+                    if let Some(ip) = args.disco_to {
+                        let peers = m.peers.as_deref().unwrap_or_default();
+                        let peer = disco::find_peer(peers, ip)
+                            .ok_or(format!("no peer with address {ip}"))?;
+                        // Our disco key is new this run: give the control server time to push it
+                        // to the peer, which drops messages sealed with a key it doesn't know.
+                        pending = Some((tokio::time::Instant::now() + args.disco_delay, peer.clone()));
+                    }
+                }
+                seq += 1;
+            }
+            Some(ev) = ev_rx.recv() => match ev {
+                Event::Packet { src, data } if data.starts_with(&flowmesh_disco::envelope::MAGIC) => {
+                    let t = start.elapsed().as_millis();
+                    write(&args.dump, &format!("derp-{t:010}.bin"), &data)?;
+                    let from = names.get(&src).cloned().unwrap_or_else(|| src.to_string());
+                    let line = match flowmesh_disco::envelope::open(&disco, &data) {
+                        Ok((_, plain)) => disco::tsv_line(t, &from, &plain),
+                        Err(e) => format!("{t}\t{from}\tundecryptable: {e}"),
+                    };
+                    println!("{line}");
+                    let mut f = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(args.dump.join("disco.tsv"))
+                        .map_err(|e| format!("disco.tsv: {e}"))?;
+                    writeln!(f, "{line}").map_err(|e| format!("disco.tsv: {e}"))?;
+                    received += 1;
+                }
+                other => println!("derp: {other:?}"),
+            },
+        }
+    }
+    drop(senders);
+    println!("done: {seq} map messages, {received} disco messages");
     Ok(())
+}
+
+/// Connect to `region`'s DERP server and forward its events into `tx`.
+async fn connect_region(
+    dm: &DerpMap,
+    region: u32,
+    me: &NodePrivate,
+    tx: &tokio::sync::mpsc::Sender<Event>,
+) -> Result<DerpSender, String> {
+    let node =
+        disco::derp_node(dm, region).ok_or(format!("DERP region {region} not in the map"))?;
+    let client = DerpClient::connect(&node, me)
+        .await
+        .map_err(|e| format!("DERP region {region}: {e}"))?;
+    println!("connected to DERP region {region} ({})", node.host_name);
+    let (sender, mut events) = client.split();
+    let tx = tx.clone();
+    tokio::spawn(async move {
+        while let Some(ev) = events.recv().await {
+            if tx.send(ev).await.is_err() {
+                break;
+            }
+        }
+    });
+    Ok(sender)
 }
 
 fn main() -> ExitCode {

@@ -1,0 +1,11 @@
+{
+  "label": "probe-disco-mode",
+  "captured_at": "2026-10-10T14:17:46+00:00",
+  "official_client": "1.94.2",
+  "method": "flowmesh-probe disco mode in fm1 (lab), Ping to ts1 over DERP; ts1's view read with `tailscale debug netmap`",
+  "files": [
+    "disco.tsv",
+    "notes.md"
+  ],
+  "note": "lab-only keys; the probe's disco private key is not included"
+}

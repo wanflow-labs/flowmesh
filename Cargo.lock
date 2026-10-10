@@ -646,8 +646,11 @@ name = "flowmesh-probe"
 version = "0.1.0"
 dependencies = [
  "flowmesh-control",
+ "flowmesh-derp",
+ "flowmesh-disco",
  "flowmesh-proto",
  "flowmesh-state",
+ "getrandom 0.3.4",
  "serde",
  "serde_json",
  "thiserror",

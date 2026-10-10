@@ -51,6 +51,7 @@
 | `POST /machine/map`（`Stream: true`）：响应为连续消息，每条前缀 4 字节小端长度；请求 `Compress: "zstd"` 时消息体经 zstd 压缩 | 已互通 | map-0000.json … map-0004.json |
 | 首条消息包含 `Node`、`Peers`（完整列表）、`DERPMap`、`DNSConfig`、`PacketFilters`、`UserProfiles`、`Domain`、`Debug`、`CollectServices`、`ControlTime` | 已观测 | map-0000.json |
 | 后续消息是增量：`PeersChangedPatch`（如 `{"NodeID":3,"Online":true}`）、`PeersChanged`、`DERPMap`、`DNSConfig`、`Node` 等 | 已观测 | map-0001.json … map-0004.json |
+| **只发流式 `MapRequest` 的节点，在其他节点的网络地图里没有 `DiscoKey`，`Online` 为 false**，其他节点因此丢弃它的 disco 消息；再发一次非流式更新（`Stream:false`、`OmitPeers:true`，带相同的 Hostinfo 与 DiscoKey）之后，对端看到它的 DiscoKey 且 `Online` 为 true。flowmeshd 一直这样做（engine 的 lite 更新）；flowmesh-probe 起初没做 | 已观测 | OBS-20261010-probe-disco-mode |
 | 对端节点同时带有 `HomeDERP`（整数区域号）和旧式 `DERP`（`127.3.3.40:<区域号>`）；尚无 home 时自身节点的 `DERP` 为 `127.3.3.40:0` | 已观测 | map-0000.json |
 | headscale 发送的是 `PacketFilters`（`{"base":[...]}`），不发送 `PacketFilter`。`base` 组中除 ACL 规则外，还有 WanFlow 控制服务器无条件追加的 peer relay `CapGrant` 规则 | 已观测 | map-0000.json |
 
