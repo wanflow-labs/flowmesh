@@ -12,20 +12,5 @@ publish = false
 workspace = true
 
 [dependencies]
-flowmesh-control = { version = "0.1.0", path = "../flowmesh-control" }
-flowmesh-dataplane = { version = "0.1.0", path = "../flowmesh-dataplane" }
-flowmesh-derp = { version = "0.1.0", path = "../flowmesh-derp" }
-flowmesh-disco = { version = "0.1.0", path = "../flowmesh-disco" }
-flowmesh-dns = { version = "0.1.0", path = "../flowmesh-dns" }
-flowmesh-filter = { version = "0.1.0", path = "../flowmesh-filter" }
-flowmesh-netcfg = { version = "0.1.0", path = "../flowmesh-netcfg" }
-flowmesh-pathsock = { version = "0.1.0", path = "../flowmesh-pathsock" }
-flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
-flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
-flowmesh-stun = { version = "0.1.0", path = "../flowmesh-stun" }
-getrandom = "0.3"
-ipnet = "2.12.2"
-tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "process", "net", "signal"] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-tun-rs = { version = "2.8.11", features = ["async_tokio"] }
+flowmesh-engine = { version = "0.1.0", path = "../flowmesh-engine" }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "sync", "signal"] }

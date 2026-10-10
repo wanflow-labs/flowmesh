@@ -520,21 +520,8 @@ dependencies = [
 name = "flowmesh-dev"
 version = "0.1.0"
 dependencies = [
- "flowmesh-control",
- "flowmesh-dataplane",
- "flowmesh-derp",
- "flowmesh-disco",
- "flowmesh-dns",
- "flowmesh-filter",
- "flowmesh-netcfg",
- "flowmesh-pathsock",
- "flowmesh-proto",
- "flowmesh-state",
- "flowmesh-stun",
- "getrandom 0.3.4",
- "ipnet",
+ "flowmesh-engine",
  "tokio",
- "tun-rs",
 ]
 
 [[package]]
@@ -555,6 +542,27 @@ dependencies = [
  "flowmesh-proto",
  "hickory-proto",
  "serde_json",
+]
+
+[[package]]
+name = "flowmesh-engine"
+version = "0.1.0"
+dependencies = [
+ "flowmesh-control",
+ "flowmesh-dataplane",
+ "flowmesh-derp",
+ "flowmesh-disco",
+ "flowmesh-dns",
+ "flowmesh-filter",
+ "flowmesh-netcfg",
+ "flowmesh-pathsock",
+ "flowmesh-proto",
+ "flowmesh-state",
+ "flowmesh-stun",
+ "getrandom 0.3.4",
+ "ipnet",
+ "tokio",
+ "tun-rs",
 ]
 
 [[package]]

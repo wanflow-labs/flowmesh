@@ -385,6 +385,19 @@ impl PathSock {
             .collect()
     }
 
+    /// Read-only query of the peer's current route (does not trigger discovery, does not change state), for status display.
+    pub fn current_route(&self, peer: NodePublic, now: Duration) -> Route {
+        let Some(p) = self.peers.get(&peer) else {
+            return Route::None;
+        };
+        match p.best {
+            Some((addr, confirmed)) if self.mode == Mode::Auto && now < confirmed + TRUST => {
+                Route::Direct(addr)
+            }
+            _ => p.info.home_region.map_or(Route::None, Route::Derp),
+        }
+    }
+
     /// Which peer a packet arriving over UDP from `addr` belongs to: the established direct path takes precedence, then the candidate endpoints.
     pub fn peer_for_addr(&self, addr: SocketAddr) -> Option<NodePublic> {
         self.peers
@@ -998,6 +1011,22 @@ mod tests {
             discovery_ping_targets(&mut w, 10 * S).len(),
             MAX_CMM_ENDPOINTS
         );
+    }
+
+    #[test]
+    fn current_route_is_read_only() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        assert_eq!(w.a.current_route(w.b_node, 10 * S), Route::Derp(1000));
+        let to = establish(&mut w, 10 * S);
+        assert_eq!(w.a.current_route(w.b_node, 11 * S), Route::Direct(to));
+        // After the trust window it shows DERP, and the query does not start a discovery round (route() below still triggers one immediately).
+        assert_eq!(
+            w.a.current_route(w.b_node, 10 * S + TRUST),
+            Route::Derp(1000)
+        );
+        w.a.set_mode(Mode::Prefer);
+        assert_eq!(w.a.current_route(w.b_node, 11 * S), Route::Derp(1000));
+        assert_eq!(w.a.current_route(NodePublic([77; 32]), S), Route::None);
     }
 
     #[test]

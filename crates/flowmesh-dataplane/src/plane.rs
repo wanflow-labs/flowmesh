@@ -155,6 +155,17 @@ impl Dataplane {
         outputs
     }
 
+    /// Traffic counters per peer (sent bytes, received bytes), for status display.
+    pub fn stats(&self) -> Vec<(NodePublic, u64, u64)> {
+        self.peers
+            .iter()
+            .map(|(k, p)| {
+                let (_, tx, rx, _, _) = p.tunn.stats();
+                (*k, tx as u64, rx as u64)
+            })
+            .collect()
+    }
+
     /// Drive WireGuard timers (rekey, keepalive). Call roughly every 250 ms.
     pub fn tick(&mut self) -> Vec<Output> {
         let mut outputs = Vec::new();
@@ -308,6 +319,22 @@ mod tests {
                 .is_empty()
         );
         assert!(a.outbound(&[0xff; 3], Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn stats_count_traffic_per_peer() {
+        let (mut a, pa, mut b, pb) = pair();
+        b.set_filter_rules(allow_all());
+        let ping = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        let first = a.outbound(&ping, Duration::ZERO);
+        run(&mut a, pa, &mut b, pb, first);
+        // Only A sends to B (B does not reply): A's sent bytes > 0, B's received bytes > 0.
+        let (k, tx, _) = a.stats()[0];
+        assert_eq!(k, pb);
+        assert!(tx > 0, "a tx={tx}");
+        let (k, _, rx) = b.stats()[0];
+        assert_eq!(k, pa);
+        assert!(rx > 0, "b rx={rx}");
     }
 
     #[test]

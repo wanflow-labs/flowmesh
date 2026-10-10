@@ -3,6 +3,8 @@
 //!
 //! Route selection is done by flowmesh-pathsock: direct (UDP) or DERP for each peer.
 
+use crate::EngineConfig;
+use crate::status::{EngineStatus, PeerStatus};
 use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
@@ -16,74 +18,17 @@ use flowmesh_proto::derp::{DerpMap, DerpNode};
 use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::path::PathBuf;
-use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 
 const TICK: Duration = Duration::from_millis(250);
 const MTU: u16 = 1280;
-const DEFAULT_PORT: u16 = 41641;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
-struct Args {
-    login_server: String,
-    authkey_file: PathBuf,
-    state: PathBuf,
-    hostname: String,
-    tun: String,
-    port: u16,
-    /// Debug only: write every disco/unknown message received (UDP and DERP) into this directory, for observation.
-    tap_dir: Option<PathBuf>,
-    /// Take over the system DNS (resolv.conf → 100.100.100.100), same as the official default `--accept-dns=true`.
-    accept_dns: bool,
-    /// Accept subnet routes advertised by peers (the official Linux default is off).
-    accept_routes: bool,
-}
-
-fn parse_args() -> Result<Args, String> {
-    let mut it = std::env::args().skip(1);
-    let (mut login, mut authkey, mut state, mut host) = (None, None, None, None);
-    let mut tun = "flowmesh0".to_string();
-    let mut port = DEFAULT_PORT;
-    let mut tap_dir = None;
-    let mut accept_dns = false;
-    let mut accept_routes = false;
-    while let Some(a) = it.next() {
-        let mut val = || it.next().ok_or(format!("{a} needs a value"));
-        match a.as_str() {
-            "--login-server" => login = Some(val()?),
-            "--authkey-file" => authkey = Some(PathBuf::from(val()?)),
-            "--state" => state = Some(PathBuf::from(val()?)),
-            "--hostname" => host = Some(val()?),
-            "--tun" => tun = val()?,
-            "--port" => {
-                let v = val()?;
-                port = v.parse().map_err(|_| format!("bad --port {v}"))?;
-            }
-            "--tap-dir" => tap_dir = Some(PathBuf::from(val()?)),
-            "--accept-dns" => accept_dns = true,
-            "--accept-routes" => accept_routes = true,
-            other => return Err(format!("unknown argument {other}")),
-        }
-    }
-    Ok(Args {
-        login_server: login.ok_or("--login-server is required")?,
-        authkey_file: authkey.ok_or("--authkey-file is required")?,
-        state: state.ok_or("--state is required")?,
-        hostname: host.ok_or("--hostname is required")?,
-        tun,
-        port,
-        tap_dir,
-        accept_dns,
-        accept_routes,
-    })
-}
-
 fn log(msg: impl std::fmt::Display) {
-    eprintln!("flowmesh-dev: {msg}");
+    eprintln!("flowmesh: {msg}");
 }
 
 struct OsRandom;
@@ -371,6 +316,65 @@ fn sync_routes(
     *installed = want;
 }
 
+/// How often the status snapshot is refreshed.
+const STATUS_INTERVAL: Duration = Duration::from_secs(1);
+
+fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
+    let relay = peer_home(n)
+        .and_then(|r| nm.derp_map.regions.get(&r))
+        .map(|r| r.region_code.clone())
+        .unwrap_or_default();
+    PeerStatus {
+        id: n.id,
+        public_key: n.key.to_string(),
+        host_name: n.hostinfo.hostname.clone(),
+        dns_name: n.name.clone(),
+        os: n.hostinfo.os.clone(),
+        tailscale_ips: n.addresses.iter().map(|a| a.addr()).collect(),
+        online: n.online.unwrap_or(false),
+        last_seen: n.last_seen.clone(),
+        relay,
+        exit_node_option: n.allowed_ips.iter().any(|p| p.prefix_len() == 0),
+        ..Default::default()
+    }
+}
+
+fn snapshot(nm: &NetMap, ps: &PathSock, dp: &Dataplane, now: Duration) -> EngineStatus {
+    let stats: HashMap<NodePublic, (u64, u64)> = dp
+        .stats()
+        .into_iter()
+        .map(|(k, tx, rx)| (k, (tx, rx)))
+        .collect();
+    let peers = nm
+        .peers
+        .values()
+        .map(|n| {
+            let mut s = peer_status(n, nm);
+            if let Route::Direct(addr) = ps.current_route(n.key, now) {
+                s.cur_addr = Some(addr);
+            }
+            if let Some((tx, rx)) = stats.get(&n.key) {
+                s.tx_bytes = *tx;
+                s.rx_bytes = *rx;
+                s.active = *tx + *rx > 0;
+            }
+            s
+        })
+        .collect();
+    let suffix = nm
+        .dns
+        .as_ref()
+        .and_then(|d| d.domains.first().cloned())
+        .unwrap_or_default();
+    EngineStatus {
+        self_node: nm.self_node.as_ref().map(|n| peer_status(n, nm)),
+        peers,
+        magic_dns_suffix: suffix.clone(),
+        tailnet_name: suffix,
+        health: Vec::new(),
+    }
+}
+
 fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
     dp.set_peers(
         nm.peers
@@ -464,7 +468,13 @@ impl Ctx {
     }
 }
 
-async fn run(args: Args) -> Result<(), String> {
+/// Run the engine until `stop` becomes true (or a fatal error). The status snapshot is published periodically through `status`.
+pub async fn run(
+    cfg: EngineConfig,
+    status: watch::Sender<EngineStatus>,
+    mut stop: watch::Receiver<bool>,
+) -> Result<(), String> {
+    let args = &cfg;
     if let Some(dir) = &args.tap_dir {
         std::fs::create_dir_all(dir).map_err(|e| format!("tap dir: {e}"))?;
     }
@@ -476,11 +486,7 @@ async fn run(args: Args) -> Result<(), String> {
             }
         }
     };
-    let authkey = std::fs::read_to_string(&args.authkey_file)
-        .map_err(|e| format!("read authkey: {e}"))?
-        .trim()
-        .to_string();
-    let keys = flowmesh_state::load_or_create(&args.state).map_err(|e| e.to_string())?;
+    let keys = flowmesh_state::load_or_create(&args.state_file).map_err(|e| e.to_string())?;
     // The disco key is regenerated on every start (see flowmesh-state).
     let disco = flowmesh_proto::key::DiscoPrivate::generate().map_err(|e| e.to_string())?;
     if let Some(dir) = &args.tap_dir {
@@ -504,7 +510,10 @@ async fn run(args: Args) -> Result<(), String> {
         .register(&RegisterRequest {
             version: CAPABILITY_VERSION,
             node_key: keys.node.public(),
-            auth: Some(RegisterAuth { auth_key: authkey }),
+            auth: args
+                .authkey
+                .clone()
+                .map(|auth_key| RegisterAuth { auth_key }),
             hostinfo: hostinfo.clone(),
             ..Default::default()
         })
@@ -708,11 +717,8 @@ async fn run(args: Args) -> Result<(), String> {
     }
     let quad100_dns = std::net::SocketAddrV4::new(QUAD100, 53);
     let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
-    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
-        .map_err(|e| format!("signal: {e}"))?;
-    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
-        .map_err(|e| format!("signal: {e}"))?;
     let start = Instant::now();
+    let mut last_publish: Option<Duration> = None;
     let mut ticker = tokio::time::interval(TICK);
     let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
     let mut udp_buf = vec![0u8; usize::from(u16::MAX)];
@@ -751,13 +757,12 @@ async fn run(args: Args) -> Result<(), String> {
                 }
                 Vec::new()
             }
-            _ = sigterm.recv() => {
-                restore_dns();
-                return Ok(());
-            }
-            _ = sigint.recv() => {
-                restore_dns();
-                return Ok(());
+            r = stop.changed() => {
+                if r.is_err() || *stop.borrow() {
+                    restore_dns();
+                    return Ok(());
+                }
+                Vec::new()
             }
             r = udp.recv_from(&mut udp_buf) => {
                 let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
@@ -850,6 +855,10 @@ async fn run(args: Args) -> Result<(), String> {
             _ = ticker.tick() => {
                 let acts = ctx.ps.tick(now, &mut ctx.rng);
                 ctx.run_actions(acts).await;
+                if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
+                    last_publish = Some(now);
+                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now));
+                }
                 dp.tick()
             }
         };
@@ -862,33 +871,6 @@ async fn run(args: Args) -> Result<(), String> {
                 }
                 Output::ToPeer(key, bytes) => ctx.send_to_peer(key, &bytes, now).await,
             }
-        }
-    }
-}
-
-pub fn main() -> ExitCode {
-    let args = match parse_args() {
-        Ok(a) => a,
-        Err(e) => {
-            eprintln!("flowmesh-dev: {e}");
-            return ExitCode::from(2);
-        }
-    };
-    let rt = match tokio::runtime::Builder::new_multi_thread()
-        .enable_all()
-        .build()
-    {
-        Ok(rt) => rt,
-        Err(e) => {
-            eprintln!("flowmesh-dev: runtime: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-    match rt.block_on(run(args)) {
-        Ok(()) => ExitCode::SUCCESS,
-        Err(e) => {
-            eprintln!("flowmesh-dev: {e}");
-            ExitCode::FAILURE
         }
     }
 }
