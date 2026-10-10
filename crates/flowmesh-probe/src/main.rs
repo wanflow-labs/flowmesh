@@ -9,7 +9,8 @@
 //! disco 模式（--derp-region）：连上该区域的 DERP 并把它报为本节点的 home，记录对端经 DERP 发来的
 //! disco 消息（用本次运行的 disco 私钥解密，写入 disco.tsv；私钥存为 disco.key，不得放进 fixtures）。
 //! 给了 --disco-to 时，连上 DERP 后等 --disco-delay（默认 5 秒，让对端先拿到本次的新 disco 公钥），
-//! 再把每个 --disco-payload（类型字节 + 版本字节 + 正文）封装后发给该对端。
+//! 再把每个 --disco-payload（类型字节 + 版本字节 + 正文）封装后发给该对端。payload 是十六进制，可含占位符
+//! `{self}`（本次的 disco 公钥）和 `{disco:<IP>}`（该节点当前的 disco 公钥），发送时按最新网络地图展开。
 
 mod disco;
 
@@ -35,7 +36,8 @@ struct Args {
     duration: Duration,
     derp_region: Option<u32>,
     disco_to: Option<IpAddr>,
-    disco_payloads: Vec<Vec<u8>>,
+    /// Payload templates: hex with `{self}` / `{disco:<ip>}` placeholders, expanded at send time.
+    disco_payloads: Vec<String>,
     disco_delay: Duration,
 }
 
@@ -66,7 +68,7 @@ fn parse_args() -> Result<Args, String> {
                 let v = val()?;
                 disco_to = Some(v.parse().map_err(|_| format!("bad --disco-to {v}"))?);
             }
-            "--disco-payload" => disco_payloads.push(disco::parse_hex(&val()?)?),
+            "--disco-payload" => disco_payloads.push(val()?),
             "--disco-delay" => {
                 let v = val()?;
                 disco_delay =
@@ -222,15 +224,19 @@ async fn run(args: Args) -> Result<(), String> {
     let mut derp_map: Option<DerpMap> = None;
     let mut names: HashMap<NodePublic, String> = HashMap::new();
     let mut received = 0usize;
-    let mut pending: Option<(tokio::time::Instant, flowmesh_proto::control::Node)> = None;
+    let mut pending: Option<(tokio::time::Instant, IpAddr)> = None;
+    let mut peers: Vec<flowmesh_proto::control::Node> = Vec::new();
     loop {
         let send_at = pending.as_ref().map(|(t, _)| *t);
         tokio::select! {
             _ = tokio::time::sleep_until(deadline) => break,
             _ = tokio::time::sleep_until(send_at.unwrap_or(deadline)), if send_at.is_some() => {
-                let (Some((_, peer)), Some(dm)) = (pending.take(), derp_map.as_ref()) else {
+                let (Some((_, ip)), Some(dm)) = (pending.take(), derp_map.as_ref()) else {
                     continue;
                 };
+                let peer = disco::find_peer(&peers, ip)
+                    .ok_or(format!("no peer with address {ip}"))?
+                    .clone();
                 let region = disco::peer_region(&peer)
                     .or(args.derp_region)
                     .ok_or("no DERP region to reach the peer")?;
@@ -238,11 +244,12 @@ async fn run(args: Args) -> Result<(), String> {
                     e.insert(connect_region(dm, region, &keys.node, &ev_tx).await?);
                 }
                 let sender = senders.get(&region).ok_or("DERP sender missing")?;
-                for payload in &args.disco_payloads {
+                for template in &args.disco_payloads {
+                    let payload = disco::parse_hex(&disco::expand(template, &disco.public(), &peers)?)?;
                     let mut nonce = [0u8; 24];
                     getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
                     let sealed =
-                        flowmesh_disco::envelope::seal(&disco, &peer.disco_key, payload, nonce)
+                        flowmesh_disco::envelope::seal(&disco, &peer.disco_key, &payload, nonce)
                             .map_err(|e| e.to_string())?;
                     sender
                         .send(peer.key, &sealed)
@@ -271,7 +278,8 @@ async fn run(args: Args) -> Result<(), String> {
                     m.peers_changed.len(),
                     m.peers_removed.len()
                 );
-                for p in m.peers.iter().flatten().chain(&m.peers_changed) {
+                disco::apply_map(&mut peers, m);
+                for p in &peers {
                     names.insert(p.key, p.name.clone());
                 }
                 if let Some(dm) = &m.derp_map {
@@ -283,12 +291,10 @@ async fn run(args: Args) -> Result<(), String> {
                     let s = connect_region(dm, home, &keys.node, &ev_tx).await?;
                     senders.insert(home, s);
                     if let Some(ip) = args.disco_to {
-                        let peers = m.peers.as_deref().unwrap_or_default();
-                        let peer = disco::find_peer(peers, ip)
-                            .ok_or(format!("no peer with address {ip}"))?;
                         // Our disco key is new this run: give the control server time to push it
-                        // to the peer, which drops messages sealed with a key it doesn't know.
-                        pending = Some((tokio::time::Instant::now() + args.disco_delay, peer.clone()));
+                        // to the peer, which drops messages sealed with a key it doesn't know. The
+                        // peer and the placeholders are looked up when the time comes.
+                        pending = Some((tokio::time::Instant::now() + args.disco_delay, ip));
                     }
                 }
                 seq += 1;

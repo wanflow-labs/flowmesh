@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Pure helpers for the probe's disco mode: which peer, which DERP node, how payloads are given and recorded.
 
-use flowmesh_proto::control::Node;
+use flowmesh_proto::control::{MapResponse, Node};
 use flowmesh_proto::derp::{DerpMap, DerpNode};
+use flowmesh_proto::key::DiscoPublic;
 use std::net::IpAddr;
 
 /// The peer that owns `ip` (any of its addresses).
@@ -10,6 +11,66 @@ pub fn find_peer(peers: &[Node], ip: IpAddr) -> Option<&Node> {
     peers
         .iter()
         .find(|p| p.addresses.iter().any(|a| a.addr() == ip))
+}
+
+/// Keep a peer table current from one map message: a full `Peers` list replaces it,
+/// `PeersChanged` replaces entries by ID, `PeersRemoved` drops them, and `PeersChangedPatch`
+/// updates the disco key, node key and home region in place.
+pub fn apply_map(peers: &mut Vec<Node>, m: &MapResponse) {
+    if let Some(full) = &m.peers {
+        *peers = full.clone();
+    }
+    for c in &m.peers_changed {
+        match peers.iter_mut().find(|p| p.id == c.id) {
+            Some(p) => *p = c.clone(),
+            None => peers.push(c.clone()),
+        }
+    }
+    peers.retain(|p| !m.peers_removed.contains(&p.id));
+    for patch in &m.peers_changed_patch {
+        if let Some(p) = peers.iter_mut().find(|p| p.id == patch.node_id) {
+            if let Some(k) = patch.disco_key {
+                p.disco_key = k;
+            }
+            if let Some(k) = patch.key {
+                p.key = k;
+            }
+            if let Some(r) = patch.derp_region {
+                p.home_derp = r;
+            }
+        }
+    }
+}
+
+/// Expand the placeholders of a payload template into hex: `{self}` is this node's disco public
+/// key, `{disco:<tailnet IP>}` that peer's current disco public key. The result goes to [`parse_hex`].
+pub fn expand(template: &str, me: &DiscoPublic, peers: &[Node]) -> Result<String, String> {
+    let mut out = String::new();
+    let mut rest = template;
+    while let Some(open) = rest.find('{') {
+        out.push_str(&rest[..open]);
+        let close = rest[open..]
+            .find('}')
+            .ok_or(format!("unclosed {{ in {template:?}"))?
+            + open;
+        let token = &rest[open + 1..close];
+        let key = if token == "self" {
+            *me
+        } else if let Some(ip) = token.strip_prefix("disco:") {
+            let ip: IpAddr = ip
+                .parse()
+                .map_err(|_| format!("bad address in {{{token}}}"))?;
+            find_peer(peers, ip)
+                .ok_or(format!("no peer with address {ip}"))?
+                .disco_key
+        } else {
+            return Err(format!("unknown placeholder {{{token}}}"));
+        };
+        out.extend(key.0.iter().map(|b| format!("{b:02x}")));
+        rest = &rest[close + 1..];
+    }
+    out.push_str(rest);
+    Ok(out)
 }
 
 /// The peer's home DERP region: `HomeDERP`, else the legacy `DERP` field `127.3.3.40:<region>`.
@@ -74,6 +135,71 @@ mod tests {
             Some("ts2")
         );
         assert!(find_peer(&peers, "100.64.0.9".parse().unwrap()).is_none());
+    }
+
+    fn with_id(id: i64, name: &str, ip: &str, disco: u8) -> Node {
+        Node {
+            id,
+            disco_key: DiscoPublic([disco; 32]),
+            ..node(name, ip)
+        }
+    }
+
+    #[test]
+    fn apply_map_replaces_updates_removes_and_patches() {
+        let mut peers = Vec::new();
+        apply_map(
+            &mut peers,
+            &MapResponse {
+                peers: Some(vec![
+                    with_id(1, "a", "100.64.0.1", 1),
+                    with_id(2, "b", "100.64.0.2", 2),
+                ]),
+                ..Default::default()
+            },
+        );
+        assert_eq!(peers.len(), 2);
+        apply_map(
+            &mut peers,
+            &MapResponse {
+                peers_changed: vec![
+                    with_id(2, "b2", "100.64.0.2", 2),
+                    with_id(3, "c", "100.64.0.3", 3),
+                ],
+                peers_removed: vec![1],
+                peers_changed_patch: vec![flowmesh_proto::control::PeerChange {
+                    node_id: 3,
+                    disco_key: Some(DiscoPublic([9; 32])),
+                    derp_region: Some(1001),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            },
+        );
+        let names: Vec<&str> = peers.iter().map(|p| p.name.as_str()).collect();
+        assert_eq!(names, ["b2", "c"]);
+        assert_eq!(peers[1].disco_key, DiscoPublic([9; 32]));
+        assert_eq!(peers[1].home_derp, 1001);
+    }
+
+    #[test]
+    fn expand_fills_self_and_peer_keys() {
+        let peers = vec![with_id(2, "b", "100.64.0.2", 0xbb)];
+        let me = DiscoPublic([0xaa; 32]);
+        let out = expand("08 00 {self} {disco:100.64.0.2} 00000001", &me, &peers).unwrap();
+        assert_eq!(
+            parse_hex(&out).unwrap(),
+            [&[0x08, 0x00][..], &[0xaa; 32], &[0xbb; 32], &[0, 0, 0, 1]].concat()
+        );
+        assert_eq!(expand("0800", &me, &peers).unwrap(), "0800");
+    }
+
+    #[test]
+    fn expand_rejects_unknown_peers_and_placeholders() {
+        let me = DiscoPublic([0xaa; 32]);
+        assert!(expand("{disco:100.64.0.9}", &me, &[]).is_err());
+        assert!(expand("{other}", &me, &[]).is_err());
+        assert!(expand("{self", &me, &[]).is_err());
     }
 
     #[test]

@@ -1,0 +1,19 @@
+{
+  "captured_at": "2026-10-10T14:42:02+00:00",
+  "files": [
+    "map-0000.json",
+    "notes.md",
+    "run-A-own-discokey.txt",
+    "run-A.tsv",
+    "run-B-own-discokey.txt",
+    "run-B.tsv",
+    "run-V1-own-discokey.txt",
+    "run-V1.tsv",
+    "run-V2-own-discokey.txt",
+    "run-V2.tsv"
+  ],
+  "label": "peer-relay-alloc-response",
+  "method": "two flowmesh-probe runs in fm1 send disco 0x08 to tsr over DERP using {self}/{disco:<ip>} payload templates; replies decrypted with each run's own disco key",
+  "note": "lab-only keys; public disco keys only, no private keys",
+  "official_client": "1.94.2"
+}
