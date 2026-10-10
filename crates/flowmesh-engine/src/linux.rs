@@ -543,7 +543,15 @@ pub async fn run(
     let disco = flowmesh_proto::key::DiscoPrivate::generate().map_err(|e| e.to_string())?;
     if let Some(dir) = &args.tap_dir {
         // Lab observation only: save this run's disco private key so tapped disco messages can be decrypted offline.
-        std::fs::write(dir.join("disco.key"), disco.to_hex())
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(dir.join("disco.key"))
+            .and_then(|mut f| f.write_all(disco.to_hex().as_bytes()))
             .map_err(|e| format!("tap key: {e}"))?;
     }
     let client = Arc::new(

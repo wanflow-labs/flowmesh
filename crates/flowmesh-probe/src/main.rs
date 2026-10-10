@@ -100,6 +100,20 @@ fn os_name() -> &'static str {
     }
 }
 
+/// Write a secret readable by the owner only (0600), whatever the umask.
+fn write_private(path: &Path, data: &[u8]) -> Result<(), String> {
+    use std::os::unix::fs::OpenOptionsExt as _;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))?;
+    f.write_all(data)
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
 fn write(dir: &Path, name: &str, data: &[u8]) -> Result<(), String> {
     std::fs::write(dir.join(name), data).map_err(|e| format!("write {name}: {e}"))
 }
@@ -134,7 +148,7 @@ async fn run(args: Args) -> Result<(), String> {
     };
     if args.derp_region.is_some() {
         // Lab observation only: lets disco.tsv be checked offline. Never copy it into fixtures.
-        write(&args.dump, "disco.key", disco.to_hex().as_bytes())?;
+        write_private(&args.dump.join("disco.key"), disco.to_hex().as_bytes())?;
     }
     let mut reg = RegisterRequest {
         version: CAPABILITY_VERSION,
