@@ -10,6 +10,26 @@ cargo build --release -p flowmesh-daemon -p flowmesh-cli
 
 ## 2. 安装
 
+### 用安装包（推荐）
+
+Debian / Ubuntu：
+
+```bash
+sudo dpkg -i flowmesh_<版本>_amd64.deb      # ARM 机器用 arm64
+sudo systemctl enable --now flowmeshd
+```
+
+RHEL / Rocky / Alma：
+
+```bash
+sudo rpm -i flowmesh-<版本>-1.x86_64.rpm    # ARM 机器用 aarch64
+sudo systemctl enable --now flowmeshd
+```
+
+安装包只安装文件，不会自动启用服务；卸载（`dpkg -r flowmesh` / `rpm -e flowmesh`）会先停止服务，但保留 `/var/lib/flowmesh` 里的节点身份，彻底清除需手动删除该目录。二进制为静态链接，没有任何依赖。每个发布都附带 `SHA256SUMS`，可按 [可复现构建](reproducible-builds.md) 自行重建核对。
+
+### 从源码构建
+
 ```bash
 sudo install -m 0755 target/release/flowmeshd /usr/sbin/flowmeshd
 sudo install -m 0755 target/release/flowmesh /usr/bin/flowmesh

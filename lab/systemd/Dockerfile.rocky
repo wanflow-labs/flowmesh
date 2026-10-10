@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: Apache-2.0
+# Rocky Linux 9 with systemd as PID 1, for package install tests (lab/scripts/package_check.sh).
+FROM rockylinux:9
+RUN dnf -y install systemd iproute iputils procps-ng && dnf clean all \
+ && systemctl mask getty@tty1.service systemd-logind.service console-getty.service
+STOPSIGNAL SIGRTMIN+3
+CMD ["/usr/sbin/init"]
