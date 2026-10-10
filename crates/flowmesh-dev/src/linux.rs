@@ -39,6 +39,8 @@ struct Args {
     tap_dir: Option<PathBuf>,
     /// Take over the system DNS (resolv.conf → 100.100.100.100), same as the official default `--accept-dns=true`.
     accept_dns: bool,
+    /// Accept subnet routes advertised by peers (the official Linux default is off).
+    accept_routes: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -48,6 +50,7 @@ fn parse_args() -> Result<Args, String> {
     let mut port = DEFAULT_PORT;
     let mut tap_dir = None;
     let mut accept_dns = false;
+    let mut accept_routes = false;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -62,6 +65,7 @@ fn parse_args() -> Result<Args, String> {
             }
             "--tap-dir" => tap_dir = Some(PathBuf::from(val()?)),
             "--accept-dns" => accept_dns = true,
+            "--accept-routes" => accept_routes = true,
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -74,6 +78,7 @@ fn parse_args() -> Result<Args, String> {
         port,
         tap_dir,
         accept_dns,
+        accept_routes,
     })
 }
 
@@ -329,6 +334,41 @@ fn forward_dns(
             let _ = tx.send(pkt).await;
         }
     });
+}
+
+/// Subnet routes advertised by peers: prefixes in AllowedIPs outside the mesh address ranges, excluding default routes (exit nodes are a separate feature).
+fn subnet_routes(nm: &NetMap) -> std::collections::BTreeSet<ipnet::IpNet> {
+    let mesh4: ipnet::IpNet = "100.64.0.0/10".parse().unwrap_or_default();
+    let mesh6: ipnet::IpNet = "fd7a:115c:a1e0::/48".parse().unwrap_or_default();
+    nm.peers
+        .values()
+        .flat_map(|n| n.allowed_ips.iter().copied())
+        .filter(|p| p.prefix_len() != 0 && !mesh4.contains(p) && !mesh6.contains(p))
+        .collect()
+}
+
+/// Bring the installed subnet routes in line with `want` (via the TUN).
+fn sync_routes(
+    tun: &str,
+    installed: &mut std::collections::BTreeSet<ipnet::IpNet>,
+    want: std::collections::BTreeSet<ipnet::IpNet>,
+) {
+    for gone in installed.difference(&want) {
+        let fam = if gone.addr().is_ipv4() { "-4" } else { "-6" };
+        if let Err(e) = ip(&[fam, "route", "del", &gone.to_string(), "dev", tun]) {
+            log(format!("route del {gone}: {e}"));
+        }
+    }
+    for new in want.difference(installed) {
+        let fam = if new.addr().is_ipv4() { "-4" } else { "-6" };
+        if let Err(e) = ip(&[fam, "route", "replace", &new.to_string(), "dev", tun]) {
+            log(format!("route add {new}: {e}"));
+        }
+    }
+    if *installed != want {
+        log(format!("subnet routes: {want:?}"));
+    }
+    *installed = want;
 }
 
 fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
@@ -662,6 +702,10 @@ async fn run(args: Args) -> Result<(), String> {
             }
         }
     };
+    let mut installed_routes = std::collections::BTreeSet::new();
+    if args.accept_routes {
+        sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
+    }
     let quad100_dns = std::net::SocketAddrV4::new(QUAD100, 53);
     let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
     let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
@@ -775,6 +819,9 @@ async fn run(args: Args) -> Result<(), String> {
                     if args.accept_dns && changed.dns {
                         take_over_dns(&ctx.nm)?;
                     }
+                }
+                if args.accept_routes && changed.peers {
+                    sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                 }
                 if changed.peers || changed.filter || changed.derp || changed.self_node {
                     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);

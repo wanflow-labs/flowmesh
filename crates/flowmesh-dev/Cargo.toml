@@ -24,6 +24,7 @@ flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
 flowmesh-stun = { version = "0.1.0", path = "../flowmesh-stun" }
 getrandom = "0.3"
+ipnet = "2.12.2"
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "process", "net", "signal"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
