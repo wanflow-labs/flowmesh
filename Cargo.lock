@@ -566,6 +566,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowmesh-netcfg"
+version = "0.1.0"
+
+[[package]]
 name = "flowmesh-noise"
 version = "0.1.0"
 dependencies = [
