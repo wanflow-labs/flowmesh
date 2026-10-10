@@ -27,12 +27,18 @@ struct Args {
     state: PathBuf,
     hostname: String,
     tun: String,
+    /// Debug only: write every non-WireGuard packet received via DERP into this directory (observation material for disco etc.).
+    tap_dir: Option<PathBuf>,
+    /// Debug only: send one disco Ping via DERP to every peer at startup (to observe the peer's Pong).
+    disco_probe: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let (mut login, mut authkey, mut state, mut host) = (None, None, None, None);
     let mut tun = "flowmesh0".to_string();
+    let mut tap_dir = None;
+    let mut disco_probe = false;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -41,6 +47,8 @@ fn parse_args() -> Result<Args, String> {
             "--state" => state = Some(PathBuf::from(val()?)),
             "--hostname" => host = Some(val()?),
             "--tun" => tun = val()?,
+            "--tap-dir" => tap_dir = Some(PathBuf::from(val()?)),
+            "--disco-probe" => disco_probe = true,
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -50,11 +58,18 @@ fn parse_args() -> Result<Args, String> {
         state: state.ok_or("--state is required")?,
         hostname: host.ok_or("--hostname is required")?,
         tun,
+        tap_dir,
+        disco_probe,
     })
 }
 
 fn log(msg: impl std::fmt::Display) {
     eprintln!("flowmesh-dev: {msg}");
+}
+
+/// A WireGuard message starts with a type byte 1–4 followed by three zero bytes (WireGuard whitepaper §5.4, PUB-2).
+fn looks_like_wireguard(b: &[u8]) -> bool {
+    b.len() >= 4 && (1..=4).contains(&b[0]) && b[1..4] == [0, 0, 0]
 }
 
 /// Choose the home relay: the lowest-numbered region that may be used as home and has a non-STUN-only node.
@@ -161,6 +176,9 @@ fn apply_netmap(dp: &mut Dataplane, nm: &NetMap, homes: &mut HashMap<NodePublic,
 }
 
 async fn run(args: Args) -> Result<(), String> {
+    if let Some(dir) = &args.tap_dir {
+        std::fs::create_dir_all(dir).map_err(|e| format!("tap dir: {e}"))?;
+    }
     let authkey = std::fs::read_to_string(&args.authkey_file)
         .map_err(|e| format!("read authkey: {e}"))?
         .trim()
@@ -283,6 +301,26 @@ async fn run(args: Args) -> Result<(), String> {
         }
     });
 
+    if args.disco_probe {
+        for peer in nm.peers.values().filter(|p| p.online == Some(true)) {
+            let mut tx_id = [0u8; flowmesh_disco::message::TX_ID_LEN];
+            getrandom::fill(&mut tx_id).map_err(|e| e.to_string())?;
+            let mut nonce = [0u8; flowmesh_disco::envelope::NONCE_LEN];
+            getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
+            let ping = flowmesh_disco::message::encode(&flowmesh_disco::message::Message::Ping {
+                tx_id,
+                node_key: keys.node.public(),
+            });
+            let sealed = flowmesh_disco::envelope::seal(&keys.disco, &peer.disco_key, &ping, nonce)
+                .map_err(|e| e.to_string())?;
+            let region = peer_home(peer).unwrap_or(home);
+            if let Some(s) = relays.sender(region, &nm.derp_map).await {
+                s.send(peer.key, &sealed).await.map_err(|e| e.to_string())?;
+                log(format!("disco ping -> {} tx={tx_id:02x?}", peer.name));
+            }
+        }
+    }
+
     let mut dp = Dataplane::new(keys.node.clone());
     let mut homes = HashMap::new();
     apply_netmap(&mut dp, &nm, &mut homes);
@@ -296,7 +334,17 @@ async fn run(args: Args) -> Result<(), String> {
                 dp.outbound(&buf[..n], start.elapsed())
             }
             Some((_region, ev)) = ev_rx.recv() => match ev {
-                Event::Packet { src, data } => dp.inbound(src, &data, start.elapsed()),
+                Event::Packet { src, data } => {
+                    if !looks_like_wireguard(&data) {
+                        if let Some(dir) = &args.tap_dir {
+                            let name = format!("derp-{:010}-{}.bin", start.elapsed().as_millis(), &src.to_string()[8..16]);
+                            if let Err(e) = std::fs::write(dir.join(name), &data) {
+                                log(format!("tap write: {e}"));
+                            }
+                        }
+                    }
+                    dp.inbound(src, &data, start.elapsed())
+                }
                 Event::Closed(reason) => {
                     log(format!("DERP connection closed: {reason}"));
                     Vec::new()

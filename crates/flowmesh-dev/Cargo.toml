@@ -15,9 +15,11 @@ workspace = true
 flowmesh-control = { version = "0.1.0", path = "../flowmesh-control" }
 flowmesh-dataplane = { version = "0.1.0", path = "../flowmesh-dataplane" }
 flowmesh-derp = { version = "0.1.0", path = "../flowmesh-derp" }
+flowmesh-disco = { version = "0.1.0", path = "../flowmesh-disco" }
 flowmesh-filter = { version = "0.1.0", path = "../flowmesh-filter" }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
+getrandom = "0.3"
 tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "process"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]

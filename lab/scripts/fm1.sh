@@ -12,9 +12,9 @@ dc() { docker compose exec -T "$@"; }
 case "${1:-}" in
   start)
     dc fm1 cargo build -q -p flowmesh-dev
-    dc fm1 sh -c 'pkill -x flowmesh-dev || true; ip link del flowmesh0 2>/dev/null || true
+    dc -e "FM1_ARGS=${FM1_ARGS:-}" fm1 sh -c 'pkill -x flowmesh-dev || true; ip link del flowmesh0 2>/dev/null || true
       nohup /target/debug/flowmesh-dev --login-server http://headscale.lab --authkey-file /src/lab/.authkey \
-        --state /target/fm1-state.json --hostname fm1 > /tmp/flowmesh-dev.log 2>&1 &'
+        --state /target/fm1-state.json --hostname fm1 ${FM1_ARGS:-} > /tmp/flowmesh-dev.log 2>&1 &'
     for _ in $(seq 1 30); do
       dc fm1 grep -q "flowmesh0 up" /tmp/flowmesh-dev.log 2>/dev/null && break
       sleep 1

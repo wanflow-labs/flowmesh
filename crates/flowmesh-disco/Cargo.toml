@@ -1,0 +1,21 @@
+[package]
+name = "flowmesh-disco"
+description = "flowmesh disco: path discovery message envelope and payloads (sans-IO)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+crypto_box = { version = "0.9.1", features = ["std", "salsa20"] }
+flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
+getrandom = "0.3"
+thiserror = "2.0.21"
+
+[dev-dependencies]
+flowmesh-state = { path = "../flowmesh-state" }
+serde_json = "1.0.151"

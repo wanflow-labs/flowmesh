@@ -470,11 +470,25 @@ dependencies = [
  "flowmesh-control",
  "flowmesh-dataplane",
  "flowmesh-derp",
+ "flowmesh-disco",
  "flowmesh-filter",
  "flowmesh-proto",
  "flowmesh-state",
+ "getrandom 0.3.4",
  "tokio",
  "tun-rs",
+]
+
+[[package]]
+name = "flowmesh-disco"
+version = "0.1.0"
+dependencies = [
+ "crypto_box",
+ "flowmesh-proto",
+ "flowmesh-state",
+ "getrandom 0.3.4",
+ "serde_json",
+ "thiserror",
 ]
 
 [[package]]

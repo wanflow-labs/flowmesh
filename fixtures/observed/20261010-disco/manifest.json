@@ -1,0 +1,8 @@
+{
+  "label": "disco",
+  "captured_at": "2026-10-10T01:30:00+00:00",
+  "official_client": "1.94.2",
+  "method": "flowmesh-dev --tap-dir writes every non-WireGuard packet received via DERP; flowmesh-disco example `dump` decrypts them with fm1's own disco private key. --disco-probe makes fm1 send one Ping per peer to elicit Pongs.",
+  "files": ["decrypted-from-ts1.tsv", "decrypted-pongs.tsv"],
+  "note": "Only decrypted payloads are stored; fm1's private key is not included."
+}
