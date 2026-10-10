@@ -35,7 +35,8 @@ docker compose cp fm1:/target/debug/flowmesh "$tmp/flowmesh" >/dev/null
 docker compose --profile systemd cp "$tmp/flowmeshd" fmsd:/usr/sbin/flowmeshd >/dev/null
 docker compose --profile systemd cp "$tmp/flowmesh" fmsd:/usr/bin/flowmesh >/dev/null
 docker compose --profile systemd cp ../packaging/systemd/flowmeshd.service fmsd:/etc/systemd/system/flowmeshd.service >/dev/null
-dc fmsd sh -c 'systemctl daemon-reload; systemctl enable --now flowmeshd' >/dev/null 2>&1
+# restart, not just enable --now: a running daemon would keep executing the old binary.
+dc fmsd sh -c 'systemctl daemon-reload; systemctl enable flowmeshd; systemctl restart flowmeshd' >/dev/null 2>&1
 for _ in $(seq 1 20); do dc fmsd test -S /run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
 fmsd status >/dev/null 2>&1 || fmsd up --login-server=http://headscale.lab --hostname=fmsd --accept-dns=false --authkey="$key" --timeout=30s >/dev/null
 fm1_ip=$(ip_of fm1); fmsd_ip=$(ip_of fmsd)
