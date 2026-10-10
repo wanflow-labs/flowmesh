@@ -5,8 +5,6 @@
 //! 用法：flowmesh-probe --login-server <url> --authkey-file <path> --state <path>
 //!       --hostname <name> --dump <dir> [--duration <秒>]
 
-mod state;
-
 use flowmesh_control::client::ControlClient;
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{Hostinfo, MapRequest, RegisterAuth, RegisterRequest};
@@ -70,7 +68,7 @@ async fn run(args: Args) -> Result<(), String> {
         .map_err(|e| format!("read authkey: {e}"))?
         .trim()
         .to_string();
-    let keys = state::load_or_create(&args.state).map_err(|e| e.to_string())?;
+    let keys = flowmesh_state::load_or_create(&args.state).map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&args.dump).map_err(|e| format!("create dump dir: {e}"))?;
 
     let client = ControlClient::connect(&args.login_server, &keys.machine)

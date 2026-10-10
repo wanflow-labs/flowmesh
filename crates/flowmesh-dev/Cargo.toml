@@ -1,0 +1,24 @@
+[package]
+name = "flowmesh-dev"
+description = "flowmesh development daemon: control + DERP + userspace WireGuard + TUN (Linux only, not a release artifact)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+flowmesh-control = { version = "0.1.0", path = "../flowmesh-control" }
+flowmesh-dataplane = { version = "0.1.0", path = "../flowmesh-dataplane" }
+flowmesh-derp = { version = "0.1.0", path = "../flowmesh-derp" }
+flowmesh-filter = { version = "0.1.0", path = "../flowmesh-filter" }
+flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
+flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
+tokio = { version = "1.53.2", features = ["rt-multi-thread", "macros", "time", "sync", "process"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+tun-rs = { version = "2.8.11", features = ["async_tokio"] }

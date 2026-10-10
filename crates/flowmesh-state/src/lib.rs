@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 探测程序的密钥状态文件：首次运行生成，之后读回同一组密钥。
+//! Node key state file: generated on first run, the same keys are read back afterwards. Permissions 0600, atomic writes.
 
 use flowmesh_proto::key::{DiscoPrivate, KeyError, MachinePrivate, NodePrivate};
 use serde::{Deserialize, Serialize};
@@ -23,24 +23,24 @@ struct StateFile {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub struct ProbeState {
+pub struct NodeState {
     pub machine: MachinePrivate,
     pub node: NodePrivate,
     pub disco: DiscoPrivate,
 }
 
-pub fn load_or_create(path: &Path) -> Result<ProbeState, StateError> {
+pub fn load_or_create(path: &Path) -> Result<NodeState, StateError> {
     match std::fs::read(path) {
         Ok(bytes) => {
             let f: StateFile = serde_json::from_slice(&bytes)?;
-            Ok(ProbeState {
+            Ok(NodeState {
                 machine: MachinePrivate::from_hex(&f.machine_private)?,
                 node: NodePrivate::from_hex(&f.node_private)?,
                 disco: DiscoPrivate::from_hex(&f.disco_private)?,
             })
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            let state = ProbeState {
+            let state = NodeState {
                 machine: MachinePrivate::generate()?,
                 node: NodePrivate::generate()?,
                 disco: DiscoPrivate::generate()?,
@@ -82,7 +82,7 @@ mod tests {
 
     fn temp_path(name: &str) -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
-            "flowmesh-probe-state-{}-{}",
+            "flowmesh-state-test-{}-{}",
             std::process::id(),
             name
         ));

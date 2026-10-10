@@ -68,6 +68,23 @@ services:
       lab:
         ipv4_address: 172.29.0.22
 
+  fm1:
+    build: ./dev
+    image: flowmesh-lab/dev:local
+    hostname: fm1
+    cap_add: [NET_ADMIN, NET_RAW]
+    devices: ["/dev/net/tun:/dev/net/tun"]
+    environment:
+      CARGO_TARGET_DIR: /target
+    volumes:
+      - ..:/src
+      - fm1-target:/target
+      - fm1-cargo:/usr/local/cargo/registry
+    depends_on: [headscale, derp]
+    networks:
+      lab:
+        ipv4_address: 172.29.0.31
+
 networks:
   lab:
     ipam:
@@ -75,6 +92,8 @@ networks:
         - subnet: 172.29.0.0/24
 
 volumes:
+  fm1-target:
+  fm1-cargo:
   headscale-data:
   headscale-run:
   ts1-state:
