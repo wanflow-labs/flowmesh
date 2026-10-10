@@ -9,7 +9,7 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: rustup show
       - run: cargo fmt --all -- --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
@@ -18,7 +18,7 @@ jobs:
   deny:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: EmbarkStudios/cargo-deny-action@v2
         with:
           command: check
@@ -26,13 +26,13 @@ jobs:
   similarity:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - uses: actions/checkout@v5
         with:
           repository: tailscale/tailscale
           ref: v1.94.2
           path: refs/tailscale
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           repository: juanfont/headscale
           ref: v0.26.0
@@ -41,13 +41,13 @@ jobs:
       - run: >
           cargo xtask similarity
           --reference refs/tailscale --reference refs/headscale
-          --allowlist docs/similarity-allowlist.txt crates xtask
+          --allowlist docs/similarity-allowlist.txt crates xtask fuzz
 
   dco:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
       - run: scripts/check-dco.sh "origin/${{ github.base_ref }}..HEAD"
