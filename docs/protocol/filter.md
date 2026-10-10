@@ -18,7 +18,7 @@ All judgments below are about **inbound** packets (sent to this node by a peer).
 
 | # | Semantics | Evidence (counterexample / positive example) |
 |---|---|---|
-| F1 | **TCP packets that are not SYN are always allowed**, regardless of rules | deny-all/tcp-ack-80, tcp-ack-9999, v6-tcp-ack-9999 are all delivered |
+| F1 | **Only a "pure SYN" (SYN set, ACK not set) counts as a new connection and needs a rule; every other TCP packet is always allowed** (ACK, FIN, RST, no flags, SYN-ACK) | deny-all/tcp-ack-*, tcp-fin-9001, tcp-rst-9001, tcp-null-9001, tcp-synack-9001 are all delivered; deny-all/tcp-synfin-9001 (SYN+FIN, no ACK) is not delivered, allow-all/tcp-synfin-9001 is delivered; acl-stateful: an unprompted SYN-ACK is also delivered |
 | F2 | A TCP SYN is allowed only if some rule matches all of: source address, destination address, destination port in range, and TCP in the protocol set | tcp-80: only tcp-syn-80 delivered; range-8000-8100: 8000 and 8100 delivered, 8101 not (closed interval) |
 | F3 | UDP uses the same matching as F2 (protocol must be UDP) | proto-udp: all udp-* delivered and no tcp-syn-*; proto-tcp-all-ports: no udp-* |
 | F4 | When `IPProto` is empty, the protocol set includes TCP and UDP; **GRE is not included** | allow-all: tcp/udp delivered, gre not; proto-gre: gre delivered |
@@ -27,7 +27,17 @@ All judgments below are about **inbound** packets (sent to this node by a peer).
 | F7 | **ICMPv4 errors (3 destination unreachable, 4 source quench, 5 redirect, 11 time exceeded, 12 parameter problem) are always dropped**, even under allow-all | allow-all/icmp-unreachable, icmp-time-exceeded, icmp-source-quench, icmp-redirect, icmp-param-problem are all not delivered. The probes carry no embedded original packet; whether an error with a valid embedded original packet is allowed is still pending (§4) |
 | F7b | **ICMPv6 errors (1 destination unreachable, 2 packet too big, 3 time exceeded) are always allowed**, even under deny-all; this is asymmetric with ICMPv4 | deny-all/v6-icmp6-unreachable, v6-icmp6-too-big, v6-icmp6-time-exceeded delivered. Note: the first implementation inferred "drop" from the RFC, mutation testing exposed that this logic had no observational basis, and the added observation showed the opposite |
 | F8 | Non-TCP/UDP/ICMP protocols (e.g. GRE) are allowed only when `IPProto` explicitly includes them and the addresses match | proto-gre/gre |
-| F9 | Packets from a source not covered by any rule are dropped (subject to the unconditional exceptions F1 and F6) | other-src, tcp-80-from-other-only |
+| F9 | Packets from a source not covered by any rule are dropped (subject to the unconditional exceptions F1, F6, F7b, F10) | other-src, tcp-80-from-other-only |
+
+## 2a. Stateful part
+
+Source: `OBS-20261010-acl-stateful/cases.json`. Policy allows only ts2 → ts1; observation is at the receiving end, ts2.
+
+| # | Semantics | Evidence |
+|---|---|---|
+| F10 | Replies to UDP flows this node initiated (exact 4-tuple match: the reply's source address/port = the outbound packet's destination address/port, and vice versa) are allowed even if the rules don't allow that direction | s2-udp-reply-after-outbound delivered; s2-control-other-sport (same destination port, different source port) not delivered |
+| F11 | TCP needs no state: replies (SYN-ACK etc.) are already allowed under F1 | s1-synack-after-outbound and s1-control-unsolicited-synack are both delivered |
+| F12 | ICMPv4 errors (port unreachable) are dropped even when they answer this node's own outbound flow | s3-icmp-port-unreachable-for-outbound not delivered; the control confirms ts1 did send it |
 
 ## 3. Security notes
 
@@ -37,7 +47,7 @@ All judgments below are about **inbound** packets (sent to this node by a peer).
 
 | Question | Plan |
 |---|---|
-| Whether return traffic for connections this node initiated (UDP replies, SYN-ACK) is allowed, and the timeout | M3 Task 3 |
-| Whether ICMP errors with a valid embedded original packet are allowed (related to F7) | M3 Task 3 |
+| **Lifetime of a UDP flow record**: not observed; flowmesh provisionally uses 120 seconds (`UDP_FLOW_TTL`) | Observe once there is a long-running test environment (M8 soak test) |
+| **Attribution**: every probe passes through the sender ts1's outbound filter and then the receiver ts2's inbound filter, so the observations are the result of both combined. When every node runs flowmesh, consistency is unaffected; in mixed deployments, which side drops a packet matters (e.g. F7/F12 could be dropped at the sender's outbound) | In M4, once flowmesh can inject packets directly over WireGuard (bypassing the sender's filter), observe again and attribute |
 | Packets whose destination is a subnet route (not this node's address) | M6 (subnet routes) |
 | IP fragments | M5 (once the data plane can carry fragments) |

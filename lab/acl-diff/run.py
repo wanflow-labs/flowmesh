@@ -44,6 +44,8 @@ def probes(ts1, ts2, ts1_6, ts2_6):
         out.append({"id": f"tcp-syn-{port}", "proto": "tcp", "dport": port, "tcp_flags": "S"})
     for port in [80, 9999]:
         out.append({"id": f"tcp-ack-{port}", "proto": "tcp", "dport": port, "tcp_flags": "A"})
+    for flags, name in [("F", "fin"), ("R", "rst"), ("", "null"), ("SA", "synack"), ("SF", "synfin")]:
+        out.append({"id": f"tcp-{name}-9001", "proto": "tcp", "dport": 9001, "tcp_flags": flags})
     for port in [53, 8050, 40000]:
         out.append({"id": f"udp-{port}", "proto": "udp", "dport": port, "tcp_flags": ""})
     out.append({"id": "icmp-echo", "proto": "icmp", "dport": 0, "tcp_flags": "", "icmp_type": 8})
@@ -113,7 +115,10 @@ def classify(fields):
         return None
     if proto == "6":
         flags = int(tflags, 16) if tflags else 0
-        kind = "syn" if flags & 0x02 else "ack"
+        if tdport == "9001":
+            kind = {0x01: "fin", 0x04: "rst", 0x00: "null", 0x12: "synack", 0x03: "synfin"}.get(flags & 0x17, f"flags{flags:x}")
+        else:
+            kind = "syn" if flags & 0x02 else "ack"
         return f"tcp-{kind}-{tdport}"
     if proto == "17":
         return f"udp-{udport}"

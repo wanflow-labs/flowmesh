@@ -1,0 +1,148 @@
+{
+  "observed": {
+    "control-ts1-actually-sent-icmp-port-unreachable": true,
+    "s1-control-unsolicited-synack": true,
+    "s1-synack-after-outbound": true,
+    "s2-control-other-sport": false,
+    "s2-udp-reply-after-outbound": true,
+    "s3-icmp-port-unreachable-for-outbound": false
+  },
+  "policy": {
+    "acls": [
+      {
+        "action": "accept",
+        "dst": [
+          "100.64.0.1:*"
+        ],
+        "src": [
+          "100.64.0.2"
+        ]
+      }
+    ],
+    "tagOwners": {
+      "tag:relay-enabled": [
+        "lab@"
+      ]
+    }
+  },
+  "raw_packets_seen_at_ts2": [
+    {
+      "icmp": [
+        "",
+        ""
+      ],
+      "proto": "6",
+      "tcp": [
+        "5555",
+        "59516",
+        "0x0012"
+      ],
+      "udp": [
+        "",
+        ""
+      ]
+    },
+    {
+      "icmp": [
+        "",
+        ""
+      ],
+      "proto": "6",
+      "tcp": [
+        "5555",
+        "59516",
+        "0x0011"
+      ],
+      "udp": [
+        "",
+        ""
+      ]
+    },
+    {
+      "icmp": [
+        "",
+        ""
+      ],
+      "proto": "6",
+      "tcp": [
+        "7777",
+        "46666",
+        "0x0012"
+      ],
+      "udp": [
+        "",
+        ""
+      ]
+    },
+    {
+      "icmp": [
+        "3",
+        "3"
+      ],
+      "proto": "1,17",
+      "tcp": [
+        "",
+        "",
+        ""
+      ],
+      "udp": [
+        "47000",
+        "5353"
+      ]
+    },
+    {
+      "icmp": [
+        "",
+        ""
+      ],
+      "proto": "17",
+      "tcp": [
+        "",
+        "",
+        ""
+      ],
+      "udp": [
+        "5353",
+        "47000"
+      ]
+    },
+    {
+      "icmp": [
+        "3",
+        "3"
+      ],
+      "proto": "1,17",
+      "tcp": [
+        "",
+        "",
+        ""
+      ],
+      "udp": [
+        "48000",
+        "9"
+      ]
+    }
+  ],
+  "rules": [
+    {
+      "CapGrant": [
+        {
+          "Caps": [
+            "tailscale.com/cap/relay",
+            "tailscale.com/cap/relay-target"
+          ],
+          "Dsts": [
+            "100.64.0.0/10",
+            "fd7a:115c:a1e0::/48"
+          ]
+        }
+      ],
+      "SrcIPs": [
+        "*"
+      ]
+    }
+  ],
+  "rules_changed": false,
+  "ts1": "100.64.0.1",
+  "ts2": "100.64.0.2"
+}

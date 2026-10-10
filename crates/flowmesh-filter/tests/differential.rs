@@ -38,11 +38,10 @@ fn packet(p: &Probe) -> Packet {
         other => panic!("unknown probe proto {other}"),
     };
     let mut flags = 0;
-    if p.tcp_flags.contains('S') {
-        flags |= TCP_SYN;
-    }
-    if p.tcp_flags.contains('A') {
-        flags |= TCP_ACK;
+    for (c, bit) in [('F', 0x01), ('S', TCP_SYN), ('R', 0x04), ('A', TCP_ACK)] {
+        if p.tcp_flags.contains(c) {
+            flags |= bit;
+        }
     }
     Packet {
         proto,
@@ -66,9 +65,10 @@ fn matches_official_client_on_every_observed_probe() {
     let mut total = 0;
     for case in &cases {
         let filter = Filter::new(compile(&case.rules).unwrap());
+        let now = std::time::Duration::ZERO;
         for probe in &case.probes {
             total += 1;
-            let got = filter.check_in(&packet(probe)) == Verdict::Accept;
+            let got = filter.check_in(&packet(probe), now) == Verdict::Accept;
             if got != probe.delivered {
                 mismatches.push(format!(
                     "{}/{}: official delivered={} flowmesh accept={}",
@@ -83,5 +83,74 @@ fn matches_official_client_on_every_observed_probe() {
         "{} mismatches:\n{}",
         mismatches.len(),
         mismatches.join("\n")
+    );
+}
+
+#[derive(Deserialize)]
+struct Stateful {
+    rules: Vec<FilterRule>,
+    ts1: String,
+    ts2: String,
+    observed: std::collections::BTreeMap<String, bool>,
+}
+
+fn v4(proto: IpProto, src: &str, sport: u16, dst: &str, dport: u16, flags: u8, icmp: u8) -> Packet {
+    Packet {
+        proto,
+        src: src.parse().unwrap(),
+        dst: dst.parse().unwrap(),
+        src_port: sport,
+        dst_port: dport,
+        tcp_flags: flags,
+        icmp_type: icmp,
+    }
+}
+
+/// Replay the stateful sequences (OBS-20261010-acl-stateful) on the receiver ts2's filter.
+#[test]
+fn matches_official_client_on_stateful_sequences() {
+    let s: Stateful = serde_json::from_str(include_str!(
+        "../../../fixtures/observed/20261010-acl-stateful/cases.json"
+    ))
+    .unwrap();
+    assert!(s.observed["control-ts1-actually-sent-icmp-port-unreachable"]);
+    let (ts1, ts2) = (s.ts1.as_str(), s.ts2.as_str());
+    let mut f = Filter::new(compile(&s.rules).unwrap());
+    let t0 = std::time::Duration::from_secs(1000);
+    let accept = |v: Verdict| v == Verdict::Accept;
+
+    // s1: ts2 → ts1:5555 SYN goes out first; then ts1's SYN-ACK comes in.
+    f.check_out(&v4(IpProto::Tcp, ts2, 46000, ts1, 5555, TCP_SYN, 0), t0);
+    let synack = v4(IpProto::Tcp, ts1, 5555, ts2, 46000, TCP_SYN | TCP_ACK, 0);
+    assert_eq!(
+        accept(f.check_in(&synack, t0)),
+        s.observed["s1-synack-after-outbound"]
+    );
+    // s1 control: an unsolicited SYN-ACK.
+    let unsolicited = v4(IpProto::Tcp, ts1, 7777, ts2, 46666, TCP_SYN | TCP_ACK, 0);
+    assert_eq!(
+        accept(f.check_in(&unsolicited, t0)),
+        s.observed["s1-control-unsolicited-synack"]
+    );
+
+    // s2: UDP flow.
+    f.check_out(&v4(IpProto::Udp, ts2, 47000, ts1, 5353, 0, 0), t0);
+    let reply = v4(IpProto::Udp, ts1, 5353, ts2, 47000, 0, 0);
+    assert_eq!(
+        accept(f.check_in(&reply, t0)),
+        s.observed["s2-udp-reply-after-outbound"]
+    );
+    let other = v4(IpProto::Udp, ts1, 5354, ts2, 47000, 0, 0);
+    assert_eq!(
+        accept(f.check_in(&other, t0)),
+        s.observed["s2-control-other-sport"]
+    );
+
+    // s3: ICMP port unreachable following an outbound UDP packet.
+    f.check_out(&v4(IpProto::Udp, ts2, 48000, ts1, 9, 0, 0), t0);
+    let unreach = v4(IpProto::Icmp4, ts1, 0, ts2, 0, 0, 3);
+    assert_eq!(
+        accept(f.check_in(&unreach, t0)),
+        s.observed["s3-icmp-port-unreachable-for-outbound"]
     );
 }

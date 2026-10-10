@@ -1,0 +1,10 @@
+{
+  "label": "acl-stateful",
+  "captured_at": "2026-10-09T23:50:44+00:00",
+  "method": "lab/acl-diff/stateful.py",
+  "files": [
+    "cases.json",
+    "stateful.pcap",
+    "stateful-ts1-egress.pcap"
+  ]
+}
