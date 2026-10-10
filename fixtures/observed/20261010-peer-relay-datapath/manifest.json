@@ -1,0 +1,14 @@
+{
+  "captured_at": "2026-10-10T14:45:05+00:00",
+  "files": [
+    "notes.md",
+    "ts1-netmap.json",
+    "ts1-status.json",
+    "tsr-pcap.txt",
+    "tsr.pcap"
+  ],
+  "label": "peer-relay-datapath",
+  "method": "tcpdump (nicolaka/netshoot:v0.13) in tsr's network namespace, udp port 40000, while ts1 reaches ts2 via the peer relay; analysed with lab/scripts/peer_relay_pcap.py",
+  "note": "lab-only keys; WireGuard and disco payloads are encrypted in the capture",
+  "official_client": "1.94.2"
+}

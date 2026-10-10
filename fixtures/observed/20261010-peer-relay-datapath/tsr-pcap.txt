@@ -1,0 +1,577 @@
+   0.000  relay->172.29.0.11  len=  40  head=000100142112a442535877ca4910ff7d
+   0.000  relay->172.29.0.12  len=  40  head=000100142112a4427d01a430d87f6632
+   0.001  172.29.0.11->relay  len=  44  head=010100182112a442535877ca4910ff7d
+   0.001  172.29.0.12->relay  len=  44  head=010100182112a4427d01a430d87f6632
+   1.372  ts1->relay  len= 160  disco@8 from=ts1
+   1.372  ts2-u3o8zwr3->relay  len= 160  disco@8 from=ts2-u3o8zwr3
+   1.373  relay->ts1  len= 160  disco@8 from=b5d72284
+   1.373  ts1->relay  len= 160  disco@8 from=ts1
+   1.373  ts1->relay  len= 132  disco@8 from=ts1
+   1.373  relay->ts2-u3o8zwr3  len= 160  disco@8 from=b5d72284
+   1.373  ts2-u3o8zwr3->relay  len= 160  disco@8 from=ts2-u3o8zwr3
+   1.373  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+   1.373  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+   1.373  ts1->relay  len= 132  disco@8 from=ts1
+   1.373  ts1->relay  len= 118  disco@8 from=ts1
+   1.373  relay->ts2-u3o8zwr3  len= 250  disco@8 from=ts1
+   1.373  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   1.373  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+   1.373  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   1.373  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+   1.373  ts1->relay  len= 118  disco@8 from=ts1
+   1.373  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+   3.530  ts1->relay  len= 132  disco@8 from=ts1
+   3.531  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   3.531  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   3.531  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   4.370  ts1->relay  len= 132  disco@8 from=ts1
+   4.371  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   4.371  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   4.372  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   4.693  ts1->relay  len= 156  head=00007a1200000400010000007ac62dd0
+   4.693  ts1->relay  len= 132  disco@8 from=ts1
+   4.693  relay->ts2-u3o8zwr3  len= 288  disco@164 from=ts1
+   4.693  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   4.693  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   4.694  ts2-u3o8zwr3->relay  len= 100  head=00007a12000004000200000004a2f783
+   4.694  relay->ts1  len= 100  head=00007a12000004000200000004a2f783
+   4.694  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   4.694  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   4.694  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   4.694  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   5.694  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   5.694  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   5.695  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   5.695  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   5.696  ts1->relay  len= 132  disco@8 from=ts1
+   5.696  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   5.696  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   5.696  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   6.696  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   6.696  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   6.697  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   6.697  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   6.704  ts1->relay  len= 132  disco@8 from=ts1
+   6.704  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   6.704  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   6.704  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   7.377  ts1->relay  len= 132  disco@8 from=ts1
+   7.377  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   7.377  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   7.377  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   7.697  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   7.697  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+   7.698  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+   7.698  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   7.698  ts1->relay  len= 118  disco@8 from=ts1
+   7.698  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   7.698  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+   7.698  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   7.710  ts1->relay  len= 132  disco@8 from=ts1
+   7.710  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   7.710  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   7.710  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   8.700  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   8.701  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   8.701  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   8.701  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   8.715  ts1->relay  len= 132  disco@8 from=ts1
+   8.716  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   8.716  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   8.716  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+   9.706  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+   9.706  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+   9.707  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+   9.707  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+   9.724  ts1->relay  len= 132  disco@8 from=ts1
+   9.728  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+   9.729  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+   9.729  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  10.378  ts1->relay  len= 132  disco@8 from=ts1
+  10.378  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  10.378  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  10.378  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  10.703  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  10.705  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  10.705  ts1->relay  len= 118  disco@8 from=ts1
+  10.706  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  10.711  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  10.711  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  10.712  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  10.712  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  10.736  ts1->relay  len= 132  disco@8 from=ts1
+  10.737  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  10.737  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  10.737  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  11.714  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  11.714  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  11.715  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  11.715  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  11.745  ts1->relay  len= 132  disco@8 from=ts1
+  11.745  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  11.745  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  11.745  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  12.719  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  12.719  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  12.719  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  12.719  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  12.747  ts1->relay  len= 132  disco@8 from=ts1
+  12.748  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  12.748  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  12.748  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  13.378  ts1->relay  len= 132  disco@8 from=ts1
+  13.378  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  13.378  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  13.378  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  13.704  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  13.704  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  13.705  ts1->relay  len= 118  disco@8 from=ts1
+  13.705  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  13.728  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  13.728  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  13.729  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  13.729  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  13.755  ts1->relay  len= 132  disco@8 from=ts1
+  13.755  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  13.755  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  13.755  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  14.728  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  14.729  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  14.730  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  14.730  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  14.760  ts1->relay  len= 132  disco@8 from=ts1
+  14.760  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  14.760  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  14.760  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  15.735  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  15.736  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  15.736  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  15.737  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  15.765  ts1->relay  len= 132  disco@8 from=ts1
+  15.767  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  15.767  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  15.767  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  16.378  ts1->relay  len= 132  disco@8 from=ts1
+  16.378  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  16.378  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  16.379  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  16.710  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  16.710  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  16.710  ts1->relay  len= 118  disco@8 from=ts1
+  16.710  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  16.743  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  16.743  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  16.744  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  16.744  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  16.771  ts1->relay  len= 132  disco@8 from=ts1
+  16.771  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  16.771  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  16.771  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  17.748  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  17.748  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  17.748  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  17.749  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  17.779  ts1->relay  len= 132  disco@8 from=ts1
+  17.779  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  17.779  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  17.779  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  18.753  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  18.753  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  18.753  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  18.753  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  18.786  ts1->relay  len= 132  disco@8 from=ts1
+  18.786  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  18.787  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  18.787  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  19.382  ts1->relay  len= 132  disco@8 from=ts1
+  19.382  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  19.383  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  19.383  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  19.712  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  19.712  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  19.712  ts1->relay  len= 118  disco@8 from=ts1
+  19.712  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  19.760  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  19.760  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  19.760  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  19.760  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  19.793  ts1->relay  len= 132  disco@8 from=ts1
+  19.793  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  19.793  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  19.793  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  20.759  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  20.760  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  20.760  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  20.760  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  20.800  ts1->relay  len= 132  disco@8 from=ts1
+  20.800  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  20.800  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  20.801  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  21.764  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  21.764  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  21.764  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  21.765  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  21.810  ts1->relay  len= 132  disco@8 from=ts1
+  21.811  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  21.811  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  21.811  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  22.129  relay->172.29.0.11  len=  40  head=000100142112a442f7f5cc3742c8b87d
+  22.129  relay->172.29.0.12  len=  40  head=000100142112a44224cd28ca870b3b14
+  22.129  172.29.0.11->relay  len=  44  head=010100182112a442f7f5cc3742c8b87d
+  22.129  172.29.0.12->relay  len=  44  head=010100182112a44224cd28ca870b3b14
+  22.384  ts1->relay  len= 132  disco@8 from=ts1
+  22.385  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  22.385  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  22.385  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  22.713  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  22.714  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  22.714  ts1->relay  len= 118  disco@8 from=ts1
+  22.715  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  22.767  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  22.767  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  22.768  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  22.768  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  22.817  ts1->relay  len= 132  disco@8 from=ts1
+  22.818  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  22.818  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  22.818  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  23.769  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  23.769  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  23.770  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  23.770  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  23.829  ts1->relay  len= 132  disco@8 from=ts1
+  23.829  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  23.830  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  23.830  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  24.772  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  24.772  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  24.773  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  24.773  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  24.834  ts1->relay  len= 132  disco@8 from=ts1
+  24.834  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  24.835  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  24.835  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  25.385  ts1->relay  len= 132  disco@8 from=ts1
+  25.385  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  25.385  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  25.386  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  25.719  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  25.719  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  25.719  ts1->relay  len= 118  disco@8 from=ts1
+  25.719  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  25.776  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  25.776  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  25.776  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  25.776  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  25.844  ts1->relay  len= 132  disco@8 from=ts1
+  25.844  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  25.844  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  25.844  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  26.778  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  26.778  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  26.779  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  26.779  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  26.850  ts1->relay  len= 132  disco@8 from=ts1
+  26.850  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  26.851  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  26.851  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  27.781  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  27.781  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  27.781  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  27.783  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  27.857  ts1->relay  len= 132  disco@8 from=ts1
+  27.857  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  27.859  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  27.859  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  28.390  ts1->relay  len= 132  disco@8 from=ts1
+  28.390  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  28.391  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  28.391  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  28.721  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  28.721  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  28.722  ts1->relay  len= 118  disco@8 from=ts1
+  28.722  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  28.786  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  28.786  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  28.787  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  28.787  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  28.866  ts1->relay  len= 132  disco@8 from=ts1
+  28.866  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  28.866  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  28.867  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  29.790  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  29.793  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  29.794  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  29.794  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  29.873  ts1->relay  len= 132  disco@8 from=ts1
+  29.873  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  29.873  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  29.873  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  30.793  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  30.793  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  30.794  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  30.794  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  30.881  ts1->relay  len= 132  disco@8 from=ts1
+  30.882  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  30.882  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  30.882  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  31.393  ts1->relay  len= 132  disco@8 from=ts1
+  31.393  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  31.393  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  31.393  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  31.726  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  31.726  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  31.726  ts1->relay  len= 118  disco@8 from=ts1
+  31.726  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  31.796  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  31.796  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  31.797  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  31.797  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  31.887  ts1->relay  len= 132  disco@8 from=ts1
+  31.888  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  31.888  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  31.888  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  32.802  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  32.802  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  32.803  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  32.803  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  32.893  ts1->relay  len= 132  disco@8 from=ts1
+  32.893  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  32.893  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  32.893  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  33.809  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  33.809  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  33.810  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  33.810  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  33.900  ts1->relay  len= 132  disco@8 from=ts1
+  33.901  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  33.901  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  33.901  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  34.396  ts1->relay  len= 132  disco@8 from=ts1
+  34.396  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  34.397  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  34.397  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  34.728  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  34.728  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  34.728  ts1->relay  len= 118  disco@8 from=ts1
+  34.728  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  34.815  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  34.817  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  34.818  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  34.818  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  34.905  ts1->relay  len= 132  disco@8 from=ts1
+  34.906  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  34.906  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  34.906  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  35.820  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  35.820  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  35.821  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  35.821  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  35.913  ts1->relay  len= 132  disco@8 from=ts1
+  35.913  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  35.914  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  35.914  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  36.827  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  36.827  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  36.828  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  36.828  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  36.920  ts1->relay  len= 132  disco@8 from=ts1
+  36.920  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  36.920  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  36.920  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  37.402  ts1->relay  len= 132  disco@8 from=ts1
+  37.402  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  37.402  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  37.402  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  37.729  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  37.729  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  37.730  ts1->relay  len= 118  disco@8 from=ts1
+  37.730  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  37.833  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  37.833  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  37.834  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  37.834  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  37.927  ts1->relay  len= 132  disco@8 from=ts1
+  37.927  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  37.927  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  37.928  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  38.838  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  38.839  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  38.839  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  38.839  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  38.933  ts1->relay  len= 132  disco@8 from=ts1
+  38.933  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  38.933  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  38.933  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  39.844  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  39.844  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  39.845  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  39.845  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  39.936  ts1->relay  len= 132  disco@8 from=ts1
+  39.936  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  39.936  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  39.937  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  40.403  ts1->relay  len= 132  disco@8 from=ts1
+  40.403  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  40.403  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  40.403  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  40.731  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  40.731  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  40.731  ts1->relay  len= 118  disco@8 from=ts1
+  40.731  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  40.846  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  40.846  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  40.847  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  40.847  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  40.943  ts1->relay  len= 132  disco@8 from=ts1
+  40.943  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  40.943  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  40.943  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  41.854  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  41.854  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  41.854  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  41.854  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  41.953  ts1->relay  len= 132  disco@8 from=ts1
+  41.953  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  41.954  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  41.954  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  42.861  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  42.862  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  42.862  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  42.862  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  42.963  ts1->relay  len= 132  disco@8 from=ts1
+  42.963  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  42.964  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  42.964  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  43.409  ts1->relay  len= 132  disco@8 from=ts1
+  43.409  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  43.410  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  43.411  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  43.734  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  43.734  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  43.734  ts1->relay  len= 118  disco@8 from=ts1
+  43.735  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  43.867  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  43.867  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  43.867  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  43.867  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  43.968  ts1->relay  len= 132  disco@8 from=ts1
+  43.968  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  43.968  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  43.969  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  44.030  relay->172.29.0.11  len=  40  head=000100142112a4426001f5782baa84b8
+  44.031  relay->172.29.0.12  len=  40  head=000100142112a442117bf028c4642865
+  44.031  172.29.0.11->relay  len=  44  head=010100182112a4426001f5782baa84b8
+  44.031  172.29.0.12->relay  len=  44  head=010100182112a442117bf028c4642865
+  44.874  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  44.874  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  44.875  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  44.875  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  44.971  ts1->relay  len= 132  disco@8 from=ts1
+  44.972  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  44.972  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  44.972  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  45.879  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  45.879  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  45.880  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  45.880  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  45.978  ts1->relay  len= 132  disco@8 from=ts1
+  45.978  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  45.978  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  45.978  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  46.413  ts1->relay  len= 132  disco@8 from=ts1
+  46.413  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  46.414  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  46.414  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  46.735  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  46.735  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  46.735  ts1->relay  len= 118  disco@8 from=ts1
+  46.735  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  46.905  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  46.905  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  46.905  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  46.906  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  46.982  ts1->relay  len= 132  disco@8 from=ts1
+  46.982  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  46.982  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  46.982  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  47.911  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  47.912  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  47.912  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  47.912  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  47.987  ts1->relay  len= 132  disco@8 from=ts1
+  47.987  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  47.987  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  47.988  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  48.915  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  48.915  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  48.915  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  48.915  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  48.995  ts1->relay  len= 132  disco@8 from=ts1
+  48.995  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  48.996  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  48.996  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  49.414  ts1->relay  len= 132  disco@8 from=ts1
+  49.415  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  49.415  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  49.415  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  49.737  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  49.738  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  49.738  ts1->relay  len= 118  disco@8 from=ts1
+  49.738  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  49.916  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  49.917  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  49.918  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  49.918  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  49.999  ts1->relay  len= 132  disco@8 from=ts1
+  49.999  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  50.000  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  50.000  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  50.923  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  50.923  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  50.924  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  50.924  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  51.007  ts1->relay  len= 132  disco@8 from=ts1
+  51.008  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  51.008  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  51.008  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  51.928  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  51.929  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  51.929  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  51.929  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  52.018  ts1->relay  len= 132  disco@8 from=ts1
+  52.019  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  52.019  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  52.019  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  52.418  ts1->relay  len= 132  disco@8 from=ts1
+  52.418  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  52.419  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  52.419  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  52.739  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  52.739  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  52.739  ts1->relay  len= 118  disco@8 from=ts1
+  52.739  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
+  52.931  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  52.931  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  52.932  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  52.932  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  53.022  ts1->relay  len= 132  disco@8 from=ts1
+  53.022  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  53.023  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  53.023  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  53.948  ts1->relay  len= 136  head=00007a12000004000400000004a2f783
+  53.948  relay->ts2-u3o8zwr3  len= 136  head=00007a12000004000400000004a2f783
+  53.949  ts2-u3o8zwr3->relay  len= 136  head=00007a1200000400040000007ac62dd0
+  53.949  relay->ts1  len= 136  head=00007a1200000400040000007ac62dd0
+  54.025  ts1->relay  len= 132  disco@8 from=ts1
+  54.028  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  54.028  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  54.028  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  55.419  ts1->relay  len= 132  disco@8 from=ts1
+  55.419  relay->ts2-u3o8zwr3  len= 132  disco@8 from=ts1
+  55.420  ts2-u3o8zwr3->relay  len= 118  disco@8 from=ts2-u3o8zwr3
+  55.420  relay->ts1  len= 118  disco@8 from=ts2-u3o8zwr3
+  55.741  ts2-u3o8zwr3->relay  len= 132  disco@8 from=ts2-u3o8zwr3
+  55.741  relay->ts1  len= 132  disco@8 from=ts2-u3o8zwr3
+  55.741  ts1->relay  len= 118  disco@8 from=ts1
+  55.741  relay->ts2-u3o8zwr3  len= 118  disco@8 from=ts1
