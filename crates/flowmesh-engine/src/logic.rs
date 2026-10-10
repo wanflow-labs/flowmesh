@@ -239,7 +239,8 @@ pub(crate) fn unix_now() -> i64 {
 /// the official client (control.md §8).
 /// Peers that may serve this node as a peer relay server: the packet filter grants this node
 /// `cap/relay-target` from them, i.e. the right to allocate relay endpoints on them (peer-relay.md §1).
-/// Peers without a home region cannot be asked over DERP; expired peers are skipped.
+/// Only peers we can ask: online, not expired, and with a home region present in our DERP map (the
+/// map is per node, so a peer's region may be missing from ours).
 pub(crate) fn relay_candidates(nm: &NetMap, now_unix: i64) -> Vec<flowmesh_udprelay::Candidate> {
     const RELAY_TARGET: &str = "tailscale.com/cap/relay-target";
     let mine: Vec<IpAddr> = nm
@@ -249,16 +250,18 @@ pub(crate) fn relay_candidates(nm: &NetMap, now_unix: i64) -> Vec<flowmesh_udpre
         .collect();
     let rules = nm.filter_rules();
     let mut out: Vec<flowmesh_udprelay::Candidate> = live_peers(nm, now_unix)
+        .filter(|n| n.online == Some(true))
         .filter(|n| {
             n.addresses.iter().any(|a| {
                 flowmesh_filter::caps::peer_caps(&rules, a.addr(), &mine).contains_key(RELAY_TARGET)
             })
         })
         .filter_map(|n| {
+            let region = peer_home(n).filter(|r| nm.derp_map.regions.contains_key(r))?;
             Some(flowmesh_udprelay::Candidate {
                 node: n.key,
                 disco: n.disco_key,
-                home_region: Some(peer_home(n)?),
+                home_region: Some(region),
             })
         })
         .collect();
@@ -1062,6 +1065,9 @@ mod tests {
             }),
             ..Default::default()
         };
+        for r in [1000, 1001] {
+            nm.derp_map.regions.insert(r, Default::default());
+        }
         let peer = |id: i64, home: u32, expiry: &str| Node {
             id,
             key: NodePublic([id as u8; 32]),
@@ -1069,15 +1075,24 @@ mod tests {
             addresses: vec![format!("100.64.0.{id}/32").parse().unwrap()],
             home_derp: home,
             key_expiry: (!expiry.is_empty()).then(|| expiry.to_string()),
+            online: Some(true),
             ..Default::default()
         };
         nm.peers.insert(1, peer(1, 1000, ""));
+        nm.peers.insert(
+            7,
+            Node {
+                online: Some(false),
+                ..peer(7, 1000, "")
+            },
+        ); // offline
+        nm.peers.insert(8, peer(8, 1002, "")); // home region not in our DERP map
         nm.peers.insert(2, peer(2, 0, "")); // granted, but no home region
         nm.peers.insert(3, peer(3, 1001, "")); // not granted
         nm.peers.insert(4, peer(4, 1001, "")); // granted cap/relay only: it may use us, not we it
         nm.peers.insert(5, peer(5, 1000, "2026-10-10T06:00:00Z")); // expired
         let rules: Vec<flowmesh_proto::filter::FilterRule> = serde_json::from_value(serde_json::json!([
-            { "SrcIPs": ["100.64.0.1", "100.64.0.2", "100.64.0.5"], "DstPorts": [],
+            { "SrcIPs": ["100.64.0.1", "100.64.0.2", "100.64.0.5", "100.64.0.7", "100.64.0.8"], "DstPorts": [],
               "CapGrant": [{ "Caps": ["tailscale.com/cap/relay-target"], "Dsts": ["100.64.0.6/32"] }] },
             { "SrcIPs": ["100.64.0.4"], "DstPorts": [],
               "CapGrant": [{ "Caps": ["tailscale.com/cap/relay"], "Dsts": ["100.64.0.6/32"] }] }
