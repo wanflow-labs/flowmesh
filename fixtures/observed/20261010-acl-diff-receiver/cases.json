@@ -1,0 +1,5268 @@
+[
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "allow-all",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "*:*"
+          ],
+          "src": [
+            "*"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": true,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "0.0.0.0/0",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "::/0",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "SrcIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": false
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "deny-all",
+    "policy": {
+      "acls": [],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "tcp-80",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:80"
+          ],
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 80,
+              "Last": 80
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 80,
+              "Last": 80
+            }
+          }
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "range-8000-8100",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:8000-8100"
+          ],
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 8000,
+              "Last": 8100
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 8000,
+              "Last": 8100
+            }
+          }
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "list-22-443",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:22,443"
+          ],
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": true,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 22,
+              "Last": 22
+            }
+          },
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 443,
+              "Last": 443
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 22,
+              "Last": 22
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 443,
+              "Last": 443
+            }
+          }
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "proto-udp",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:*"
+          ],
+          "proto": "udp",
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "IPProto": [
+          17
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "proto-icmp",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:*"
+          ],
+          "proto": "icmp",
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "IPProto": [
+          1,
+          58
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "other-src",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:*"
+          ],
+          "src": [
+            "100.64.0.99"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "SrcIPs": [
+          "100.64.0.99/32"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "dst-other",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.99:*"
+          ],
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "proto-tcp-all-ports",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:*"
+          ],
+          "proto": "tcp",
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": true,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "IPProto": [
+          6
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "proto-gre",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:*"
+          ],
+          "proto": "gre",
+          "src": [
+            "100.64.0.5"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "IPProto": [
+          47
+        ],
+        "SrcIPs": [
+          "100.64.0.5/32",
+          "fd7a:115c:a1e0::5/128"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "tcp-80-from-other-only",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "100.64.0.1:80"
+          ],
+          "src": [
+            "100.64.0.99"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": false,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": false,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": false,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": false,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "100.64.0.1/32",
+            "Ports": {
+              "First": 80,
+              "Last": 80
+            }
+          },
+          {
+            "IP": "fd7a:115c:a1e0::1/128",
+            "Ports": {
+              "First": 80,
+              "Last": 80
+            }
+          }
+        ],
+        "SrcIPs": [
+          "100.64.0.99/32"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  },
+  {
+    "local_ips": [
+      "100.64.0.1",
+      "fd7a:115c:a1e0::1"
+    ],
+    "name": "allow-all-again",
+    "policy": {
+      "acls": [
+        {
+          "action": "accept",
+          "dst": [
+            "*:*"
+          ],
+          "src": [
+            "*"
+          ]
+        }
+      ],
+      "tagOwners": {
+        "tag:relay-enabled": [
+          "lab@"
+        ]
+      }
+    },
+    "probes": [
+      {
+        "delivered": true,
+        "dport": 22,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-22",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 443,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-443",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8000,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8000",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8100,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8100",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-8101",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 65535,
+        "dst": "100.64.0.1",
+        "id": "tcp-syn-65535",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-80",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "100.64.0.1",
+        "id": "tcp-ack-9999",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-fin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "F"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-rst-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "R"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-null-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synack-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SA"
+      },
+      {
+        "delivered": true,
+        "dport": 9001,
+        "dst": "100.64.0.1",
+        "id": "tcp-synfin-9001",
+        "proto": "tcp",
+        "src": "100.64.0.5",
+        "tcp_flags": "SF"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "100.64.0.1",
+        "id": "udp-53",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 8050,
+        "dst": "100.64.0.1",
+        "id": "udp-8050",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 40000,
+        "dst": "100.64.0.1",
+        "id": "udp-40000",
+        "proto": "udp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 8,
+        "id": "icmp-echo",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 0,
+        "id": "icmp-echo-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 13,
+        "id": "icmp-timestamp",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 14,
+        "id": "icmp-timestamp-reply",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 3,
+        "id": "icmp-unreachable",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 11,
+        "id": "icmp-time-exceeded",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 4,
+        "id": "icmp-source-quench",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 5,
+        "id": "icmp-redirect",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "icmp_type": 12,
+        "id": "icmp-param-problem",
+        "proto": "icmp",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": false,
+        "dport": 0,
+        "dst": "100.64.0.1",
+        "id": "gre",
+        "proto": "gre",
+        "src": "100.64.0.5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 80,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-80",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 8101,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-syn-8101",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "S"
+      },
+      {
+        "delivered": true,
+        "dport": 9999,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-tcp-ack-9999",
+        "proto": "tcp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": "A"
+      },
+      {
+        "delivered": true,
+        "dport": 53,
+        "dst": "fd7a:115c:a1e0::1",
+        "id": "v6-udp-53",
+        "proto": "udp",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 128,
+        "id": "v6-icmp6-echo",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 129,
+        "id": "v6-icmp6-echo-reply",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 1,
+        "id": "v6-icmp6-unreachable",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 2,
+        "id": "v6-icmp6-too-big",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      },
+      {
+        "delivered": true,
+        "dport": 0,
+        "dst": "fd7a:115c:a1e0::1",
+        "icmp_type": 3,
+        "id": "v6-icmp6-time-exceeded",
+        "proto": "icmp6",
+        "src": "fd7a:115c:a1e0::5",
+        "tcp_flags": ""
+      }
+    ],
+    "rules": [
+      {
+        "DstPorts": [
+          {
+            "IP": "0.0.0.0/0",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          },
+          {
+            "IP": "::/0",
+            "Ports": {
+              "First": 0,
+              "Last": 65535
+            }
+          }
+        ],
+        "SrcIPs": [
+          "0.0.0.0/0",
+          "::/0"
+        ]
+      },
+      {
+        "CapGrant": [
+          {
+            "Caps": [
+              "tailscale.com/cap/relay",
+              "tailscale.com/cap/relay-target"
+            ],
+            "Dsts": [
+              "100.64.0.0/10",
+              "fd7a:115c:a1e0::/48"
+            ]
+          }
+        ],
+        "SrcIPs": [
+          "*"
+        ]
+      }
+    ],
+    "rules_changed": true
+  }
+]

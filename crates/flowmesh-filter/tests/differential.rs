@@ -56,10 +56,21 @@ fn packet(p: &Probe) -> Packet {
 
 #[test]
 fn matches_official_client_on_every_observed_probe() {
-    let cases: Vec<Case> = serde_json::from_str(include_str!(
+    check_cases(include_str!(
         "../../../fixtures/observed/20261010-acl-diff/cases.json"
-    ))
-    .unwrap();
+    ));
+}
+
+/// Receiver-side only: flowmesh as the sender (no outbound filter), official ts1 as the receiver (filter.md §4 attribution).
+#[test]
+fn matches_official_receiver_when_sender_does_not_filter() {
+    check_cases(include_str!(
+        "../../../fixtures/observed/20261010-acl-diff-receiver/cases.json"
+    ));
+}
+
+fn check_cases(raw: &str) {
+    let cases: Vec<Case> = serde_json::from_str(raw).unwrap();
     assert!(cases.len() >= 13);
     let mut mismatches = Vec::new();
     let mut total = 0;

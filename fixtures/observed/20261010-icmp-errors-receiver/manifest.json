@@ -1,0 +1,10 @@
+{
+  "label": "icmp-errors-receiver",
+  "captured_at": "2026-10-10T00:36:43+00:00",
+  "method": "lab/acl-diff/icmp_errors.py",
+  "files": [
+    "cases.json",
+    "allow-all.pcap",
+    "deny-all.pcap"
+  ]
+}

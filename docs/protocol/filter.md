@@ -22,12 +22,11 @@ All judgments below are about **inbound** packets (sent to this node by a peer).
 | F2 | A TCP SYN is allowed only if some rule matches all of: source address, destination address, destination port in range, and TCP in the protocol set | tcp-80: only tcp-syn-80 delivered; range-8000-8100: 8000 and 8100 delivered, 8101 not (closed interval) |
 | F3 | UDP uses the same matching as F2 (protocol must be UDP) | proto-udp: all udp-* delivered and no tcp-syn-*; proto-tcp-all-ports: no udp-* |
 | F4 | When `IPProto` is empty, the protocol set includes TCP and UDP; **GRE is not included** | allow-all: tcp/udp delivered, gre not; proto-gre: gre delivered |
-| F5 | **ICMP request types (echo 8, timestamp 13, timestamp reply 14, ICMPv6 echo 128)**: allowed as long as some rule's source and destination addresses match, **ignoring ports and the rule's `IPProto`** | tcp-80, proto-udp, proto-gre: icmp-echo is delivered under all three; other-src, deny-all: not delivered |
-| F6 | **ICMP echo reply (0) and ICMPv6 echo reply (129) are always allowed** | deny-all/icmp-echo-reply, v6-icmp6-echo-reply delivered |
-| F7 | **ICMPv4 errors (3 destination unreachable, 4 source quench, 5 redirect, 11 time exceeded, 12 parameter problem) are always dropped**, even under allow-all | allow-all/icmp-unreachable, icmp-time-exceeded, icmp-source-quench, icmp-redirect, icmp-param-problem are all not delivered. An error with a valid embedded original packet is dropped too, see F12 |
-| F7b | **ICMPv6 errors (1 destination unreachable, 2 packet too big, 3 time exceeded) are always allowed**, even under deny-all; this is asymmetric with ICMPv4 | deny-all/v6-icmp6-unreachable, v6-icmp6-too-big, v6-icmp6-time-exceeded delivered. Note: the first implementation inferred "drop" from the RFC, mutation testing exposed that this logic had no observational basis, and the added observation showed the opposite |
+| F5 | **Other ICMP types (echo 8, timestamp 13/14, source quench 4, redirect 5, parameter problem 12, ICMPv6 echo 128)**: allowed as long as some rule's source and destination addresses match, **ignoring ports and the rule's `IPProto`** | tcp-80, proto-udp, proto-gre: these types are all delivered; deny-all, other-src: not delivered |
+| F6 | **ICMP echo reply (v4 type 0, v6 type 129) is always allowed** | deny-all/icmp-echo-reply, v6-icmp6-echo-reply delivered |
+| F7 | **The error messages path discovery depends on are always allowed: ICMPv4 destination unreachable 3 and time exceeded 11; ICMPv6 destination unreachable 1, packet too big 2, time exceeded 3**, regardless of rules and of the embedded original packet | deny-all and other-src: these types are all delivered; OBS-20261010-icmp-errors-receiver: errors with garbage or valid embedded packets, related or unrelated, are all delivered under both allow-all and deny-all. ICMPv6 parameter problem (4) is not observed and is handled per F5 |
 | F8 | Non-TCP/UDP/ICMP protocols (e.g. GRE) are allowed only when `IPProto` explicitly includes them and the addresses match | proto-gre/gre |
-| F9 | Packets from a source not covered by any rule are dropped (subject to the unconditional exceptions F1, F6, F7b, F10) | other-src, tcp-80-from-other-only |
+| F9 | Packets from a source not covered by any rule are dropped (subject to the unconditional exceptions F1, F6, F7, F10) | other-src, tcp-80-from-other-only |
 
 ## 2a. Stateful part
 
@@ -37,7 +36,7 @@ Source: `OBS-20261010-acl-stateful/cases.json`. Policy allows only ts2 → ts1; 
 |---|---|---|
 | F10 | Replies to UDP flows this node initiated (exact 4-tuple match: the reply's source address/port = the outbound packet's destination address/port, and vice versa) are allowed even if the rules don't allow that direction | s2-udp-reply-after-outbound delivered; s2-control-other-sport (same destination port, different source port) not delivered |
 | F11 | TCP needs no state: replies (SYN-ACK etc.) are already allowed under F1 | s1-synack-after-outbound and s1-control-unsolicited-synack are both delivered |
-| F12 | ICMPv4 errors (port unreachable) are dropped even when they answer this node's own outbound flow | s3-icmp-port-unreachable-for-outbound not delivered; the control confirms ts1 did send it |
+| F12 | An ICMP error for this node's outbound flow is delivered (consistent with F7; no flow state needed) | s3-icmp-port-unreachable-for-outbound delivered |
 
 ## 3. Security notes
 
@@ -48,6 +47,16 @@ Source: `OBS-20261010-acl-stateful/cases.json`. Policy allows only ts2 → ts1; 
 | Question | Plan |
 |---|---|
 | **Lifetime of a UDP flow record**: not observed; flowmesh provisionally uses 120 seconds (`UDP_FLOW_TTL`) | Observe once there is a long-running test environment (M8 soak test) |
-| **Attribution**: every probe passes through the sender ts1's outbound filter and then the receiver ts2's inbound filter, so the observations are the result of both combined. When every node runs flowmesh, consistency is unaffected; in mixed deployments, which side drops a packet matters (e.g. F7/F12 could be dropped at the sender's outbound) | In M4, once flowmesh can inject packets directly over WireGuard (bypassing the sender's filter), observe again and attribute |
+| ~~Attribution~~ **Resolved (M4)**: with flowmesh as the sender (no outbound filtering) and the official ts1 as the receiver, the full matrix (OBS-20261010-acl-diff-receiver) is **exactly identical** to the M3 combined result, so every semantic above belongs to the receiver's inbound filtering, which is consistent with flowmesh's implementation | — |
 | Packets whose destination is a subnet route (not this node's address) | M6 (subnet routes) |
 | IP fragments | M5 (once the data plane can carry fragments) |
+
+## 5. Measurement error record
+
+The first version of F7 read "ICMPv4 errors are always dropped", and F12 read "dropped even when they answer this node's own outbound flow". **Both were wrong**: they came from a bug in the collection script, not from official behavior.
+
+- **Cause**: tshark parses the payload of an ICMPv4 error as an embedded packet. The text payload starts with `i` (0x69), so it was read as an IPv6 header and `ipv6.nxt` was filled with a garbage value. The classification code checked for IPv6 fields first, so these IPv4 packets were treated as IPv6 and discarded, i.e. counted as "not delivered". The stateful script did not handle multi-valued fields such as `ip.proto` = `1,17`.
+- **Consequence**: the first implementation dropped ICMPv4 destination unreachable / time exceeded. That would break path MTU discovery (fragmentation needed is type 3 code 4).
+- **How it was found**: an attribution experiment in M4 hand-built an ICMP error that was delivered, which contradicted the record. Inspecting the raw pcaps showed these packets had in fact arrived.
+- **Fix**: classify by the outer IP version and take only the first value of multi-valued fields. All the original pcaps were saved, so `run.py --reparse` re-derived the results without rerunning the lab. The "v4/v6 asymmetry" finding that mutation testing had prompted was likewise an artifact of this bug.
+- **Lesson**: "not delivered" observations need control evidence of the same kind. When an observation contradicts intuition, first check the measurement pipeline (raw pcap), then build an explanation.

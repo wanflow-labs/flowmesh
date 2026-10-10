@@ -1,0 +1,66 @@
+{
+  "errors": [
+    {
+      "code": 3,
+      "embed": "garbage",
+      "id": "garbage",
+      "type": 3
+    },
+    {
+      "code": 3,
+      "embed": "x8",
+      "id": "x8",
+      "type": 3
+    },
+    {
+      "code": 3,
+      "embed": "ip",
+      "id": "related",
+      "idport": 5353,
+      "idst": "100.64.0.5",
+      "isport": 47000,
+      "isrc": "100.64.0.1",
+      "type": 3
+    },
+    {
+      "code": 3,
+      "embed": "ip",
+      "id": "unrelated",
+      "idport": 5399,
+      "idst": "100.64.0.5",
+      "isport": 47099,
+      "isrc": "100.64.0.1",
+      "type": 3
+    },
+    {
+      "code": 0,
+      "embed": "ip",
+      "id": "time-exceeded-related",
+      "idport": 5353,
+      "idst": "100.64.0.5",
+      "isport": 47000,
+      "isrc": "100.64.0.1",
+      "type": 11
+    }
+  ],
+  "fm1": "100.64.0.5",
+  "observed": {
+    "allow-all": {
+      "garbage": true,
+      "related": true,
+      "time-exceeded-related": true,
+      "unrelated": true,
+      "x8": true
+    },
+    "deny-all": {
+      "garbage": true,
+      "related": true,
+      "time-exceeded-related": true,
+      "unrelated": true,
+      "x8": true
+    }
+  },
+  "receiver": "ts1 (official 1.94.2)",
+  "sender": "fm1 (flowmesh, no outbound filter)",
+  "ts1": "100.64.0.1"
+}

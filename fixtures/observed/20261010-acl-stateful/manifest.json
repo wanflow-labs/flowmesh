@@ -1,6 +1,6 @@
 {
   "label": "acl-stateful",
-  "captured_at": "2026-10-09T23:50:44+00:00",
+  "captured_at": "2026-10-10T00:36:19+00:00",
   "method": "lab/acl-diff/stateful.py",
   "files": [
     "cases.json",

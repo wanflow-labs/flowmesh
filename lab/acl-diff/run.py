@@ -19,6 +19,11 @@ HERE = os.path.join(LAB, "acl-diff")
 NETSHOOT = "nicolaka/netshoot:v0.13"
 OTHER = "100.64.0.99"
 TS1_C, TS2_C = "flowmesh-lab-ts1-1", "flowmesh-lab-ts2-1"
+# Roles can be overridden by environment variables. Default: ts1 sends, ts2 receives (sender outbound + receiver inbound).
+# FLOWMESH_ACL_SENDER=fm1 FLOWMESH_ACL_RECEIVER=ts1: flowmesh does no outbound filtering, so this observes only the receiver's inbound filter.
+SENDER = os.environ.get("FLOWMESH_ACL_SENDER", "ts1")
+RECEIVER = os.environ.get("FLOWMESH_ACL_RECEIVER", "ts2")
+LABEL = os.environ.get("FLOWMESH_ACL_LABEL", "acl-diff")
 
 
 def sh(args, **kw):
@@ -29,12 +34,16 @@ def compose(*args, stdin=None):
     return sh(["docker", "compose", "-f", os.path.join(LAB, "compose.yaml"), "exec", "-T", *args], input=stdin)
 
 
-def ts_ip(svc):
-    return compose(svc, "tailscale", "ip", "-4").strip()
+def ts_ip(svc, family="-4"):
+    if svc.startswith("fm"):
+        fam = "inet" if family == "-4" else "inet6"
+        out = compose(svc, "sh", "-c", f"ip -o addr show flowmesh0 | awk '$3==\"{fam}\" && $4 !~ /^fe80/ {{print $4}}'")
+        return out.strip().split("/")[0]
+    return compose(svc, "tailscale", "ip", family).strip()
 
 
 def ts2_rules():
-    netmap = json.loads(compose("ts2", "tailscale", "debug", "netmap"))
+    netmap = json.loads(compose(RECEIVER, "tailscale", "debug", "netmap"))
     return netmap.get("PacketFilterRules") or []
 
 
@@ -101,8 +110,13 @@ def wait_rules_change(before, timeout=30):
 
 
 def classify(fields):
+    # A packet that carries an embedded IP header (e.g. an ICMP error) gets multiple comma-separated values for a field such as "1,17";
+    # take only the first value, i.e. the outer header. Ignoring this once made every ICMPv4 error count as "not delivered" (see filter.md §5).
+    fields = [f.split(",")[0] for f in fields]
     proto, tdport, tflags, udport, icmptype, nxt, icmp6type = (fields + [""] * 7)[:7]
-    if nxt:
+    # Classify by the outer IP version: when ip.proto is present the packet is IPv4. tshark parses the payload of an ICMPv4 error
+    # as an embedded packet and may fill ipv6.nxt with a garbage value; checking nxt first once made every ICMPv4 error count as "not delivered".
+    if nxt and not proto:
         prefix = "v6-"
         if nxt == "6":
             flags = int(tflags, 16) if tflags else 0
@@ -134,15 +148,19 @@ def classify(fields):
 def capture_and_send(name, plist, workdir, ts1, ts1_6):
     pcap = f"{name}.pcap"
     cap = f"acl-cap-{os.getpid()}"
-    sh(["docker", "run", "-d", "--rm", "--name", cap, "--net", f"container:{TS2_C}",
+    sh(["docker", "run", "-d", "--rm", "--name", cap, "--net", f"container:flowmesh-lab-{RECEIVER}-1",
         "-v", f"{workdir}:/out", NETSHOOT, "tcpdump", "-i", "tailscale0", "-n", "-U",
         "-w", f"/out/{pcap}", "src", "host", ts1, "or", "src", "host", ts1_6])
     time.sleep(2)
     with open(os.path.join(workdir, "probes.json"), "w") as f:
         json.dump(plist, f)
-    sh(["docker", "run", "--rm", "--net", f"container:{TS1_C}", "--cap-add", "NET_RAW",
-        "-v", f"{HERE}:/w:ro", "-v", f"{workdir}:/out", NETSHOOT,
-        "python3", "/w/send_probes.py", "/out/probes.json", "0.3"])
+    if SENDER.startswith("fm"):
+        rel = os.path.relpath(workdir, ROOT)
+        compose(SENDER, "python3", "/src/lab/acl-diff/send_probes.py", f"/src/{rel}/probes.json", "0.3")
+    else:
+        sh(["docker", "run", "--rm", "--net", f"container:flowmesh-lab-{SENDER}-1", "--cap-add", "NET_RAW",
+            "-v", f"{HERE}:/w:ro", "-v", f"{workdir}:/out", NETSHOOT,
+            "python3", "/w/send_probes.py", "/out/probes.json", "0.3"])
     time.sleep(2)
     sh(["docker", "stop", cap])
     fields = sh(["docker", "run", "--rm", "-v", f"{workdir}:/out", NETSHOOT, "tshark", "-r", f"/out/{pcap}",
@@ -156,13 +174,35 @@ def capture_and_send(name, plist, workdir, ts1, ts1_6):
     return seen
 
 
+def reparse(out_dir):
+    """Recompute delivered from the saved pcaps (the lab is not needed)."""
+    path = os.path.join(out_dir, "cases.json")
+    cases = json.load(open(path))
+    changed = 0
+    for case in cases:
+        fields = sh(["docker", "run", "--rm", "-v", f"{os.path.join(out_dir, 'pcap')}:/out", NETSHOOT, "tshark", "-r",
+                     f"/out/{case['name']}.pcap", "-T", "fields", "-e", "ip.proto", "-e", "tcp.dstport", "-e", "tcp.flags",
+                     "-e", "udp.dstport", "-e", "icmp.type", "-e", "ipv6.nxt", "-e", "icmpv6.type"])
+        seen = {k for k in (classify(l.split("\t")) for l in fields.splitlines()) if k}
+        for p in case["probes"]:
+            new = p["id"] in seen
+            if new != p["delivered"]:
+                print(f"{case['name']}/{p['id']}: {p['delivered']} -> {new}")
+                changed += 1
+            p["delivered"] = new
+    with open(path, "w") as f:
+        json.dump(cases, f, indent=2, sort_keys=True)
+    print(f"reparsed {path}: {changed} probes changed")
+
+
 def main():
-    ts1, ts2 = ts_ip("ts1"), ts_ip("ts2")
-    ts1_6 = compose("ts1", "tailscale", "ip", "-6").strip()
-    ts2_6 = compose("ts2", "tailscale", "ip", "-6").strip()
-    ts2_all = compose("ts2", "tailscale", "ip").split()
+    if len(sys.argv) == 3 and sys.argv[1] == "--reparse":
+        return reparse(sys.argv[2])
+    ts1, ts2 = ts_ip(SENDER), ts_ip(RECEIVER)
+    ts1_6, ts2_6 = ts_ip(SENDER, "-6"), ts_ip(RECEIVER, "-6")
+    ts2_all = compose(RECEIVER, "tailscale", "ip").split()
     date = datetime.date.today().strftime("%Y%m%d")
-    out_dir = os.path.join(ROOT, "fixtures", "observed", f"{date}-acl-diff")
+    out_dir = os.path.join(ROOT, "fixtures", "observed", f"{date}-{LABEL}")
     work = os.path.join(out_dir, "pcap")
     os.makedirs(work, exist_ok=True)
     mapping = {"ts1": ts1, "ts2": ts2, "other": OTHER}
@@ -181,8 +221,8 @@ def main():
     with open(os.path.join(out_dir, "cases.json"), "w") as f:
         json.dump(cases, f, indent=2, sort_keys=True)
     with open(os.path.join(out_dir, "manifest.json"), "w") as f:
-        json.dump({"label": "acl-diff", "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-                   "official_client": compose("ts2", "tailscale", "version").splitlines()[0],
+        json.dump({"label": LABEL, "sender": SENDER, "receiver": RECEIVER, "captured_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
+                   "official_client": compose(RECEIVER, "tailscale", "version").splitlines()[0],
                    "method": "lab/acl-diff/run.py: per policy, scapy probes from ts1 (raw socket) to ts2; tcpdump on ts2 tailscale0",
                    "files": ["cases.json", "pcap/"]}, f, indent=2)
     print("wrote", os.path.relpath(out_dir, ROOT))

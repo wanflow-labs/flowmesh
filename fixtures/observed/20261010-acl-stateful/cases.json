@@ -5,7 +5,7 @@
     "s1-synack-after-outbound": true,
     "s2-control-other-sport": false,
     "s2-udp-reply-after-outbound": true,
-    "s3-icmp-port-unreachable-for-outbound": false
+    "s3-icmp-port-unreachable-for-outbound": true
   },
   "policy": {
     "acls": [
@@ -34,7 +34,7 @@
       "proto": "6",
       "tcp": [
         "5555",
-        "59516",
+        "36890",
         "0x0012"
       ],
       "udp": [
@@ -50,7 +50,7 @@
       "proto": "6",
       "tcp": [
         "5555",
-        "59516",
+        "36890",
         "0x0011"
       ],
       "udp": [
@@ -79,7 +79,7 @@
         "3",
         "3"
       ],
-      "proto": "1,17",
+      "proto": "1",
       "tcp": [
         "",
         "",
@@ -111,7 +111,7 @@
         "3",
         "3"
       ],
-      "proto": "1,17",
+      "proto": "1",
       "tcp": [
         "",
         "",

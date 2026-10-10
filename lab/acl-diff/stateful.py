@@ -83,7 +83,8 @@ def main():
                       "-e", "udp.srcport", "-e", "udp.dstport", "-e", "icmp.type", "-e", "icmp.code"])
     seen = []
     for line in fields.splitlines():
-        f = (line.split("\t") + [""] * 8)[:8]
+        # A packet with an embedded IP header (an ICMP error) gets multi-valued fields such as "1,17"; take only the outer header's value.
+        f = [x.split(",")[0] for x in (line.split("\t") + [""] * 8)[:8]]
         seen.append({"proto": f[0], "tcp": f[1:4], "udp": f[4:6], "icmp": f[6:8]})
 
     def any_seen(pred):
