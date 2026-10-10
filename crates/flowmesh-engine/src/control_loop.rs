@@ -30,6 +30,13 @@ pub enum ControlEvent {
 pub struct Backoff {
     pub min: Duration,
     pub max: Duration,
+    /// A stream silent this long is presumed dead and redialed. A server that vanished without
+    /// closing (crash, container restart, NAT timeout) leaves a half-open connection that a
+    /// read-only long poll would otherwise wait on forever (found by the soak rehearsal).
+    pub idle: Duration,
+    /// Bound on one dial (connect + Noise handshake + map request): a server that accepts TCP but
+    /// never answers would otherwise hang the redial for good.
+    pub dial: Duration,
 }
 
 impl Default for Backoff {
@@ -37,6 +44,8 @@ impl Default for Backoff {
         Self {
             min: Duration::from_secs(1),
             max: Duration::from_secs(30),
+            idle: Duration::from_secs(120),
+            dial: Duration::from_secs(30),
         }
     }
 }
@@ -61,13 +70,26 @@ pub async fn run<S, D, F>(
             Some(s) => Ok(s),
             None => {
                 fresh = true;
-                dial().await
+                tokio::time::timeout(backoff.dial, dial())
+                    .await
+                    .unwrap_or_else(|_| {
+                        Err(format!(
+                            "control server did not answer within {} s",
+                            backoff.dial.as_secs()
+                        ))
+                    })
             }
         };
         let reason = match stream {
             Err(e) => e,
             Ok(mut s) => loop {
-                match s.next().await {
+                let Ok(next) = tokio::time::timeout(backoff.idle, s.next()).await else {
+                    break format!(
+                        "no message from the control server for {} s; connection presumed dead",
+                        backoff.idle.as_secs()
+                    );
+                };
+                match next {
                     Ok(Some(m)) => {
                         if fresh {
                             fresh = false;
@@ -122,6 +144,7 @@ mod tests {
         Backoff {
             min: Duration::from_millis(1),
             max: Duration::from_millis(4),
+            ..Backoff::default()
         }
     }
 
@@ -227,6 +250,7 @@ mod tests {
             Backoff {
                 min: Duration::from_secs(1),
                 max: Duration::from_secs(4),
+                ..Backoff::default()
             },
         ));
         // Dials 1-4 fail, 5 succeeds then closes, 6-7 fail: 4 + 3 (up, map, down) + 2 downs.
@@ -253,5 +277,79 @@ mod tests {
         )
         .await
         .unwrap();
+    }
+
+    /// Stays open but says nothing.
+    struct Silent;
+    impl MessageStream for Silent {
+        fn next(&mut self) -> BoxFut<'_, Result<Option<MapResponse>, String>> {
+            Box::pin(std::future::pending())
+        }
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_silent_stream_is_presumed_dead() {
+        let (tx, mut rx) = mpsc::channel(16);
+        let start = tokio::time::Instant::now();
+        let task = tokio::spawn(run(
+            Some(Silent),
+            || async { Err::<Silent, _>("still down".to_string()) },
+            tx,
+            Backoff::default(),
+        ));
+        let first = rx.recv().await.unwrap();
+        assert_eq!(start.elapsed(), Duration::from_secs(120));
+        assert_eq!(
+            label(&first),
+            "down:no message from the control server for 120 s; connection presumed dead"
+        );
+        drop(rx);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn messages_keep_the_stream_alive() {
+        // A message every 100 s (under the 120 s limit) keeps one stream for good.
+        struct Slow(u32);
+        impl MessageStream for Slow {
+            fn next(&mut self) -> BoxFut<'_, Result<Option<MapResponse>, String>> {
+                self.0 += 1;
+                let n = self.0;
+                Box::pin(async move {
+                    tokio::time::sleep(Duration::from_secs(100)).await;
+                    msg(&n.to_string())
+                })
+            }
+        }
+        let (tx, rx) = mpsc::channel(16);
+        let task = tokio::spawn(run(
+            Some(Slow(0)),
+            || async { Err::<Slow, _>("redialed".to_string()) },
+            tx,
+            Backoff::default(),
+        ));
+        let got: Vec<String> = collect(rx, 4).await.iter().map(label).collect();
+        assert_eq!(got, ["map:1", "map:2", "map:3", "map:4"]);
+        task.await.unwrap();
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn a_dial_that_never_answers_is_bounded() {
+        let (tx, mut rx) = mpsc::channel(16);
+        let start = tokio::time::Instant::now();
+        let task = tokio::spawn(run(
+            None::<Silent>,
+            std::future::pending::<Result<Silent, String>>,
+            tx,
+            Backoff::default(),
+        ));
+        let first = rx.recv().await.unwrap();
+        assert_eq!(start.elapsed(), Duration::from_secs(30));
+        assert_eq!(
+            label(&first),
+            "down:control server did not answer within 30 s"
+        );
+        drop(rx);
+        task.await.unwrap();
     }
 }
