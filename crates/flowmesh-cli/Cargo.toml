@@ -1,0 +1,21 @@
+[package]
+name = "flowmesh-cli"
+description = "flowmesh command-line client"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "flowmesh"
+path = "src/main.rs"
+
+[dependencies]
+flowmesh-daemon = { version = "0.1.0", path = "../flowmesh-daemon" }
+ipnet = "2.12.2"
+serde_json = "1.0.151"
+tokio = { version = "1.53.2", features = ["rt", "macros", "time"] }
