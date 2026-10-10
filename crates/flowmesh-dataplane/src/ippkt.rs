@@ -66,6 +66,10 @@ pub fn udp4_payload(pkt: &[u8]) -> Option<(std::net::SocketAddrV4, std::net::Soc
         return None;
     }
     let ihl = usize::from(pkt[0] & 0x0f) * 4;
+    // A header shorter than its fixed 20 bytes is malformed (and the addresses would not be there).
+    if ihl < 20 {
+        return None;
+    }
     let udp = pkt.get(ihl..ihl + 8)?;
     let ulen = usize::from(u16::from_be_bytes([udp[4], udp[5]]));
     let payload = pkt.get(ihl + 8..ihl + ulen.checked_sub(8)? + 8)?;
@@ -202,6 +206,19 @@ pub(crate) mod build {
 mod tests {
     use super::build::*;
     use super::*;
+
+    /// Found by fuzzing (fuzz/artifacts/ippkt): an IPv4 header length below 20 bytes made
+    /// udp4_payload read the addresses past the end of a 12-byte packet.
+    #[test]
+    fn short_ipv4_header_length_is_rejected() {
+        let crash = [0x40, 0, 0, 0, 0, 0x0c, 0x20, 0, 0, 0x11, 0x30, 0x16];
+        assert_eq!(udp4_payload(&crash), None);
+        assert_eq!(parse(&crash), None);
+        // IHL 4 (16 bytes) on an otherwise long enough packet: still not a valid header.
+        let mut p = vec![0x44u8; 64];
+        p[9] = 17;
+        assert_eq!(udp4_payload(&p), None);
+    }
 
     #[test]
     fn ipv4_tcp_fields() {

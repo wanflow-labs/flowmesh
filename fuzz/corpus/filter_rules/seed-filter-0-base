@@ -1,0 +1,1 @@
+[{"DstPorts": [{"IP": "0.0.0.0/0", "Ports": {"First": 0, "Last": 65535}}, {"IP": "::/0", "Ports": {"First": 0, "Last": 65535}}], "SrcIPs": ["0.0.0.0/0", "::/0"]}, {"CapGrant": [{"Caps": ["tailscale.com/cap/relay", "tailscale.com/cap/relay-target"], "Dsts": ["100.64.0.0/10", "fd7a:115c:a1e0::/48"]}], "SrcIPs": ["*"]}]

@@ -208,6 +208,26 @@ mod tests {
                 .contains("no direct attempt yet")
         );
         assert_eq!(v[0]["lastActiveSecondsAgo"], Value::Null);
+        // After sending to the peer at t=1 s, the ages are reported in seconds.
+        struct Seq(u8);
+        impl flowmesh_pathsock::Random for Seq {
+            fn fill(&mut self, buf: &mut [u8]) {
+                for b in buf {
+                    self.0 = self.0.wrapping_add(1);
+                    *b = self.0;
+                }
+            }
+        }
+        ps.route(NodePublic([1; 32]), Duration::from_secs(1), &mut Seq(0));
+        let later = paths(&nm, &ps, Duration::from_millis(3500));
+        assert_eq!(later[0]["lastActiveSecondsAgo"], 2.5);
+        assert_eq!(later[0]["lastDiscoverySecondsAgo"], 2.5);
+        assert!(
+            later[0]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("no candidate endpoints")
+        );
         assert_eq!(v[1]["route"], Value::Null);
         assert_eq!(v[1]["reason"], "node key expired: not reachable");
     }

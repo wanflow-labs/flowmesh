@@ -1,0 +1,8 @@
+logs/
+artifacts/
+coverage/
+target/
+# Grown corpora stay local; seeds (fuzz/seed.py) and regression inputs are committed.
+corpus/*/*
+!corpus/*/seed-*
+!corpus/*/regression-*

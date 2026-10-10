@@ -1,0 +1,23 @@
+{
+  "ControlTime": "2026-10-09T23:22:38.272394757Z",
+  "DERPMap": {
+    "Regions": {
+      "1000": {
+        "Nodes": [
+          {
+            "DERPPort": 443,
+            "HostName": "derp.lab",
+            "IPv4": "172.29.0.11",
+            "InsecureForTests": true,
+            "Name": "lab-1",
+            "RegionID": 1000,
+            "STUNPort": 3478
+          }
+        ],
+        "RegionCode": "wanflow-relay-1000",
+        "RegionID": 1000,
+        "RegionName": "Lab Relay"
+      }
+    }
+  }
+}

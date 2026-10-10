@@ -1,0 +1,101 @@
+[package]
+name = "flowmesh-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+# Own workspace: nightly + libFuzzer, kept out of the product's dependency checks.
+[workspace]
+members = ["."]
+
+[dependencies]
+libfuzzer-sys = "0.4"
+bytes = "1"
+serde_json = "1"
+flowmesh-control = { path = "../crates/flowmesh-control" }
+flowmesh-dataplane = { path = "../crates/flowmesh-dataplane" }
+flowmesh-derp = { path = "../crates/flowmesh-derp" }
+flowmesh-disco = { path = "../crates/flowmesh-disco" }
+flowmesh-dns = { path = "../crates/flowmesh-dns" }
+flowmesh-filter = { path = "../crates/flowmesh-filter" }
+flowmesh-noise = { path = "../crates/flowmesh-noise" }
+flowmesh-proto = { path = "../crates/flowmesh-proto" }
+flowmesh-stun = { path = "../crates/flowmesh-stun" }
+
+[profile.release]
+debug = 1
+
+[[bin]]
+name = "derp_frames"
+path = "fuzz_targets/derp_frames.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "noise_frames"
+path = "fuzz_targets/noise_frames.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "disco"
+path = "fuzz_targets/disco.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "stun"
+path = "fuzz_targets/stun.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "control_upgrade"
+path = "fuzz_targets/control_upgrade.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "mapstream"
+path = "fuzz_targets/mapstream.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "map_json"
+path = "fuzz_targets/map_json.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "filter_rules"
+path = "fuzz_targets/filter_rules.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "dns"
+path = "fuzz_targets/dns.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ippkt"
+path = "fuzz_targets/ippkt.rs"
+test = false
+doc = false
+bench = false
+
