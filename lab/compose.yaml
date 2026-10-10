@@ -43,6 +43,8 @@ services:
       - --http-port=-1
       - --stun=true
       - --stun-port=3478
+    ports:
+      - "127.0.0.1:18443:443"
     volumes:
       - ./derp/certs:/certs:ro
     networks:

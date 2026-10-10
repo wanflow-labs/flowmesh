@@ -1,0 +1,11 @@
+{
+  "label": "derp-handshake",
+  "captured_at": "2026-10-10T00:40:00+00:00",
+  "server": "${FLOWMESH_LAB_DERP_IMAGE} (lab, self-signed cert, no verify-client)",
+  "client": "flowmesh-derp tests/lab_relay.rs",
+  "files": ["server-info.json"],
+  "findings": [
+    "Handshake ServerKey -> ClientInfo -> ServerInfo completed; ServerInfo decrypted with NaCl box to {\"version\":2}.",
+    "SendPacket from client A to client B's node key arrived at B as RecvPacket with src = A's node key and identical payload."
+  ]
+}

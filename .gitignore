@@ -1,3 +1,5 @@
 /target
 /lab/derp/certs/
 /lab/.authkey
+/mutants.out/
+/mutants.out.old/
