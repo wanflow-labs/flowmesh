@@ -47,6 +47,27 @@ impl RelayPlan {
         self.home
     }
 
+    /// Read-only view for `flowmesh debug derp`.
+    pub fn describe(&self, now: Duration) -> serde_json::Value {
+        let mut retry: Vec<(u32, (Duration, Duration))> =
+            self.retry.iter().map(|(r, v)| (*r, *v)).collect();
+        retry.sort_by_key(|(r, _)| *r);
+        serde_json::json!({
+            "home": self.home,
+            "connected": self.connected.iter().collect::<Vec<_>>(),
+            "connecting": self.connecting.iter().collect::<Vec<_>>(),
+            "homeDownForSeconds": self.home_down_since.map(|t| now.saturating_sub(t).as_secs_f64()),
+            "retry": retry
+                .iter()
+                .map(|(region, (at, next))| serde_json::json!({
+                    "region": region,
+                    "nextAttemptInSeconds": at.saturating_sub(now).as_secs_f64(),
+                    "delayAfterNextFailureSeconds": next.as_secs_f64(),
+                }))
+                .collect::<Vec<_>>(),
+        })
+    }
+
     pub fn is_connected(&self, region: u32) -> bool {
         self.connected.contains(&region)
     }
@@ -375,5 +396,26 @@ mod tests {
         p.on_failed(1001, 100 * S);
         assert_eq!(p.tick(101 * S, &map), vec![RelayAction::Connect(1001)]);
         assert_eq!(p.home(), 1001);
+    }
+
+    #[test]
+    fn describe_shows_the_plan() {
+        let mut p = RelayPlan::new(1000);
+        p.want(1001, Duration::ZERO);
+        p.on_failed(1001, Duration::ZERO);
+        p.want(1002, Duration::ZERO);
+        p.on_closed(1000, 3 * S);
+        let v = p.describe(4 * S);
+        assert_eq!(v["home"], 1000);
+        assert_eq!(v["connected"], serde_json::json!([]));
+        assert_eq!(v["connecting"], serde_json::json!([1000, 1002]));
+        assert_eq!(v["homeDownForSeconds"], 1.0);
+        assert_eq!(v["retry"][0]["region"], 1001);
+        assert_eq!(v["retry"][0]["nextAttemptInSeconds"], 0.0);
+        assert_eq!(v["retry"][0]["delayAfterNextFailureSeconds"], 2.0);
+        assert_eq!(
+            RelayPlan::new(1000).describe(S)["homeDownForSeconds"],
+            serde_json::Value::Null
+        );
     }
 }

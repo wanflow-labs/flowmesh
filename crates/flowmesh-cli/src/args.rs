@@ -32,6 +32,8 @@ pub enum Command {
     },
     /// `debug prefs`
     DebugPrefs,
+    /// `debug netmap|paths|filter|derp`, served by the engine.
+    Debug(String),
     Bugreport {
         output: Option<PathBuf>,
     },
@@ -109,7 +111,10 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
         }
         "debug" => match rest {
             [what] if what == "prefs" => Command::DebugPrefs,
-            _ => return Err("usage: flowmesh debug prefs".into()),
+            [what] if ["netmap", "paths", "filter", "derp"].contains(&what.as_str()) => {
+                Command::Debug(what.clone())
+            }
+            _ => return Err("usage: flowmesh debug prefs|netmap|paths|filter|derp".into()),
         },
         "bugreport" => {
             let mut output = None;
@@ -529,7 +534,10 @@ mod tests {
     fn debug_and_bugreport() {
         assert_eq!(cmd(&["debug", "prefs"]), Command::DebugPrefs);
         assert!(p(&["debug"]).is_err());
-        assert!(p(&["debug", "netmap"]).is_err());
+        assert_eq!(cmd(&["debug", "paths"]), Command::Debug("paths".into()));
+        assert_eq!(cmd(&["debug", "derp"]), Command::Debug("derp".into()));
+        assert!(p(&["debug", "bogus"]).is_err());
+        assert!(p(&["debug", "netmap", "extra"]).is_err());
         assert_eq!(cmd(&["bugreport"]), Command::Bugreport { output: None });
         assert_eq!(
             cmd(&["bugreport", "--output", "/tmp/r.json"]),

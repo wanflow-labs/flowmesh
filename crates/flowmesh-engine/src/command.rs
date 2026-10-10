@@ -16,6 +16,11 @@ pub enum EngineCommand {
         timeout: Duration,
         reply: oneshot::Sender<Result<PingReply, PingError>>,
     },
+    /// A read-only view for `flowmesh debug <topic>`.
+    Debug {
+        topic: crate::debug::DebugTopic,
+        reply: oneshot::Sender<serde_json::Value>,
+    },
     /// Who owns `ip` (this node or a peer), for `whois` and mesh services.
     Whois {
         ip: IpAddr,

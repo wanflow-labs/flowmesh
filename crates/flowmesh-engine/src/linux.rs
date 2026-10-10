@@ -962,6 +962,19 @@ pub async fn run(
                 }
                 Some(cmd) = commands.recv() => {
                     match cmd {
+                        EngineCommand::Debug { topic, reply } => {
+                            use crate::debug::DebugTopic;
+                            let v = match topic {
+                                DebugTopic::Netmap => crate::debug::netmap(&ctx.nm),
+                                DebugTopic::Paths => crate::debug::paths(&ctx.nm, &ctx.ps, now),
+                                DebugTopic::Filter => crate::debug::filter(&ctx.nm),
+                                DebugTopic::Derp => {
+                                    let plan = ctx.relays.plan.describe(ctx.relays.now());
+                                    crate::debug::derp(&ctx.nm, &plan)
+                                }
+                            };
+                            let _ = reply.send(v);
+                        }
                         EngineCommand::Whois { ip, reply } => {
                             let _ = reply.send(crate::command::whois(&ctx.nm, ip));
                         }

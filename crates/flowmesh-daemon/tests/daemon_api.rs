@@ -42,6 +42,9 @@ struct Fake(Arc<Mutex<World>>);
 /// 100.64.0.3 never, anything else is not a peer. Whois: only 100.64.0.1 is known.
 fn answer(cmd: EngineCommand) {
     match cmd {
+        EngineCommand::Debug { topic, reply } => {
+            let _ = reply.send(json!({ "topic": format!("{topic:?}") }));
+        }
         EngineCommand::Whois { ip, reply } => {
             let found = (ip.to_string() == "100.64.0.1").then(|| WhoisReply {
                 node: flowmesh_proto::control::Node {
@@ -745,6 +748,37 @@ async fn ping_timeout_default_and_clamp() {
         .map(|d| d.as_millis())
         .collect();
     assert_eq!(ms, [5000, 1500, 1000, 60_000]);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn debug_views_are_root_only() {
+    use http_body_util::Full;
+    use hyper::body::Bytes;
+    let h = start(temp_dir("debug"), Fake::default()).await;
+    let (code, _) = api_error(h.client.get("debug?topic=paths").await);
+    assert_eq!(code, 503, "not running");
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    for (t, want) in [
+        ("netmap", "Netmap"),
+        ("paths", "Paths"),
+        ("filter", "Filter"),
+        ("derp", "Derp"),
+    ] {
+        let v = h.client.get(&format!("debug?topic={t}")).await.unwrap();
+        assert_eq!(v["topic"], want);
+    }
+    let (code, msg) = api_error(h.client.get("debug?topic=prefs").await);
+    assert_eq!(code, 400);
+    assert!(msg.contains("unknown debug topic"), "{msg}");
+    let (code, _) = api_error(h.client.get("debug").await);
+    assert_eq!(code, 400);
+    let req = hyper::Request::get("/localapi/v0/debug?topic=netmap")
+        .body(Full::new(Bytes::new()))
+        .unwrap();
+    assert_eq!(api::handle(&h.daemon, req, false).await.status(), 403);
 }
 
 #[tokio::test(flavor = "multi_thread")]

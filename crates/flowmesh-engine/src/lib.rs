@@ -3,6 +3,7 @@
 
 pub mod command;
 pub mod control_loop;
+pub mod debug;
 mod logic;
 pub mod relay_plan;
 pub mod status;

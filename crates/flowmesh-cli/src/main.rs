@@ -105,6 +105,17 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                 Err(other) => Err(other.to_string()),
             }
         }
+        Command::Debug(topic) => {
+            let v = client
+                .get(&format!("debug?topic={topic}"))
+                .await
+                .map_err(e)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&v).map_err(|e| e.to_string())?
+            );
+            Ok(0)
+        }
         Command::DebugPrefs => {
             let p = client.get("prefs").await.map_err(e)?;
             println!(

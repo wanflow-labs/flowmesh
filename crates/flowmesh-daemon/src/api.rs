@@ -182,6 +182,24 @@ where
     };
     match (&method, name.as_str()) {
         (&Method::GET, "status") => reply(StatusCode::OK, &d.status_json().await),
+        // Peers' keys and endpoints: root (or the daemon's user) only.
+        (&Method::GET, "debug") if !privileged => error(
+            StatusCode::FORBIDDEN,
+            "access denied: debug views require root",
+        ),
+        (&Method::GET, "debug") => {
+            let topic = req_query
+                .as_deref()
+                .and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("topic=")))
+                .unwrap_or("");
+            match topic.parse::<flowmesh_engine::debug::DebugTopic>() {
+                Ok(t) => match d.debug(t).await {
+                    Ok(v) => reply(StatusCode::OK, &v),
+                    Err(e) => daemon_error(&e),
+                },
+                Err(e) => error(StatusCode::BAD_REQUEST, e),
+            }
+        }
         (&Method::GET, "whois") => {
             let Some(ip) = query_addr(req_query.as_deref()) else {
                 return error(StatusCode::BAD_REQUEST, "invalid 'addr' parameter");

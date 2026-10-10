@@ -307,6 +307,27 @@ impl<L: Launcher> Daemon<L> {
         }
     }
 
+    /// A read-only engine view for `flowmesh debug <topic>`.
+    pub async fn debug(
+        &self,
+        topic: flowmesh_engine::debug::DebugTopic,
+    ) -> Result<serde_json::Value, DaemonError> {
+        if self.backend_state().await != BackendState::Running {
+            return Err(DaemonError::NotRunning);
+        }
+        let tx = self
+            .commands
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or(DaemonError::NotRunning)?;
+        let (reply, rx) = oneshot::channel();
+        tx.send(EngineCommand::Debug { topic, reply })
+            .await
+            .map_err(|_| DaemonError::NotRunning)?;
+        rx.await.map_err(|_| DaemonError::NotRunning)
+    }
+
     /// Who owns `ip` according to the current netmap (`None`: nobody).
     pub async fn whois(&self, ip: std::net::IpAddr) -> Result<Option<WhoisReply>, DaemonError> {
         if self.backend_state().await != BackendState::Running {

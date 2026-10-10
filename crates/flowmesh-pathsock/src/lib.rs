@@ -103,6 +103,20 @@ struct Pending {
     probe: bool,
 }
 
+/// The state behind a peer's current path ([`PathSock::explain`]). Ages are measured back from `now`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PathExplain {
+    pub route: Route,
+    pub reason: String,
+    /// Endpoints that would be tried for a direct path (netmap first, then CallMeMaybe).
+    pub candidates: Vec<SocketAddr>,
+    pub from_call_me_maybe: Vec<SocketAddr>,
+    /// The last direct path that answered, and how long ago.
+    pub last_direct_pong: Option<(SocketAddr, Duration)>,
+    pub last_discovery: Option<Duration>,
+    pub last_active: Option<Duration>,
+}
+
 /// A pong answering [`PathSock::probe`] (the `flowmesh ping` command).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ProbeResult {
@@ -459,6 +473,60 @@ impl PathSock {
         due.into_iter()
             .filter_map(|(info, addr)| self.ping(&info, Some(addr), false, now, rng))
             .collect()
+    }
+
+    /// Why the peer is on its current path, for `flowmesh debug paths` (design §7.3). Read-only.
+    pub fn explain(&self, peer: NodePublic, now: Duration) -> Option<PathExplain> {
+        let p = self.peers.get(&peer)?;
+        let route = self.current_route(peer, now);
+        let mut candidates = p.info.endpoints.clone();
+        candidates.extend(
+            p.cmm_endpoints
+                .iter()
+                .filter(|e| !p.info.endpoints.contains(e)),
+        );
+        let since = |t: Option<Duration>| t.map(|t| now.saturating_sub(t));
+        let direct = p
+            .best
+            .map(|(addr, confirmed)| (addr, now.saturating_sub(confirmed)));
+        let reason = match (route, self.mode) {
+            (Route::Direct(addr), _) => {
+                let age = direct.map_or(Duration::ZERO, |(_, a)| a);
+                format!(
+                    "direct: pong from {addr} {:.1}s ago (trusted for {:.1}s)",
+                    age.as_secs_f64(),
+                    TRUST.as_secs_f64()
+                )
+            }
+            (_, Mode::Strict) => "relay: strict mode, no direct traffic at all".to_string(),
+            (_, Mode::Prefer) => {
+                "relay: prefer mode (relay-only map), this node never starts direct paths"
+                    .to_string()
+            }
+            (_, Mode::Auto) if direct.is_some() => {
+                "relay: the direct path stopped answering (trust window expired)".to_string()
+            }
+            (_, Mode::Auto) if p.last_discovery.is_none() => {
+                "relay: no direct attempt yet (nothing sent to this peer since start)".to_string()
+            }
+            (_, Mode::Auto) if candidates.is_empty() => {
+                "relay: no candidate endpoints (the peer reports none, nor sent CallMeMaybe)"
+                    .to_string()
+            }
+            (_, Mode::Auto) => format!(
+                "relay: no pong yet from any of {} candidate endpoint(s)",
+                candidates.len()
+            ),
+        };
+        Some(PathExplain {
+            route,
+            reason,
+            candidates,
+            from_call_me_maybe: p.cmm_endpoints.clone(),
+            last_direct_pong: direct,
+            last_discovery: since(p.last_discovery),
+            last_active: since(p.last_active),
+        })
     }
 
     /// Read-only query of the peer's current route (does not trigger discovery, does not change state), for status display.
@@ -1331,5 +1399,93 @@ mod tests {
             w.a.probe(NodePublic([9; 32]), 10 * S, &mut w.rng)
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn explain_tells_why() {
+        let e: SocketAddr = E.parse().unwrap();
+        // Never tried: nothing was sent yet.
+        let w = world(vec![e]);
+        let x = w.a.explain(w.b_node, 10 * S).unwrap();
+        assert_eq!(x.route, Route::Derp(1000));
+        assert!(x.reason.contains("no direct attempt yet"), "{}", x.reason);
+        assert_eq!((x.last_discovery, x.last_active), (None, None));
+        // No endpoints at all.
+        let mut w = world(vec![]);
+        w.a.route(w.b_node, 10 * S, &mut w.rng);
+        let x = w.a.explain(w.b_node, 10 * S).unwrap();
+        assert!(x.reason.contains("no candidate endpoints"), "{}", x.reason);
+        // Candidates, nothing answered yet.
+        let mut w = world(vec![e]);
+        w.a.route(w.b_node, 10 * S, &mut w.rng);
+        let x = w.a.explain(w.b_node, 12 * S).unwrap();
+        assert_eq!(x.candidates, vec![e]);
+        assert!(
+            x.reason.contains("no pong yet from any of 1"),
+            "{}",
+            x.reason
+        );
+        assert_eq!(
+            (x.last_discovery, x.last_active),
+            (Some(2 * S), Some(2 * S))
+        );
+        // Direct after a pong.
+        let acts = w.a.route(w.b_node, 15 * S, &mut w.rng).1;
+        let (to, tx_id) = udp_pings(&w, &acts)[0];
+        let pong = b_says(&w, &Message::Pong { tx_id, src: to });
+        w.a.on_disco(Source::Udp(to), &pong, 15 * S, &mut w.rng);
+        let x = w.a.explain(w.b_node, 16 * S).unwrap();
+        assert_eq!(x.route, Route::Direct(to));
+        assert_eq!(x.last_direct_pong, Some((to, S)));
+        assert!(
+            x.reason
+                .starts_with("direct: pong from 172.29.0.21:41641 1.0s ago"),
+            "{}",
+            x.reason
+        );
+        // The direct path went quiet.
+        let x = w.a.explain(w.b_node, 30 * S).unwrap();
+        assert!(x.reason.contains("stopped answering"), "{}", x.reason);
+        // Relay modes.
+        w.a.set_mode(Mode::Prefer);
+        assert!(
+            w.a.explain(w.b_node, 31 * S)
+                .unwrap()
+                .reason
+                .contains("prefer mode")
+        );
+        w.a.set_mode(Mode::Strict);
+        assert!(
+            w.a.explain(w.b_node, 31 * S)
+                .unwrap()
+                .reason
+                .contains("strict mode")
+        );
+        assert_eq!(w.a.explain(NodePublic([9; 32]), S), None);
+    }
+
+    #[test]
+    fn explain_lists_call_me_maybe_endpoints_after_the_netmap_ones() {
+        let e: SocketAddr = E.parse().unwrap();
+        let cmm: SocketAddr = "10.10.1.21:41641".parse().unwrap();
+        let mut w = world(vec![e]);
+        let msg = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![e, cmm],
+            },
+        );
+        w.a.on_disco(
+            Source::Derp {
+                node: w.b_node,
+                region: 1000,
+            },
+            &msg,
+            S,
+            &mut w.rng,
+        );
+        let x = w.a.explain(w.b_node, 2 * S).unwrap();
+        assert_eq!(x.candidates, vec![e, cmm]);
+        assert_eq!(x.from_call_me_maybe, vec![e, cmm]);
     }
 }

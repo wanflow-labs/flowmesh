@@ -65,6 +65,8 @@ Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit
 - `debug prefs` prints the daemon's preferences (flowmesh's own field names; there is no compatibility requirement here).
 - `bugreport` writes a local JSON bundle (mode 0600, refuses to overwrite) with the status and preferences from the daemon, `uname -a`, `ip -o addr`, `ip route show table all`, `ip rule`, `/etc/resolv.conf` and the last 300 journal lines of `flowmeshd`. Each item records its own failure instead of aborting (e.g. no journalctl). Every `nodekey:`/`discokey:`/`mkey:`/`privkey:` value is shortened to 8 hex digits. **Deviation from the official client**, which uploads logs and prints an ID: flowmesh never uploads anything (deviation #3); the user decides whether to share the file.
 
+- `debug netmap|paths|filter|derp` print engine views as JSON (root or the daemon's user only; they carry peers' keys and endpoints): the merged netmap; per peer the path in use and why (`direct: pong from … 2.8s ago`, `relay: no direct attempt yet`, `relay: no pong yet from any of N candidate endpoint(s)`, `relay: strict mode …`, `node key expired: not reachable`); the filter groups and whether they compile; the relay regions with the reconnect/home plan.
+
 ## 5. `whois` and mesh services
 
 Source: `OBS-20261010-whois` (`lab/scripts/whois_diff.sh`; text, stderr and exit codes match the official client for IPv4, `ip:port`, IPv6, this node itself, a NATed peer, an unknown address and a malformed one; the JSON `CapMap`, `UserProfile` and node ID/Name/Addresses/Tags match).
