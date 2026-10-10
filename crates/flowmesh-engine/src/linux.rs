@@ -684,6 +684,32 @@ impl Ctx {
 }
 
 /// Run the engine until `stop` becomes true (or a fatal error). The status snapshot is published periodically through `status`.
+/// UDP socket buffer size each way. The kernel default (about 208 KiB) overflows under GSO bursts
+/// at gigabit rates; the reference client asks for 7 MiB.
+const SOCKET_BUFFER: usize = 7 << 20;
+
+/// Force the buffer sizes first (as root this ignores net.core.rmem_max/wmem_max), else ask within
+/// the system limit. Failure only costs throughput, so it is logged, not fatal.
+fn set_socket_buffers(sock: &UdpSocket) {
+    use nix::sys::socket::{getsockopt, setsockopt, sockopt};
+    let rcv = setsockopt(sock, sockopt::RcvBufForce, &SOCKET_BUFFER)
+        .or_else(|_| setsockopt(sock, sockopt::RcvBuf, &SOCKET_BUFFER));
+    let snd = setsockopt(sock, sockopt::SndBufForce, &SOCKET_BUFFER)
+        .or_else(|_| setsockopt(sock, sockopt::SndBuf, &SOCKET_BUFFER));
+    let got = |o: nix::Result<()>| match o {
+        Ok(()) => "ok".to_string(),
+        Err(e) => format!("failed: {e}"),
+    };
+    // The kernel reports twice the size set (bookkeeping overhead), or less when capped.
+    log(format!(
+        "udp buffers: receive {} ({:?}), send {} ({:?})",
+        got(rcv),
+        getsockopt(sock, sockopt::RcvBuf).ok(),
+        got(snd),
+        getsockopt(sock, sockopt::SndBuf).ok()
+    ));
+}
+
 pub async fn run(
     cfg: EngineConfig,
     status: watch::Sender<EngineStatus>,
@@ -799,6 +825,7 @@ pub async fn run(
             .await
             .map_err(|e| format!("udp bind :{}: {e}", args.port))?,
     );
+    set_socket_buffers(&udp);
     let gro = crate::udpio::enable_gro(&udp);
     log(format!(
         "udp: GRO {}",
