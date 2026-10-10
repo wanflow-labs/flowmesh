@@ -7,7 +7,7 @@ use crate::command::{EngineCommand, PendingPing, deliver_pings, expire_pings};
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::logic::{
     apply_netmap, dns_upstreams, dns_view, endpoints_for, looks_like_wireguard, mode_of, peer_home,
-    snapshot, subnet_routes,
+    relay_candidates, snapshot, subnet_routes,
 };
 use crate::relay_plan::{RelayAction, RelayPlan};
 use crate::status::EngineStatus;
@@ -16,14 +16,16 @@ use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
-use flowmesh_disco::relay::{Geneve, PROTO_DISCO, PROTO_WIREGUARD, geneve_encode};
+use flowmesh_disco::message::Message;
+use flowmesh_disco::relay::{Geneve, PROTO_DISCO, PROTO_WIREGUARD, geneve_decode, geneve_encode};
 use flowmesh_pathsock::{Action, Mode, PathSock, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
 };
 use flowmesh_proto::derp::{DerpMap, DerpNode};
-use flowmesh_proto::key::{NodePrivate, NodePublic};
+use flowmesh_proto::key::{DiscoPrivate, DiscoPublic, NodePrivate, NodePublic};
+use flowmesh_udprelay::{RelayAction as PeerRelayAction, RelayClient};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -468,6 +470,10 @@ struct Ctx {
     ps: PathSock,
     nm: NetMap,
     rng: OsRandom,
+    /// This run's disco key: seals peer relay messages and opens those addressed to us.
+    disco: DiscoPrivate,
+    /// The peer relay client (allocations, forwards, the bind handshake).
+    peer_relay: RelayClient,
 }
 
 /// A packet for a peer relay path: Geneve header (no O bit) + payload (peer-relay.md §3).
@@ -502,9 +508,99 @@ impl Ctx {
         }
     }
 
+    /// Seal and send what the peer relay client asks for, then hand the bound endpoints to path selection.
+    async fn run_relay(&mut self, actions: Vec<PeerRelayAction>) {
+        for a in actions {
+            match a {
+                PeerRelayAction::Derp {
+                    to,
+                    to_disco,
+                    region,
+                    msg,
+                } => {
+                    if let Some(sealed) = self.seal(&to_disco, &msg) {
+                        self.relays
+                            .send(region, &self.nm.derp_map, to, &sealed)
+                            .await;
+                    }
+                }
+                PeerRelayAction::Server {
+                    addr,
+                    vni,
+                    to_disco,
+                    msg,
+                } => {
+                    if let Some(sealed) = self.seal(&to_disco, &msg) {
+                        let h = Geneve {
+                            control: true,
+                            protocol: PROTO_DISCO,
+                            vni,
+                        };
+                        let packet = [&geneve_encode(&h)[..], &sealed].concat();
+                        if let Err(e) = self.udp.send_to(&packet, addr).await {
+                            log(format!("peer relay send {addr}: {e}"));
+                        }
+                    }
+                }
+            }
+        }
+        self.sync_relay();
+    }
+
+    fn seal(&mut self, to: &DiscoPublic, msg: &Message) -> Option<Vec<u8>> {
+        let mut nonce = [0u8; flowmesh_disco::envelope::NONCE_LEN];
+        self.rng.fill(&mut nonce);
+        flowmesh_disco::envelope::seal(
+            &self.disco,
+            to,
+            &flowmesh_disco::message::encode(msg),
+            nonce,
+        )
+        .ok()
+    }
+
+    /// Each peer's bound peer relay endpoint (or none) to path selection.
+    fn sync_relay(&mut self) {
+        for n in self.nm.peers.values() {
+            let ep = self
+                .peer_relay
+                .endpoint(&n.disco_key)
+                .map(|e| (e.addr, e.vni));
+            self.ps.set_relay(n.key, ep);
+        }
+    }
+
+    /// Pongs that came through peer relays keep the relay client's liveness current.
+    fn relay_pongs(&mut self, now: Duration) {
+        for node in self.ps.take_relay_pongs() {
+            if let Some(n) = self.nm.peers.values().find(|n| n.key == node) {
+                self.peer_relay.on_relay_pong(&n.disco_key, now);
+            }
+        }
+    }
+
     async fn send_to_peer(&mut self, key: NodePublic, bytes: &[u8], now: Duration) {
         let (route, actions) = self.ps.route(key, now, &mut self.rng);
         self.run_actions(actions).await;
+        // Traffic without a direct path: a peer relay is wanted (peer-relay.md §1).
+        if !matches!(route, Route::Direct(_)) {
+            let peer =
+                self.nm
+                    .peers
+                    .values()
+                    .find(|n| n.key == key)
+                    .map(|n| flowmesh_udprelay::Peer {
+                        node: n.key,
+                        disco: n.disco_key,
+                        home_region: peer_home(n),
+                    });
+            if let Some(peer) = peer {
+                let acts = self.peer_relay.want(&peer, now);
+                if !acts.is_empty() {
+                    self.run_relay(acts).await;
+                }
+            }
+        }
         match route {
             Route::Direct(addr) => {
                 if self.udp.send_to(bytes, addr).await.is_err() {
@@ -795,10 +891,14 @@ pub async fn run(
         ps: PathSock::new(disco.clone(), keys.node.public()),
         nm,
         rng: OsRandom,
+        disco: disco.clone(),
+        peer_relay: RelayClient::new(disco.public()),
     };
     if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
         log(e);
     }
+    ctx.peer_relay
+        .set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
     ctx.ps.set_my_endpoints(endpoints.clone());
 
     // The backup lives in the state directory, so /etc needs to be writable only for resolv.conf itself
@@ -910,7 +1010,33 @@ pub async fn run(
                 r = udp.recv_from(&mut udp_buf) => {
                     let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
                     let data = &udp_buf[..n];
-                    if flowmesh_disco::envelope::is_disco(data) {
+                    // From one of our relay servers: Geneve-framed (peer-relay.md §3).
+                    let relayed = if ctx.peer_relay.is_server(from) { geneve_decode(data) } else { None };
+                    if let Some((h, payload)) = relayed {
+                        if h.protocol == PROTO_DISCO && h.control {
+                            // The server's handshake message, sealed to us with the server key.
+                            if let Ok((_, plain)) = flowmesh_disco::envelope::open(&ctx.disco, payload) {
+                                if let Ok(m) = flowmesh_disco::message::decode(&plain) {
+                                    let acts = ctx.peer_relay.on_server(h.vni, &m, now);
+                                    ctx.run_relay(acts).await;
+                                }
+                            }
+                            Vec::new()
+                        } else if h.protocol == PROTO_DISCO {
+                            let acts = ctx.ps.on_disco(Source::Relay { server: from, vni: h.vni }, payload, now, &mut ctx.rng);
+                            deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
+                            ctx.relay_pongs(now);
+                            ctx.run_actions(acts).await;
+                            Vec::new()
+                        } else if h.protocol == PROTO_WIREGUARD {
+                            match ctx.ps.peer_for_relay(from, h.vni) {
+                                Some(peer) => dp.inbound(peer, payload, now),
+                                None => Vec::new(),
+                            }
+                        } else {
+                            Vec::new()
+                        }
+                    } else if flowmesh_disco::envelope::is_disco(data) {
                         tap("udp-disco", data, now);
                         let acts = ctx.ps.on_disco(Source::Udp(from), data, now, &mut ctx.rng);
                         deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
@@ -953,6 +1079,15 @@ pub async fn run(
                             let acts = ctx.ps.on_disco(Source::Derp { node: src, region }, &data, now, &mut ctx.rng);
                             deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
                             ctx.run_actions(acts).await;
+                            // Allocation responses and forwarded allocations go to the peer relay client.
+                            if let Ok((from, plain)) = flowmesh_disco::envelope::open(&ctx.disco, &data) {
+                                if let Ok(m @ (Message::AllocateResponse { .. } | Message::CallMeMaybeVia(_))) =
+                                    flowmesh_disco::message::decode(&plain)
+                                {
+                                    let acts = ctx.peer_relay.on_derp(&from, &m, now);
+                                    ctx.run_relay(acts).await;
+                                }
+                            }
                             Vec::new()
                         } else {
                             if !looks_like_wireguard(&data) {
@@ -1003,6 +1138,8 @@ pub async fn run(
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
             log(e);
         }
+                        ctx.peer_relay.set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
+                        ctx.sync_relay();
                         // Online/last-seen patches arrive constantly; log only when the peer set changes.
                         let ids: Vec<i64> = ctx.nm.peers.keys().copied().collect();
                         if ids != peer_ids {
@@ -1098,6 +1235,8 @@ pub async fn run(
                     expire_pings(&mut pings, now);
                     let acts = ctx.ps.tick(now, &mut ctx.rng);
                     ctx.run_actions(acts).await;
+                    let acts = ctx.peer_relay.tick(now);
+                    ctx.run_relay(acts).await;
                     if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
                         last_publish = Some(now);
                         let mut all_health = health.clone();

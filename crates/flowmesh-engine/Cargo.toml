@@ -17,6 +17,7 @@ flowmesh-derp = { version = "0.1.0", path = "../flowmesh-derp" }
 flowmesh-disco = { version = "0.1.0", path = "../flowmesh-disco" }
 flowmesh-dns = { version = "0.1.0", path = "../flowmesh-dns" }
 flowmesh-filter = { version = "0.1.0", path = "../flowmesh-filter" }
+flowmesh-udprelay = { version = "0.1.0", path = "../flowmesh-udprelay" }
 flowmesh-netcfg = { version = "0.1.0", path = "../flowmesh-netcfg" }
 flowmesh-pathsock = { version = "0.1.0", path = "../flowmesh-pathsock" }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }

@@ -166,6 +166,14 @@ impl RelayClient {
         }
     }
 
+    /// Whether `addr` is the relay endpoint of one of our allocations: only packets from these are
+    /// read as Geneve-framed relay traffic.
+    pub fn is_server(&self, addr: SocketAddr) -> bool {
+        self.peers
+            .values()
+            .any(|st| st.alloc.as_ref().is_some_and(|a| a.addrs.contains(&addr)))
+    }
+
     /// A relay disco message received over DERP from the node with disco key `from`.
     pub fn on_derp(
         &mut self,
@@ -797,6 +805,16 @@ mod tests {
         );
         idle.on_server(4, &challenge(4, 1), Duration::ZERO);
         assert!(binds(&idle.tick(ACTIVE_WINDOW + S)).is_empty());
+    }
+
+    #[test]
+    fn is_server_knows_the_allocation_addresses() {
+        let mut c = client();
+        let addr: SocketAddr = "172.29.0.23:40000".parse().unwrap();
+        assert!(!c.is_server(addr));
+        c.on_derp(&key(2), &Message::CallMeMaybeVia(alloc(5)), S);
+        assert!(c.is_server(addr));
+        assert!(!c.is_server("172.29.0.23:40001".parse().unwrap()));
     }
 
     #[test]

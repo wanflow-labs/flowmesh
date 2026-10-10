@@ -588,6 +588,7 @@ dependencies = [
  "flowmesh-proto",
  "flowmesh-state",
  "flowmesh-stun",
+ "flowmesh-udprelay",
  "getrandom 0.3.4",
  "hickory-proto",
  "ipnet",
