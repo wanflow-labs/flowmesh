@@ -16,7 +16,7 @@ use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
-use flowmesh_pathsock::{Action, Mode, PING_TIMEOUT, PathSock, Random, Route, Source};
+use flowmesh_pathsock::{Action, Mode, PathSock, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
@@ -965,7 +965,7 @@ pub async fn run(
                         EngineCommand::Whois { ip, reply } => {
                             let _ = reply.send(crate::command::whois(&ctx.nm, ip));
                         }
-                        EngineCommand::Ping { ip, reply } => {
+                        EngineCommand::Ping { ip, timeout, reply } => {
                             match crate::command::ping_target(&ctx.nm, ip, crate::logic::unix_now()) {
                                 Ok((peer, node_ip, node_name)) => {
                                     let acts = ctx.ps.probe(peer, now, &mut ctx.rng);
@@ -974,7 +974,7 @@ pub async fn run(
                                         peer,
                                         node_ip,
                                         node_name,
-                                        deadline: now + PING_TIMEOUT,
+                                        deadline: now + timeout,
                                         reply,
                                     });
                                 }

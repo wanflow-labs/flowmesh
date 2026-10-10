@@ -29,6 +29,7 @@ struct World {
     /// Runs that ended because the daemon asked them to stop.
     stops: u32,
     logout_fails: bool,
+    ping_timeouts: Vec<Duration>,
     logout_state_file: Option<PathBuf>,
     /// Control servers that never answer (the engine keeps trying, no netmap).
     unreachable: Vec<String>,
@@ -53,7 +54,7 @@ fn answer(cmd: EngineCommand) {
             });
             let _ = reply.send(found);
         }
-        EngineCommand::Ping { ip, reply } => {
+        EngineCommand::Ping { ip, reply, .. } => {
             let via = match ip.to_string().as_str() {
                 "100.64.0.1" => Some(PingPath::Direct("172.29.0.21:41641".parse().unwrap())),
                 "100.64.0.2" => Some(PingPath::Derp {
@@ -121,12 +122,18 @@ impl Launcher for Fake {
                     magic_dns_suffix: "mesh.lab.internal".into(),
                     tailnet_name: "lab".into(),
                     health: Vec::new(),
+                    relay_mode: "auto".into(),
                 });
             }
             loop {
                 tokio::select! {
                     r = stop.changed() => if r.is_err() || *stop.borrow() { break },
-                    Some(cmd) = commands.recv() => answer(cmd),
+                    Some(cmd) = commands.recv() => {
+                        if let EngineCommand::Ping { timeout, .. } = &cmd {
+                            world.lock().unwrap().ping_timeouts.push(*timeout);
+                        }
+                        answer(cmd)
+                    }
                 }
             }
             world.lock().unwrap().stops += 1;
@@ -711,6 +718,33 @@ async fn ping_reports_official_fields() {
     h.client.post("down", &json!({})).await.unwrap();
     let (code, _) = api_error(h.client.post("ping", &json!({ "ip": "100.64.0.1" })).await);
     assert_eq!(code, 503);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ping_timeout_default_and_clamp() {
+    let h = start(temp_dir("pingtimeout"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    for body in [
+        json!({ "ip": "100.64.0.1" }),
+        json!({ "ip": "100.64.0.1", "timeout_ms": 1500 }),
+        json!({ "ip": "100.64.0.1", "timeout_ms": 0 }),
+        json!({ "ip": "100.64.0.1", "timeout_ms": 999_999 }),
+    ] {
+        h.client.post("ping", &body).await.unwrap();
+    }
+    let ms: Vec<u128> = h
+        .fake
+        .0
+        .lock()
+        .unwrap()
+        .ping_timeouts
+        .iter()
+        .map(|d| d.as_millis())
+        .collect();
+    assert_eq!(ms, [5000, 1500, 1000, 60_000]);
 }
 
 #[tokio::test(flavor = "multi_thread")]

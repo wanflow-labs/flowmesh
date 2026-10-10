@@ -204,12 +204,17 @@ where
             #[derive(serde::Deserialize)]
             struct PingRequest {
                 ip: std::net::IpAddr,
+                #[serde(default)]
+                timeout_ms: Option<u64>,
             }
             let req: PingRequest = match serde_json::from_slice(&body) {
                 Ok(r) => r,
                 Err(e) => return error(StatusCode::BAD_REQUEST, format!("bad request body: {e}")),
             };
-            match d.ping(req.ip).await {
+            match d
+                .ping(req.ip, req.timeout_ms.map(std::time::Duration::from_millis))
+                .await
+            {
                 Ok(r) => reply(StatusCode::OK, &ping_json(req.ip, &r)),
                 Err(e) => daemon_error(&e),
             }

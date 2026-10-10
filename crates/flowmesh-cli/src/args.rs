@@ -146,6 +146,10 @@ fn ping_command(rest: &[String]) -> Result<Command, String> {
                     .map_err(|_| format!("invalid value {v:?} for -c"))?;
             }
             "until-direct" => opts.until_direct = bool_value(name, inline)?,
+            "timeout" => {
+                let d = parse_duration(&take_value(name, inline, rest, &mut i)?)?;
+                opts.timeout = (!d.is_zero()).then_some(d);
+            }
             _ => return Err(format!("ping: unknown flag -{name}")),
         }
         i += 1;
@@ -467,7 +471,8 @@ mod tests {
                 target: "100.64.0.1".into(),
                 opts: Options {
                     count: 3,
-                    until_direct: false
+                    until_direct: false,
+                    timeout: None
                 }
             }
         );
@@ -486,6 +491,14 @@ mod tests {
         );
         assert!(p(&["ping", "-c", "x", "a"]).is_err());
         assert!(p(&["ping", "--bogus", "a"]).is_err());
+        let Command::Ping { opts, .. } = cmd(&["ping", "--timeout=2s", "a"]) else {
+            panic!()
+        };
+        assert_eq!(opts.timeout, Some(Duration::from_secs(2)));
+        let Command::Ping { opts, .. } = cmd(&["ping", "--timeout", "0", "a"]) else {
+            panic!()
+        };
+        assert_eq!(opts.timeout, None, "0 means the default");
     }
 
     #[test]

@@ -12,6 +12,8 @@ pub struct Options {
     pub count: u32,
     /// Stop at the first direct pong; fail if none came (official default true).
     pub until_direct: bool,
+    /// Per-attempt timeout; None = the daemon's default (5 s, as the official client).
+    pub timeout: Option<std::time::Duration>,
 }
 
 impl Default for Options {
@@ -19,6 +21,7 @@ impl Default for Options {
         Self {
             count: 10,
             until_direct: true,
+            timeout: None,
         }
     }
 }
@@ -261,6 +264,7 @@ mod tests {
         let opts = Options {
             count: 3,
             until_direct: true,
+            timeout: None,
         };
         let (code, out, err, used) =
             script(opts, vec![pong(false), pong(false), pong(false)]).await;
@@ -274,6 +278,7 @@ mod tests {
         let opts = Options {
             count: 2,
             until_direct: false,
+            timeout: None,
         };
         let (code, _, err, used) = script(opts, vec![pong(false), pong(true)]).await;
         assert_eq!((code, used, err.as_str()), (0, 2, ""));
@@ -284,6 +289,7 @@ mod tests {
         let opts = Options {
             count: 3,
             until_direct: true,
+            timeout: None,
         };
         let (code, out, err, _) = script(opts, vec![]).await;
         assert_eq!(code, 1);
@@ -296,6 +302,7 @@ mod tests {
         let opts = Options {
             count: 2,
             until_direct: false,
+            timeout: None,
         };
         let (code, _, err, _) = script(opts, vec![Ok(Attempt::Timeout), pong(false)]).await;
         assert_eq!((code, err.as_str()), (0, ""));
@@ -322,7 +329,8 @@ mod tests {
             Options::default(),
             Options {
                 count: 10,
-                until_direct: true
+                until_direct: true,
+                timeout: None
             }
         );
     }

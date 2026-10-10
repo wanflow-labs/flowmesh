@@ -49,7 +49,10 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             };
             let mut out = std::io::stdout();
             let mut err = std::io::stderr();
-            let body = json!({ "ip": ip });
+            let body = json!({
+                "ip": ip,
+                "timeout_ms": opts.timeout.map(|d| u64::try_from(d.as_millis()).unwrap_or(u64::MAX)),
+            });
             let code = ping::run(&ip, opts, &mut out, &mut err, || async {
                 let v = client
                     .post("ping", &body)

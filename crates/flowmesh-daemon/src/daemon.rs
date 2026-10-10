@@ -129,8 +129,11 @@ struct Shared {
 /// await) so the supervisor can swap it without contending with operations that hold `Shared`.
 type CommandSlot = Arc<std::sync::Mutex<Option<mpsc::Sender<EngineCommand>>>>;
 
-/// How long `ping` waits for the engine's answer; the engine itself gives up after its ping timeout.
-const PING_WAIT: Duration = Duration::from_secs(7);
+/// Per-attempt ping timeout: official default 5 s; requests are clamped to 1–60 s.
+pub const PING_TIMEOUT_DEFAULT: Duration = Duration::from_secs(5);
+const PING_TIMEOUT_RANGE: (Duration, Duration) = (Duration::from_secs(1), Duration::from_secs(60));
+/// Extra wait on top of the engine's own ping timeout before giving up on the engine.
+const PING_SLACK: Duration = Duration::from_secs(2);
 
 pub struct Daemon<L: Launcher> {
     launcher: Arc<L>,
@@ -279,7 +282,11 @@ impl<L: Launcher> Daemon<L> {
     pub async fn ping(
         &self,
         ip: std::net::IpAddr,
+        timeout: Option<Duration>,
     ) -> Result<Result<PingReply, PingError>, DaemonError> {
+        let timeout = timeout
+            .unwrap_or(PING_TIMEOUT_DEFAULT)
+            .clamp(PING_TIMEOUT_RANGE.0, PING_TIMEOUT_RANGE.1);
         if self.backend_state().await != BackendState::Running {
             return Err(DaemonError::NotRunning);
         }
@@ -290,10 +297,10 @@ impl<L: Launcher> Daemon<L> {
             .clone()
             .ok_or(DaemonError::NotRunning)?;
         let (reply, rx) = oneshot::channel();
-        tx.send(EngineCommand::Ping { ip, reply })
+        tx.send(EngineCommand::Ping { ip, timeout, reply })
             .await
             .map_err(|_| DaemonError::NotRunning)?;
-        match tokio::time::timeout(PING_WAIT, rx).await {
+        match tokio::time::timeout(timeout + PING_SLACK, rx).await {
             Ok(Ok(r)) => Ok(r),
             // The engine stopped, or never answered: report it like an unanswered ping.
             Ok(Err(_)) | Err(_) => Ok(Err(PingError::Timeout)),

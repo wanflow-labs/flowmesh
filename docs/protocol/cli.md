@@ -37,6 +37,7 @@ Fields **the WanFlow gateway agent actually reads** (inventory): top level `Back
 
 flowmesh-specific details of the output:
 
+- flowmesh additions (design §7.3), camelCase to set them apart from the official PascalCase fields: `backend` (`userspace`; the kernel backend comes in v2) and `relayMode` (`auto`, `prefer`, `strict`; `null` before the first netmap).
 - Logged out, the shape follows the official client: `Self.ID` is `""`, `Self.PublicKey` is the all-zero node key, `Self.HostName` is the configured hostname, `TailscaleIPs`/`Peer`/`CurrentTailnet` are `null`, and `HaveNodeKey` is omitted.
 - After `down`, the last netmap stays visible (`Peer` is still populated), as on the official client.
 - `Health` carries `"flowmesh is stopped."` while Stopped or NeedsLogin (the official text names its own product; the WanFlow gateway agent does not parse it), plus the latest engine error while one is pending.
@@ -55,7 +56,7 @@ Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit
 | peer whose node key has expired | — | `peer's node key has expired` (immediately, nothing is sent) | 1 |
 
 - One attempt is a disco ping over every path the relay mode allows (DERP always; candidate endpoints in Auto mode), answered by the first pong; an attempt times out after 5 s. A direct pong also establishes the direct path, so pinging is itself a way to trigger hole punching (seen on the official client: the second `ping` to a NATed peer went direct).
-- Defaults: `-c 10`, `--until-direct=true`. Without `--until-direct`, relay pongs count as success.
+- Defaults: `-c 10`, `--until-direct=true`, `--timeout 5s` per attempt (clamped to 1–60 s by the daemon). Without `--until-direct`, relay pongs count as success. `-c 2 --timeout 2s` to an offline peer takes 4 s on both clients.
 - The name shown is the first label of the peer's DNS name. Targets may be an IP, that short name, the host name, or the full DNS name; flowmesh resolves names from the netmap only (the official client also asks the system resolver).
 - Local API: `POST /localapi/v0/ping` with `{"ip": …}` returns the official field names (`IP NodeIP NodeName Err LatencySeconds Endpoint DERPRegionID DERPRegionCode`); open to every local user, 503 when not Running.
 

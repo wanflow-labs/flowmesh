@@ -12,6 +12,8 @@ pub enum EngineCommand {
     /// Disco-ping the peer that owns `ip` once over every allowed path; answered by the first pong.
     Ping {
         ip: IpAddr,
+        /// How long to wait for a pong before answering `Timeout`.
+        timeout: Duration,
         reply: oneshot::Sender<Result<PingReply, PingError>>,
     },
     /// Who owns `ip` (this node or a peer), for `whois` and mesh services.

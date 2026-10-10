@@ -213,6 +213,16 @@ pub(crate) fn snapshot(
         magic_dns_suffix: suffix.clone(),
         tailnet_name: suffix,
         health: health.to_vec(),
+        relay_mode: mode_name(mode_of(nm)).to_string(),
+    }
+}
+
+/// The name of a relay mode in `status --json` (`relayMode`).
+pub(crate) fn mode_name(mode: Mode) -> &'static str {
+    match mode {
+        Mode::Auto => "auto",
+        Mode::Prefer => "prefer",
+        Mode::Strict => "strict",
     }
 }
 
@@ -589,6 +599,24 @@ mod tests {
         );
         assert_eq!(mode_of(&netmap_with(&[], 3478)), Mode::Auto);
         assert_eq!(mode_of(&NetMap::default()), Mode::Auto);
+    }
+
+    #[test]
+    fn mode_names_and_snapshot_field() {
+        assert_eq!(
+            [Mode::Auto, Mode::Prefer, Mode::Strict].map(mode_name),
+            ["auto", "prefer", "strict"]
+        );
+        let ps = PathSock::new(DiscoPrivate::generate().unwrap(), NodePublic([1; 32]));
+        let dp = Dataplane::new(NodePrivate::generate().unwrap());
+        let s = snapshot(
+            &netmap_with(&["tag:relay-strict"], 3478),
+            &ps,
+            &dp,
+            Duration::ZERO,
+            &[],
+        );
+        assert_eq!(s.relay_mode, "strict");
     }
 
     #[test]

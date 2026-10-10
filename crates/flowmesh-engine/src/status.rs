@@ -34,4 +34,6 @@ pub struct EngineStatus {
     pub magic_dns_suffix: String,
     pub tailnet_name: String,
     pub health: Vec<String>,
+    /// `auto`, `prefer` or `strict` (design §7.3); empty before the first netmap.
+    pub relay_mode: String,
 }

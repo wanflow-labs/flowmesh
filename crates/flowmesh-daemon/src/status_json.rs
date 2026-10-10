@@ -83,6 +83,9 @@ pub fn render(i: &Input<'_>) -> Value {
         "MagicDNSSuffix": i.snap.magic_dns_suffix,
         "CurrentTailnet": tailnet,
         "Peer": peers,
+        // flowmesh additions (design §7.3), camelCase to set them apart from the official fields.
+        "backend": "userspace",
+        "relayMode": if i.snap.relay_mode.is_empty() { Value::Null } else { i.snap.relay_mode.as_str().into() },
     });
     // Official: present only while a node key is held.
     if i.logged_in
@@ -187,6 +190,7 @@ mod tests {
             magic_dns_suffix: "mesh.lab.internal".into(),
             tailnet_name: "headscale.lab".into(),
             health: Vec::new(),
+            relay_mode: String::new(),
         }
     }
 
@@ -318,6 +322,21 @@ mod tests {
         let v = out(BackendState::Running, true, &s);
         assert_eq!(v["Peer"]["nodekey:bb"]["KeyExpiry"], "2026-10-10T06:26:42Z");
         assert_eq!(v["Peer"]["nodekey:bb"]["Expired"], true);
+    }
+
+    #[test]
+    fn flowmesh_fields() {
+        let mut s = running();
+        assert_eq!(
+            out(BackendState::Running, true, &s)["relayMode"],
+            Value::Null
+        );
+        s.relay_mode = "prefer".into();
+        let v = out(BackendState::Running, true, &s);
+        assert_eq!(
+            (v["backend"].as_str(), v["relayMode"].as_str()),
+            (Some("userspace"), Some("prefer"))
+        );
     }
 
     #[test]
