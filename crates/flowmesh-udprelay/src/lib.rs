@@ -125,6 +125,12 @@ impl RelayClient {
     /// The pair has traffic and no direct path: a relay is wanted. Called for every packet or tick
     /// with traffic; cheap when nothing is due.
     pub fn want(&mut self, peer: &Peer, now: Duration) -> Vec<RelayAction> {
+        // No allocation for a peer whose disco key isn't known yet (zero until its first
+        // non-streaming update) or for ourselves: a pair with a zero key crashes the official
+        // relay server, and a pair of one key is meaningless.
+        if peer.disco.0 == [0; 32] || peer.disco == self.me {
+            return Vec::new();
+        }
         let st = self.peers.entry(peer.disco).or_insert_with(|| PeerState {
             peer: peer.clone(),
             last_wanted: now,
@@ -524,6 +530,30 @@ mod tests {
         assert!(requests(&c.tick(S + REPEAT_DELAY - S / 2)).is_empty());
         assert_eq!(requests(&c.tick(S + REPEAT_DELAY)), vec![1], "same counter");
         assert!(requests(&c.tick(S + 10 * S)).is_empty());
+    }
+
+    /// A peer whose disco key isn't known yet (all zero) or is our own gets no allocation request:
+    /// the official relay server panics computing a shared secret with a zero key, so one such
+    /// request takes the server down for every client.
+    #[test]
+    fn no_request_for_a_zero_or_own_disco_key() {
+        let mut c = client();
+        let unknown = Peer {
+            disco: DiscoPublic([0; 32]),
+            ..peer()
+        };
+        assert!(c.want(&unknown, S).is_empty());
+        assert!(
+            requests(&c.tick(S + 2 * ROUND_INTERVAL)).is_empty(),
+            "nothing scheduled later either"
+        );
+        let own = Peer {
+            disco: me(),
+            ..peer()
+        };
+        assert!(c.want(&own, S).is_empty());
+        // Control: the same client still requests for a real peer.
+        assert_eq!(requests(&c.want(&peer(), S)), vec![1]);
     }
 
     #[test]
