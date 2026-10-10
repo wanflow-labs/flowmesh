@@ -91,6 +91,17 @@ path() { # the last line of the client's own ping: the path must be direct for t
   echo "  path $1: $("$@" 2>&1 | tr -d '\r' | tail -1)"
 }
 
+warm() { # client target: right after joining, new TCP connections can be refused until the packet
+  # filter arrives (fail-closed), so wait until a 1-second iperf3 gets through
+  for _ in $(seq 1 30); do
+    docker run --rm --network "container:$1" "$shoot" iperf3 -c "$2" -t 1 >/dev/null 2>&1 && return
+    sleep 1
+  done
+  echo "warning: $1 cannot reach iperf3 on $2" >&2
+}
+warm fmA "$fmB_ip"
+warm wmA "$wmB_ip"
+
 echo "== $(date -u +%FT%TZ), ${secs}s per run, direct path"
 path fm fmA ping -c 3 "$fmB_ip"
 path wm wmA ping -c 3 "$wmB_ip"
