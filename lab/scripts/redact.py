@@ -41,9 +41,11 @@ def main():
             json.dump(redact(data, authkey), f, indent=2, sort_keys=True)
             f.write("\n")
     leaked = []
+    # Search the raw bytes, so binary samples (pcaps, tapped packets) are checked too.
     for name in sorted(os.listdir(directory)):
-        text = open(os.path.join(directory, name)).read()
-        if authkey in text or "privkey:" in text:
+        with open(os.path.join(directory, name), "rb") as f:
+            raw = f.read()
+        if authkey.encode() in raw or b"privkey:" in raw:
             leaked.append(name)
     if leaked:
         print("secrets still present in: " + ", ".join(leaked))
