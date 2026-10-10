@@ -22,6 +22,15 @@ pub enum Command {
     Status {
         json: bool,
     },
+    Ping {
+        target: String,
+        opts: crate::ping::Options,
+    },
+    /// `debug prefs`
+    DebugPrefs,
+    Bugreport {
+        output: Option<PathBuf>,
+    },
     Version,
 }
 
@@ -38,8 +47,7 @@ pub struct Invocation {
     pub command: Command,
 }
 
-pub const USAGE: &str =
-    "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|version> [flags]";
+pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ping|debug|bugreport|version> [flags]";
 
 /// Parse the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Invocation, String> {
@@ -74,9 +82,58 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
             }
             Command::Status { json }
         }
+        "ping" => ping_command(rest)?,
+        "debug" => match rest {
+            [what] if what == "prefs" => Command::DebugPrefs,
+            _ => return Err("usage: flowmesh debug prefs".into()),
+        },
+        "bugreport" => {
+            let mut output = None;
+            let mut j = 0;
+            while let Some(a) = rest.get(j) {
+                let (name, inline) = split_flag(a)?;
+                match name {
+                    "output" | "o" => {
+                        output = Some(PathBuf::from(take_value(name, inline, rest, &mut j)?))
+                    }
+                    _ => return Err(format!("bugreport: unknown flag -{name}")),
+                }
+                j += 1;
+            }
+            Command::Bugreport { output }
+        }
         other => return Err(format!("unknown command {other:?}\n{USAGE}")),
     };
     Ok(Invocation { socket, command })
+}
+
+/// `ping [-c N] [--until-direct[=bool]] <peer>`; flags come before the peer (Go flag parsing stops at
+/// the first non-flag argument).
+fn ping_command(rest: &[String]) -> Result<Command, String> {
+    let mut opts = crate::ping::Options::default();
+    let mut i = 0;
+    while let Some(a) = rest.get(i).filter(|a| a.starts_with('-')) {
+        let (name, inline) = split_flag(a)?;
+        match name {
+            "c" => {
+                let v = take_value(name, inline, rest, &mut i)?;
+                opts.count = v
+                    .parse()
+                    .map_err(|_| format!("invalid value {v:?} for -c"))?;
+            }
+            "until-direct" => opts.until_direct = bool_value(name, inline)?,
+            _ => return Err(format!("ping: unknown flag -{name}")),
+        }
+        i += 1;
+    }
+    match &rest[i.min(rest.len())..] {
+        [target] => Ok(Command::Ping {
+            target: target.clone(),
+            opts,
+        }),
+        [] => Err("usage: flowmesh ping [flags] <hostname-or-IP>".into()),
+        _ => Err("too many non-flag arguments".into()),
+    }
 }
 
 fn plain(rest: &[String], c: Command) -> Result<Command, String> {
@@ -368,6 +425,65 @@ mod tests {
             timeout, None,
             "0 means wait forever, as in the official client"
         );
+    }
+
+    #[test]
+    fn ping_arguments() {
+        use crate::ping::Options;
+        assert_eq!(
+            cmd(&["ping", "ts1"]),
+            Command::Ping {
+                target: "ts1".into(),
+                opts: Options::default()
+            }
+        );
+        assert_eq!(
+            cmd(&["ping", "-c", "3", "--until-direct=false", "100.64.0.1"]),
+            Command::Ping {
+                target: "100.64.0.1".into(),
+                opts: Options {
+                    count: 3,
+                    until_direct: false
+                }
+            }
+        );
+        assert!(
+            p(&["ping"])
+                .unwrap_err()
+                .starts_with("usage: flowmesh ping")
+        );
+        assert_eq!(
+            p(&["ping", "a", "b"]).unwrap_err(),
+            "too many non-flag arguments"
+        );
+        assert!(
+            p(&["ping", "a", "-c", "3"]).is_err(),
+            "flags after the peer are not flags"
+        );
+        assert!(p(&["ping", "-c", "x", "a"]).is_err());
+        assert!(p(&["ping", "--bogus", "a"]).is_err());
+    }
+
+    #[test]
+    fn debug_and_bugreport() {
+        assert_eq!(cmd(&["debug", "prefs"]), Command::DebugPrefs);
+        assert!(p(&["debug"]).is_err());
+        assert!(p(&["debug", "netmap"]).is_err());
+        assert_eq!(cmd(&["bugreport"]), Command::Bugreport { output: None });
+        assert_eq!(
+            cmd(&["bugreport", "--output", "/tmp/r.json"]),
+            Command::Bugreport {
+                output: Some("/tmp/r.json".into())
+            }
+        );
+        assert_eq!(
+            cmd(&["bugreport", "-o=/tmp/r.json"]),
+            Command::Bugreport {
+                output: Some("/tmp/r.json".into())
+            }
+        );
+        assert!(p(&["bugreport", "--upload"]).is_err());
+        assert!(p(&["bugreport", "stray"]).is_err());
     }
 
     #[test]

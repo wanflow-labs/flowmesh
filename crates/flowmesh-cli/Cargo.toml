@@ -19,3 +19,6 @@ flowmesh-daemon = { version = "0.1.0", path = "../flowmesh-daemon" }
 ipnet = "2.12.2"
 serde_json = "1.0.151"
 tokio = { version = "1.53.2", features = ["rt", "macros", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["rt", "macros"] }

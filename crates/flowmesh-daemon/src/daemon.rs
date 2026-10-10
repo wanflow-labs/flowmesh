@@ -5,6 +5,7 @@
 use crate::prefs::{Prefs, PrefsError, PrefsUpdate};
 use crate::state::{BackendState, Facts, derive};
 use crate::status_json;
+use flowmesh_engine::command::{EngineCommand, PingError, PingReply};
 use flowmesh_engine::status::EngineStatus;
 use flowmesh_engine::{EngineConfig, EngineError};
 use serde::{Deserialize, Serialize};
@@ -13,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, watch};
+use tokio::sync::{Mutex, mpsc, oneshot, watch};
 use tokio::task::JoinHandle;
 
 pub type BoxFut<T> = Pin<Box<dyn Future<Output = T> + Send>>;
@@ -25,6 +26,7 @@ pub trait Launcher: Send + Sync + 'static {
         cfg: EngineConfig,
         status: watch::Sender<EngineStatus>,
         stop: watch::Receiver<bool>,
+        commands: mpsc::Receiver<EngineCommand>,
     ) -> BoxFut<Result<(), EngineError>>;
     fn logout(&self, login_server: String, state_file: PathBuf) -> BoxFut<Result<(), String>>;
 }
@@ -80,6 +82,8 @@ pub enum DaemonError {
     Unsupported(&'static str),
     #[error("logout failed: {0}")]
     Logout(String),
+    #[error("flowmesh is not running")]
+    NotRunning,
 }
 
 fn check_supported(update: &PrefsUpdate) -> Result<(), DaemonError> {
@@ -121,10 +125,18 @@ struct Shared {
     engine: Option<Engine>,
 }
 
+/// Sender into the current engine run. Kept outside `Shared` (and behind a lock never held across an
+/// await) so the supervisor can swap it without contending with operations that hold `Shared`.
+type CommandSlot = Arc<std::sync::Mutex<Option<mpsc::Sender<EngineCommand>>>>;
+
+/// How long `ping` waits for the engine's answer; the engine itself gives up after its ping timeout.
+const PING_WAIT: Duration = Duration::from_secs(7);
+
 pub struct Daemon<L: Launcher> {
     launcher: Arc<L>,
     opts: Options,
     shared: Arc<Mutex<Shared>>,
+    commands: CommandSlot,
 }
 
 /// Where an unparsable prefs file is moved, so it can be inspected.
@@ -170,6 +182,7 @@ impl<L: Launcher> Daemon<L> {
         let d = Self {
             launcher: Arc::new(launcher),
             opts,
+            commands: CommandSlot::default(),
             shared: Arc::new(Mutex::new(Shared {
                 stored,
                 ..Default::default()
@@ -262,6 +275,31 @@ impl<L: Launcher> Daemon<L> {
         Ok(())
     }
 
+    /// Disco-ping the peer owning `ip` once. The outer error means no running network to ask.
+    pub async fn ping(
+        &self,
+        ip: std::net::IpAddr,
+    ) -> Result<Result<PingReply, PingError>, DaemonError> {
+        if self.backend_state().await != BackendState::Running {
+            return Err(DaemonError::NotRunning);
+        }
+        let tx = self
+            .commands
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+            .ok_or(DaemonError::NotRunning)?;
+        let (reply, rx) = oneshot::channel();
+        tx.send(EngineCommand::Ping { ip, reply })
+            .await
+            .map_err(|_| DaemonError::NotRunning)?;
+        match tokio::time::timeout(PING_WAIT, rx).await {
+            Ok(Ok(r)) => Ok(r),
+            // The engine stopped, or never answered: report it like an unanswered ping.
+            Ok(Err(_)) | Err(_) => Ok(Err(PingError::Timeout)),
+        }
+    }
+
     pub async fn prefs(&self) -> Prefs {
         self.shared.lock().await.stored.prefs.clone()
     }
@@ -324,6 +362,7 @@ impl<L: Launcher> Daemon<L> {
         let task = tokio::spawn(supervise(
             self.launcher.clone(),
             self.shared.clone(),
+            self.commands.clone(),
             self.opts.clone(),
             cfg,
             stop_rx,
@@ -333,6 +372,13 @@ impl<L: Launcher> Daemon<L> {
             task,
         });
     }
+}
+
+fn set_commands(slot: &CommandSlot, tx: Option<mpsc::Sender<EngineCommand>>) {
+    // A poisoned lock only means a panic elsewhere; the slot itself is always valid.
+    *slot
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = tx;
 }
 
 fn facts(sh: &Shared) -> Facts {
@@ -348,6 +394,7 @@ fn facts(sh: &Shared) -> Facts {
 async fn supervise<L: Launcher>(
     launcher: Arc<L>,
     shared: Arc<Mutex<Shared>>,
+    commands: CommandSlot,
     opts: Options,
     mut cfg: EngineConfig,
     mut stop: watch::Receiver<bool>,
@@ -356,7 +403,12 @@ async fn supervise<L: Launcher>(
     loop {
         let (status_tx, status_rx) = watch::channel(EngineStatus::default());
         let watcher = tokio::spawn(follow_status(shared.clone(), opts.clone(), status_rx));
-        let result = launcher.run(cfg.clone(), status_tx, stop.clone()).await;
+        let (cmd_tx, cmd_rx) = mpsc::channel(16);
+        set_commands(&commands, Some(cmd_tx));
+        let result = launcher
+            .run(cfg.clone(), status_tx, stop.clone(), cmd_rx)
+            .await;
+        set_commands(&commands, None);
         watcher.abort();
         // A requested stop is awaited by `stop_engine` while it holds the lock: leave without taking it.
         if *stop.borrow() {

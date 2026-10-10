@@ -40,6 +40,9 @@ sudo flowmesh up --login-server=https://<你的控制服务器> --auth-key=file:
 | `sudo flowmesh up` | 重新连接；若当前有非默认设置，需要把它们全部再写一遍，或加 `--reset` |
 | `sudo flowmesh set --accept-routes=false` | 只修改给出的设置 |
 | `sudo flowmesh logout` | 注销本节点并把所有设置恢复为默认；需要能连上控制服务器 |
+| `flowmesh ping <主机名或IP>` | 探测到某个节点的路径（直连地址或中继）与延迟；默认最多 10 次，建立直连即停止 |
+| `flowmesh debug prefs` | 查看当前设置 |
+| `flowmesh bugreport` | 在当前目录生成脱敏诊断包（只写本地文件，不会上传），由你决定是否发给技术支持 |
 
 查看状态不需要 root；任何修改都需要 root。
 

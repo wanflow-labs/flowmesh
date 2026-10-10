@@ -2,7 +2,8 @@
 //! flowmesh: command-line client for flowmeshd.
 
 use flowmesh_cli::args::{self, AuthKey, Command};
-use flowmesh_cli::render;
+use flowmesh_cli::bugreport::{self, Section};
+use flowmesh_cli::{ping, render};
 use flowmesh_daemon::client::{DEFAULT_SOCKET, LocalClient};
 use serde_json::{Value, json};
 use std::process::ExitCode;
@@ -40,6 +41,56 @@ fn main() -> ExitCode {
 async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
     let e = |e: flowmesh_daemon::client::ClientError| e.to_string();
     match command {
+        Command::Ping { target, opts } => {
+            let status = client.get("status").await.map_err(e)?;
+            let Some(ip) = ping::resolve(&status, &target) else {
+                eprintln!("error looking up IP of {target:?}: no such peer");
+                return Ok(1);
+            };
+            let mut out = std::io::stdout();
+            let mut err = std::io::stderr();
+            let body = json!({ "ip": ip });
+            let code = ping::run(&ip, opts, &mut out, &mut err, || async {
+                let v = client
+                    .post("ping", &body)
+                    .await
+                    .map_err(|e| e.to_string())?;
+                ping::parse_attempt(&v)
+            })
+            .await;
+            Ok(code)
+        }
+        Command::DebugPrefs => {
+            let p = client.get("prefs").await.map_err(e)?;
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&p).map_err(|e| e.to_string())?
+            );
+            Ok(0)
+        }
+        Command::Bugreport { output } => {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs());
+            let bundle = bugreport::assemble(
+                env!("CARGO_PKG_VERSION"),
+                now,
+                client.get("status").await.map_err(e),
+                client.get("prefs").await.map_err(e),
+                collect_system(),
+            );
+            let path = output.unwrap_or_else(|| format!("flowmesh-bugreport-{now}.json").into());
+            write_private(
+                &path,
+                &serde_json::to_vec_pretty(&bundle).map_err(|e| e.to_string())?,
+            )
+            .map_err(|e| format!("write {}: {e}", path.display()))?;
+            println!(
+                "wrote {} (nothing was sent anywhere; review it before sharing)",
+                path.display()
+            );
+            Ok(0)
+        }
         Command::Version => {
             println!("{}", env!("CARGO_PKG_VERSION"));
             Ok(0)
@@ -90,6 +141,67 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             wait_running(client, timeout).await
         }
     }
+}
+
+fn command_output(cmd: &str, args: &[&str]) -> Result<String, String> {
+    let out = std::process::Command::new(cmd)
+        .args(args)
+        .output()
+        .map_err(|e| format!("{cmd}: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(format!(
+            "{cmd} {}: {}",
+            args.join(" "),
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// System facts for the bug report; each item records its own failure instead of aborting.
+fn collect_system() -> Vec<Section> {
+    vec![
+        Section {
+            name: "uname",
+            content: command_output("uname", &["-a"]),
+        },
+        Section {
+            name: "ip_addr",
+            content: command_output("ip", &["-o", "addr"]),
+        },
+        Section {
+            name: "ip_route",
+            content: command_output("ip", &["route", "show", "table", "all"]),
+        },
+        Section {
+            name: "ip_rule",
+            content: command_output("ip", &["rule"]),
+        },
+        Section {
+            name: "resolv_conf",
+            content: std::fs::read_to_string("/etc/resolv.conf").map_err(|e| e.to_string()),
+        },
+        Section {
+            name: "journal",
+            content: command_output(
+                "journalctl",
+                &["-u", "flowmeshd", "-n", "300", "--no-pager"],
+            ),
+        },
+    ]
+}
+
+/// Bug reports can contain addresses and routes: create them readable by the owner only.
+fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .open(path)?;
+    f.write_all(data)
 }
 
 /// Block until Running (exit 0) or the control server refuses (exit 1), like the official `up`.

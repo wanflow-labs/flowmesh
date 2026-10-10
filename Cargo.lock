@@ -588,6 +588,7 @@ dependencies = [
  "flowmesh-stun",
  "getrandom 0.3.4",
  "ipnet",
+ "thiserror",
  "tokio",
  "tun-rs",
 ]

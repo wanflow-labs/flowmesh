@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: Apache-2.0
 //! flowmesh network engine. Linux-only implementation; on other platforms it only exposes types (so the workspace still builds on the dev machine).
 
+pub mod command;
 pub mod status;
 
 use flowmesh_control::client::ControlClient;
@@ -90,17 +91,84 @@ async fn tell_logout(login_server: &str, keys: &flowmesh_state::NodeState) -> Re
         .await
         .map_err(|e| format!("control connect: {e}"))?;
     client
-        .register(&RegisterRequest {
-            version: CAPABILITY_VERSION,
-            node_key: keys.node.public(),
-            expiry: Some(LOGOUT_EXPIRY.into()),
-            hostinfo: Hostinfo {
-                os: "linux".into(),
-                ..Default::default()
-            },
-            ..Default::default()
-        })
+        .register(&logout_request(keys))
         .await
         .map_err(|e| format!("register: {e}"))?;
     Ok(())
+}
+
+/// A register request carrying an expiry in the past for the current node key (control.md).
+fn logout_request(keys: &flowmesh_state::NodeState) -> RegisterRequest {
+    RegisterRequest {
+        version: CAPABILITY_VERSION,
+        node_key: keys.node.public(),
+        expiry: Some(LOGOUT_EXPIRY.into()),
+        hostinfo: Hostinfo {
+            os: "linux".into(),
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn engine_error_text() {
+        let e = |auth_url: &str, error: &str| {
+            EngineError::NotAuthorized {
+                auth_url: auth_url.into(),
+                error: error.into(),
+            }
+            .to_string()
+        };
+        assert_eq!(e("", ""), "not authorized");
+        assert_eq!(e("", "key expired"), "not authorized: key expired");
+        assert_eq!(
+            e("http://h/r/1", ""),
+            "not authorized (log in at http://h/r/1)"
+        );
+        assert_eq!(
+            e("http://h/r/1", "key expired"),
+            "not authorized: key expired (log in at http://h/r/1)"
+        );
+        assert_eq!(
+            EngineError::Other("tun: busy".into()).to_string(),
+            "tun: busy"
+        );
+        assert_eq!(EngineError::from("x"), EngineError::Other("x".into()));
+        assert_eq!(
+            EngineError::from("y".to_string()),
+            EngineError::Other("y".into())
+        );
+    }
+
+    #[test]
+    fn logout_request_expires_the_current_node_key() {
+        let keys = flowmesh_state::NodeState {
+            machine: flowmesh_proto::key::MachinePrivate::generate().unwrap(),
+            node: flowmesh_proto::key::NodePrivate::generate().unwrap(),
+        };
+        let r = logout_request(&keys);
+        assert_eq!(r.version, CAPABILITY_VERSION);
+        assert_eq!(r.node_key, keys.node.public());
+        assert_eq!(r.expiry.as_deref(), Some("1970-01-01T00:00:01Z"));
+        assert_eq!(r.hostinfo.os, "linux");
+        assert!(r.auth.is_none(), "logout never carries an auth key");
+    }
+
+    /// The server cannot be told: logout fails and the node key stays (cli.md §1).
+    #[tokio::test]
+    async fn logout_without_the_server_changes_nothing() {
+        let dir = std::env::temp_dir().join(format!("fm-engine-logout-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let state = dir.join("node.json");
+        let before = flowmesh_state::load_or_create(&state).unwrap();
+        // Port 1 on loopback: connection refused at once.
+        assert!(logout("http://127.0.0.1:1", &state).await.is_err());
+        assert_eq!(flowmesh_state::load_or_create(&state).unwrap(), before);
+    }
 }

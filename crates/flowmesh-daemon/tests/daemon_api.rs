@@ -6,6 +6,7 @@
 use flowmesh_daemon::api;
 use flowmesh_daemon::client::{ClientError, LocalClient};
 use flowmesh_daemon::daemon::{BoxFut, Daemon, Launcher, Options};
+use flowmesh_engine::command::{EngineCommand, PingError, PingPath, PingReply};
 use flowmesh_engine::status::{EngineStatus, PeerStatus};
 use flowmesh_engine::{EngineConfig, EngineError};
 use serde_json::{Value, json};
@@ -42,6 +43,7 @@ impl Launcher for Fake {
         cfg: EngineConfig,
         status: watch::Sender<EngineStatus>,
         mut stop: watch::Receiver<bool>,
+        mut commands: tokio::sync::mpsc::Receiver<EngineCommand>,
     ) -> BoxFut<Result<(), EngineError>> {
         let world = self.0.clone();
         Box::pin(async move {
@@ -81,9 +83,28 @@ impl Launcher for Fake {
                     health: Vec::new(),
                 });
             }
-            while !*stop.borrow() {
-                if stop.changed().await.is_err() {
-                    break;
+            loop {
+                tokio::select! {
+                    r = stop.changed() => if r.is_err() || *stop.borrow() { break },
+                    Some(EngineCommand::Ping { ip, reply }) = commands.recv() => {
+                        // 100.64.0.1 answers directly, 100.64.0.2 over DERP, 100.64.0.3 never.
+                        let via = match ip.to_string().as_str() {
+                            "100.64.0.1" => Some(PingPath::Direct("172.29.0.21:41641".parse().unwrap())),
+                            "100.64.0.2" => Some(PingPath::Derp { region: 1000, code: "r1000".into() }),
+                            _ => None,
+                        };
+                        let answer = match (ip.to_string().as_str(), via) {
+                            ("100.64.0.3", _) => Err(PingError::Timeout),
+                            (_, Some(via)) => Ok(PingReply {
+                                node_ip: ip,
+                                node_name: "peer".into(),
+                                via,
+                                latency: Duration::from_millis(3),
+                            }),
+                            (_, None) => Err(PingError::NoPeer),
+                        };
+                        let _ = reply.send(answer);
+                    }
                 }
             }
             world.lock().unwrap().stops += 1;
@@ -609,6 +630,65 @@ async fn logout_when_never_logged_in_does_not_call_the_server() {
     h.client.post("logout", &json!({})).await.unwrap();
     assert_eq!(h.fake.0.lock().unwrap().logouts, 0);
     assert_eq!(h.stored()["prefs"]["control_url"], "");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn ping_reports_official_fields() {
+    let h = start(temp_dir("ping"), Fake::default()).await;
+    let (code, msg) = api_error(h.client.post("ping", &json!({ "ip": "100.64.0.1" })).await);
+    assert_eq!((code, msg.as_str()), (503, "flowmesh is not running"));
+
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let d = h
+        .client
+        .post("ping", &json!({ "ip": "100.64.0.1" }))
+        .await
+        .unwrap();
+    assert_eq!(d["Err"], "");
+    assert_eq!(d["Endpoint"], "172.29.0.21:41641");
+    assert_eq!(d["DERPRegionID"], 0);
+    assert_eq!(d["NodeName"], "peer");
+    assert_eq!(d["NodeIP"], "100.64.0.1");
+    assert!((d["LatencySeconds"].as_f64().unwrap() - 0.003).abs() < 1e-9);
+    let r = h
+        .client
+        .post("ping", &json!({ "ip": "100.64.0.2" }))
+        .await
+        .unwrap();
+    assert_eq!(
+        (r["Endpoint"].as_str(), r["DERPRegionID"].as_u64()),
+        (Some(""), Some(1000))
+    );
+    assert_eq!(r["DERPRegionCode"], "r1000");
+    let t = h
+        .client
+        .post("ping", &json!({ "ip": "100.64.0.3" }))
+        .await
+        .unwrap();
+    assert_eq!(t["Err"], "timed out");
+    let n = h
+        .client
+        .post("ping", &json!({ "ip": "100.64.9.9" }))
+        .await
+        .unwrap();
+    assert_eq!(n["Err"], "no matching peer");
+
+    let (code, _) = api_error(h.client.post("ping", &json!({ "ip": "not-an-ip" })).await);
+    assert_eq!(code, 400);
+    // Like status, ping is open to every local user.
+    use http_body_util::Full;
+    use hyper::body::Bytes;
+    let req = hyper::Request::post("/localapi/v0/ping")
+        .body(Full::new(Bytes::from_static(br#"{"ip":"100.64.0.1"}"#)))
+        .unwrap();
+    assert_eq!(api::handle(&h.daemon, req, false).await.status(), 200);
+
+    h.client.post("down", &json!({})).await.unwrap();
+    let (code, _) = api_error(h.client.post("ping", &json!({ "ip": "100.64.0.1" })).await);
+    assert_eq!(code, 503);
 }
 
 #[tokio::test(flavor = "multi_thread")]

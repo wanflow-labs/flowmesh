@@ -96,8 +96,20 @@ struct PeerPath {
 #[derive(Debug, Clone, Copy)]
 struct Pending {
     peer: NodePublic,
+    /// Endpoint for a direct ping; `127.3.3.40:<region>` for a probe sent over DERP.
     to: SocketAddr,
     sent: Duration,
+    /// Sent by [`PathSock::probe`]: its pong is reported as a [`ProbeResult`].
+    probe: bool,
+}
+
+/// A pong answering [`PathSock::probe`] (the `flowmesh ping` command).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeResult {
+    pub peer: NodePublic,
+    /// `Direct(endpoint)` or `Derp(region)`.
+    pub via: Route,
+    pub latency: Duration,
 }
 
 pub struct PathSock {
@@ -108,6 +120,7 @@ pub struct PathSock {
     peers: HashMap<NodePublic, PeerPath>,
     by_disco: HashMap<DiscoPublic, NodePublic>,
     pending: HashMap<[u8; TX_ID_LEN], Pending>,
+    probe_results: Vec<ProbeResult>,
 }
 
 impl PathSock {
@@ -120,6 +133,7 @@ impl PathSock {
             peers: HashMap::new(),
             by_disco: HashMap::new(),
             pending: HashMap::new(),
+            probe_results: Vec::new(),
         }
     }
 
@@ -200,12 +214,12 @@ impl PathSock {
         let mut actions = Vec::new();
         if !relay_only {
             for ep in candidates {
-                if let Some(a) = self.ping(&info, Some(ep), now, rng) {
+                if let Some(a) = self.ping(&info, Some(ep), false, now, rng) {
                     actions.push(a);
                 }
             }
         }
-        if let Some(a) = self.ping(&info, None, now, rng) {
+        if let Some(a) = self.ping(&info, None, false, now, rng) {
             actions.push(a);
         }
         if !relay_only && !self.my_endpoints.is_empty() {
@@ -216,11 +230,41 @@ impl PathSock {
         (route, actions)
     }
 
+    /// Ping a peer on demand over every path this mode allows (DERP always; candidate endpoints in
+    /// Auto). Each pong comes back as a [`ProbeResult`] from [`PathSock::take_probe_results`]; a direct
+    /// pong also establishes the path, as any direct pong does.
+    pub fn probe(&mut self, peer: NodePublic, now: Duration, rng: &mut dyn Random) -> Vec<Action> {
+        let Some(p) = self.peers.get(&peer) else {
+            return Vec::new();
+        };
+        let info = p.info.clone();
+        let mut actions = Vec::new();
+        if self.mode == Mode::Auto {
+            let mut candidates = info.endpoints.clone();
+            for e in &p.cmm_endpoints {
+                if !candidates.contains(e) {
+                    candidates.push(*e);
+                }
+            }
+            for ep in candidates {
+                actions.extend(self.ping(&info, Some(ep), true, now, rng));
+            }
+        }
+        actions.extend(self.ping(&info, None, true, now, rng));
+        actions
+    }
+
+    /// Pongs to [`PathSock::probe`] received since the last call.
+    pub fn take_probe_results(&mut self) -> Vec<ProbeResult> {
+        std::mem::take(&mut self.probe_results)
+    }
+
     /// Build a ping: `to` = Some(endpoint) means directly over UDP, None means via the home DERP.
     fn ping(
         &mut self,
         info: &PeerInfo,
         to: Option<SocketAddr>,
+        probe: bool,
         now: Duration,
         rng: &mut dyn Random,
     ) -> Option<Action> {
@@ -239,15 +283,32 @@ impl PathSock {
                         peer: info.node,
                         to: addr,
                         sent: now,
+                        probe,
                     },
                 );
                 Some(Action::Udp { to: addr, data })
             }
-            None => info.home_region.map(|region| Action::Derp {
-                to: info.node,
-                region,
-                data,
-            }),
+            None => {
+                let region = info.home_region?;
+                // Only probes care about pongs over DERP; routine discovery pings over DERP exist to
+                // make the peer learn our disco key, so they are not tracked.
+                if probe {
+                    self.pending.insert(
+                        tx_id,
+                        Pending {
+                            peer: info.node,
+                            to: derp_magic(region),
+                            sent: now,
+                            probe,
+                        },
+                    );
+                }
+                Some(Action::Derp {
+                    to: info.node,
+                    region,
+                    data,
+                })
+            }
         }
     }
 
@@ -313,15 +374,13 @@ impl PathSock {
                 endpoints
                     .into_iter()
                     .take(MAX_CMM_ENDPOINTS)
-                    .filter_map(|e| self.ping(&info, Some(e), now, rng))
+                    .filter_map(|e| self.ping(&info, Some(e), false, now, rng))
                     .collect()
             }
             Ok(Message::Ping { tx_id, .. }) => {
                 let src = match from {
                     Source::Udp(a) => a,
-                    Source::Derp { region, .. } => {
-                        SocketAddr::new(IpAddr::V4(DERP_MAGIC_IP), clamp_port(region))
-                    }
+                    Source::Derp { region, .. } => derp_magic(region),
                 };
                 let pong = message::encode(&Message::Pong { tx_id, src });
                 let Some(data) = self.seal(&sender, &pong, rng) else {
@@ -337,15 +396,32 @@ impl PathSock {
                 }
             }
             Ok(Message::Pong { tx_id, .. }) => {
-                if let (Source::Udp(a), Some(pend)) = (from, self.pending.get(&tx_id).copied()) {
-                    let fresh = now.saturating_sub(pend.sent) <= PING_TIMEOUT;
-                    if pend.peer == peer && pend.to == a && fresh {
-                        self.pending.remove(&tx_id);
+                let Some(pend) = self.pending.get(&tx_id).copied() else {
+                    return Vec::new();
+                };
+                if pend.peer != peer || now.saturating_sub(pend.sent) > PING_TIMEOUT {
+                    return Vec::new();
+                }
+                let via = match from {
+                    Source::Udp(a) if pend.to == a => {
                         if let Some(p) = self.peers.get_mut(&peer) {
                             p.best = Some((a, now));
                             p.last_heartbeat = Some(now);
                         }
+                        Route::Direct(a)
                     }
+                    Source::Derp { region, .. } if pend.to == derp_magic(region) => {
+                        Route::Derp(region)
+                    }
+                    _ => return Vec::new(),
+                };
+                self.pending.remove(&tx_id);
+                if pend.probe {
+                    self.probe_results.push(ProbeResult {
+                        peer,
+                        via,
+                        latency: now.saturating_sub(pend.sent),
+                    });
                 }
                 Vec::new()
             }
@@ -381,7 +457,7 @@ impl PathSock {
             }
         }
         due.into_iter()
-            .filter_map(|(info, addr)| self.ping(&info, Some(addr), now, rng))
+            .filter_map(|(info, addr)| self.ping(&info, Some(addr), false, now, rng))
             .collect()
     }
 
@@ -417,6 +493,11 @@ impl PathSock {
             p.best = None;
         }
     }
+}
+
+/// The address that stands for "via DERP region N" in disco pongs.
+fn derp_magic(region: u32) -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(DERP_MAGIC_IP), clamp_port(region))
 }
 
 /// The "port" in the DERP magic address is the region number; region numbers in WanFlow all fit in u16 (1000+).
@@ -1050,5 +1131,205 @@ mod tests {
         };
         w.a.set_peers(vec![info]);
         assert_eq!(w.a.route(w.b_node, 11 * S, &mut w.rng).0, Route::Direct(to));
+    }
+
+    fn derp_pings(w: &World, acts: &[Action]) -> Vec<[u8; TX_ID_LEN]> {
+        acts.iter()
+            .filter_map(|a| match a {
+                Action::Derp {
+                    data, region: 1000, ..
+                } => match b_reads(w, data) {
+                    Message::Ping { tx_id, .. } => Some(tx_id),
+                    _ => None,
+                },
+                _ => None,
+            })
+            .collect()
+    }
+
+    fn pong(w: &World, tx_id: [u8; TX_ID_LEN]) -> Vec<u8> {
+        b_says(
+            w,
+            &Message::Pong {
+                tx_id,
+                src: "172.29.0.31:41641".parse().unwrap(),
+            },
+        )
+    }
+
+    fn via_derp(w: &World, region: u32) -> Source {
+        Source::Derp {
+            node: w.b_node,
+            region,
+        }
+    }
+
+    #[test]
+    fn probe_reports_every_answered_path_with_latency() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let acts = w.a.probe(w.b_node, 10 * S, &mut w.rng);
+        let udp = udp_pings(&w, &acts);
+        let derp = derp_pings(&w, &acts);
+        assert_eq!((udp.len(), derp.len()), (1, 1), "{acts:?}");
+
+        let ms = Duration::from_millis;
+        w.a.on_disco(
+            via_derp(&w, 1000),
+            &pong(&w, derp[0]),
+            10 * S + ms(40),
+            &mut w.rng,
+        );
+        w.a.on_disco(
+            Source::Udp(udp[0].0),
+            &pong(&w, udp[0].1),
+            10 * S + ms(3),
+            &mut w.rng,
+        );
+        assert_eq!(
+            w.a.take_probe_results(),
+            vec![
+                ProbeResult {
+                    peer: w.b_node,
+                    via: Route::Derp(1000),
+                    latency: ms(40)
+                },
+                ProbeResult {
+                    peer: w.b_node,
+                    via: Route::Direct(udp[0].0),
+                    latency: ms(3)
+                },
+            ]
+        );
+        assert!(w.a.take_probe_results().is_empty(), "results are drained");
+        // The direct pong also established the path.
+        assert_eq!(w.a.current_route(w.b_node, 11 * S), Route::Direct(udp[0].0));
+    }
+
+    #[test]
+    fn probe_includes_call_me_maybe_endpoints() {
+        let mut w = world(vec![]);
+        let cmm: SocketAddr = "10.10.1.21:41641".parse().unwrap();
+        let msg = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![cmm],
+            },
+        );
+        w.a.on_disco(via_derp(&w, 1000), &msg, 9 * S, &mut w.rng);
+        let acts = w.a.probe(w.b_node, 10 * S, &mut w.rng);
+        assert_eq!(
+            udp_pings(&w, &acts).iter().map(|p| p.0).collect::<Vec<_>>(),
+            vec![cmm]
+        );
+    }
+
+    #[test]
+    fn relay_modes_probe_only_over_derp() {
+        for mode in [Mode::Prefer, Mode::Strict] {
+            let mut w = world(vec![E.parse().unwrap()]);
+            w.a.set_mode(mode);
+            let acts = w.a.probe(w.b_node, 10 * S, &mut w.rng);
+            assert!(udp_pings(&w, &acts).is_empty(), "{mode:?}");
+            let derp = derp_pings(&w, &acts);
+            assert_eq!(derp.len(), 1, "{mode:?}");
+            w.a.on_disco(via_derp(&w, 1000), &pong(&w, derp[0]), 10 * S, &mut w.rng);
+            assert_eq!(
+                w.a.take_probe_results()[0].via,
+                Route::Derp(1000),
+                "{mode:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn routine_pings_produce_no_probe_results() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let (_, acts) = w.a.route(w.b_node, 10 * S, &mut w.rng);
+        let (to, tx) = udp_pings(&w, &acts)[0];
+        let derp = derp_pings(&w, &acts);
+        w.a.on_disco(Source::Udp(to), &pong(&w, tx), 10 * S, &mut w.rng);
+        // A pong over DERP to a routine discovery ping is not tracked at all.
+        w.a.on_disco(via_derp(&w, 1000), &pong(&w, derp[0]), 10 * S, &mut w.rng);
+        assert!(w.a.take_probe_results().is_empty());
+        assert_eq!(w.a.current_route(w.b_node, 10 * S), Route::Direct(to));
+    }
+
+    #[test]
+    fn probe_pong_must_match_path_peer_and_time() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        let acts = w.a.probe(w.b_node, 10 * S, &mut w.rng);
+        let derp = derp_pings(&w, &acts)[0];
+        let (to, tx) = udp_pings(&w, &acts)[0];
+        // Wrong DERP region, and a DERP pong for the UDP ping's txid.
+        w.a.on_disco(via_derp(&w, 1001), &pong(&w, derp), 10 * S, &mut w.rng);
+        w.a.on_disco(via_derp(&w, 1000), &pong(&w, tx), 10 * S, &mut w.rng);
+        // Too late.
+        w.a.on_disco(
+            Source::Udp(to),
+            &pong(&w, tx),
+            10 * S + PING_TIMEOUT + S,
+            &mut w.rng,
+        );
+        assert!(w.a.take_probe_results().is_empty());
+        // Exactly at the timeout still counts.
+        w.a.on_disco(
+            via_derp(&w, 1000),
+            &pong(&w, derp),
+            10 * S + PING_TIMEOUT,
+            &mut w.rng,
+        );
+        assert_eq!(w.a.take_probe_results().len(), 1);
+    }
+
+    #[test]
+    fn probe_pong_from_another_peer_is_ignored() {
+        let mut w = world(vec![]);
+        let c_disco = DiscoPrivate::generate().unwrap();
+        let c_node = NodePublic([3; 32]);
+        w.a.set_peers(vec![
+            PeerInfo {
+                node: w.b_node,
+                disco: w.b_disco.public(),
+                home_region: Some(1000),
+                endpoints: vec![],
+            },
+            PeerInfo {
+                node: c_node,
+                disco: c_disco.public(),
+                home_region: Some(1000),
+                endpoints: vec![],
+            },
+        ]);
+        let acts = w.a.probe(w.b_node, 10 * S, &mut w.rng);
+        let derp = derp_pings(&w, &acts)[0];
+        let forged = envelope::seal(
+            &c_disco,
+            &w.a_disco.public(),
+            &message::encode(&Message::Pong {
+                tx_id: derp,
+                src: E.parse().unwrap(),
+            }),
+            [9; 24],
+        )
+        .unwrap();
+        w.a.on_disco(
+            Source::Derp {
+                node: c_node,
+                region: 1000,
+            },
+            &forged,
+            10 * S,
+            &mut w.rng,
+        );
+        assert!(w.a.take_probe_results().is_empty());
+    }
+
+    #[test]
+    fn probe_unknown_peer_does_nothing() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        assert!(
+            w.a.probe(NodePublic([9; 32]), 10 * S, &mut w.rng)
+                .is_empty()
+        );
     }
 }

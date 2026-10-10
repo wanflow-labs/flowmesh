@@ -87,6 +87,8 @@ fn linux_main() -> std::process::ExitCode {
         let (status_tx, _status_rx) =
             tokio::sync::watch::channel(flowmesh_engine::status::EngineStatus::default());
         let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+        // flowmesh-dev takes no commands; the sender lives as long as the engine.
+        let (_cmd_tx, cmd_rx) = tokio::sync::mpsc::channel(1);
         tokio::spawn(async move {
             use tokio::signal::unix::{SignalKind, signal};
             let (Ok(mut term), Ok(mut int)) = (
@@ -101,7 +103,7 @@ fn linux_main() -> std::process::ExitCode {
             }
             let _ = stop_tx.send(true);
         });
-        flowmesh_engine::run(cfg, status_tx, stop_rx).await
+        flowmesh_engine::run(cfg, status_tx, stop_rx, cmd_rx).await
     });
     match result {
         Ok(()) => ExitCode::SUCCESS,

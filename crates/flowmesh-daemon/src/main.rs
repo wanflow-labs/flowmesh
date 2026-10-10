@@ -20,12 +20,13 @@ mod linux {
     use flowmesh_daemon::api;
     use flowmesh_daemon::client::DEFAULT_SOCKET;
     use flowmesh_daemon::daemon::{BoxFut, Daemon, Launcher, Options};
+    use flowmesh_engine::command::EngineCommand;
     use flowmesh_engine::status::EngineStatus;
     use flowmesh_engine::{EngineConfig, EngineError};
     use std::path::PathBuf;
     use std::process::ExitCode;
     use std::sync::Arc;
-    use tokio::sync::watch;
+    use tokio::sync::{mpsc, watch};
 
     struct Engine;
 
@@ -35,8 +36,9 @@ mod linux {
             cfg: EngineConfig,
             status: watch::Sender<EngineStatus>,
             stop: watch::Receiver<bool>,
+            commands: mpsc::Receiver<EngineCommand>,
         ) -> BoxFut<Result<(), EngineError>> {
-            Box::pin(flowmesh_engine::run(cfg, status, stop))
+            Box::pin(flowmesh_engine::run(cfg, status, stop, commands))
         }
         fn logout(&self, login_server: String, state_file: PathBuf) -> BoxFut<Result<(), String>> {
             Box::pin(async move { flowmesh_engine::logout(&login_server, &state_file).await })

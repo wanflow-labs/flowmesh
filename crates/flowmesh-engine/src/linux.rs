@@ -3,13 +3,16 @@
 //!
 //! Route selection is done by flowmesh-pathsock: direct (UDP) or DERP for each peer.
 
+use crate::command::{
+    EngineCommand, PendingPing, PingError, deliver_pings, expire_pings, short_name,
+};
 use crate::status::{EngineStatus, PeerStatus};
 use crate::{EngineConfig, EngineError};
 use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
-use flowmesh_pathsock::{Action, Mode, PathSock, PeerInfo, Random, Route, Source};
+use flowmesh_pathsock::{Action, Mode, PING_TIMEOUT, PathSock, PeerInfo, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, Node, RegisterAuth, RegisterRequest,
@@ -478,6 +481,7 @@ pub async fn run(
     cfg: EngineConfig,
     status: watch::Sender<EngineStatus>,
     mut stop: watch::Receiver<bool>,
+    mut commands: mpsc::Receiver<EngineCommand>,
 ) -> Result<(), EngineError> {
     let args = &cfg;
     if let Some(dir) = &args.tap_dir {
@@ -736,6 +740,7 @@ pub async fn run(
     let start = Instant::now();
     let mut last_publish: Option<Duration> = None;
     let mut ticker = tokio::time::interval(TICK);
+    let mut pings: Vec<PendingPing> = Vec::new();
     let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
     let mut udp_buf = vec![0u8; usize::from(u16::MAX)];
     loop {
@@ -786,6 +791,7 @@ pub async fn run(
                 if flowmesh_disco::envelope::is_disco(data) {
                     tap("udp-disco", data, now);
                     let acts = ctx.ps.on_disco(Source::Udp(from), data, now, &mut ctx.rng);
+                    deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
                     ctx.run_actions(acts).await;
                     Vec::new()
                 } else if flowmesh_stun::is_stun(data) {
@@ -818,6 +824,7 @@ pub async fn run(
                     if flowmesh_disco::envelope::is_disco(&data) {
                         tap("derp-disco", &data, now);
                         let acts = ctx.ps.on_disco(Source::Derp { node: src, region }, &data, now, &mut ctx.rng);
+                        deliver_pings(&mut pings, ctx.ps.take_probe_results(), &ctx.nm);
                         ctx.run_actions(acts).await;
                         Vec::new()
                     } else {
@@ -868,7 +875,37 @@ pub async fn run(
                 }
                 Vec::new()
             }
+            Some(cmd) = commands.recv() => {
+                match cmd {
+                    EngineCommand::Ping { ip, reply } => {
+                        let found = ctx
+                            .nm
+                            .peers
+                            .values()
+                            .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
+                            .map(|n| (n.key, n.addresses.first().map(|a| a.addr()), short_name(n)));
+                        match found {
+                            Some((peer, node_ip, node_name)) => {
+                                let acts = ctx.ps.probe(peer, now, &mut ctx.rng);
+                                ctx.run_actions(acts).await;
+                                pings.push(PendingPing {
+                                    peer,
+                                    node_ip: node_ip.unwrap_or(ip),
+                                    node_name,
+                                    deadline: now + PING_TIMEOUT,
+                                    reply,
+                                });
+                            }
+                            None => {
+                                let _ = reply.send(Err(PingError::NoPeer));
+                            }
+                        }
+                    }
+                }
+                Vec::new()
+            }
             _ = ticker.tick() => {
+                expire_pings(&mut pings, now);
                 let acts = ctx.ps.tick(now, &mut ctx.rng);
                 ctx.run_actions(acts).await;
                 if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {

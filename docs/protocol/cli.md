@@ -42,7 +42,28 @@ flowmesh-specific details of the output:
 - `Health` carries `"flowmesh is stopped."` while Stopped or NeedsLogin (the official text names its own product; the WanFlow gateway agent does not parse it), plus the latest engine error while one is pending.
 - `Version` is the flowmesh version. `User`, `CertDomains`, `Addrs`, `CapMap` and the other fields no consumer reads are omitted, not faked.
 
-## 3. Lab notes
+## 4. `ping`
+
+Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit code match the official client in every case, latency and endpoints normalized).
+
+| Case | stdout | stderr | exit |
+|---|---|---|---|
+| direct path available | `pong from ts1 (100.64.0.1) via 172.29.0.21:59419 in 2ms` (stops at the first direct pong) | — | 0 |
+| relay only, `-c 3` | three `pong from … via DERP(wanflow-relay-1000) in 6ms` | `direct connection not established` | 1 |
+| peer offline, `-c 2` | `ping "100.64.0.10" timed out` per attempt | `no reply` | 1 |
+| IP not in the netmap | — | `no matching peer` | 1 |
+
+- One attempt is a disco ping over every path the relay mode allows (DERP always; candidate endpoints in Auto mode), answered by the first pong; an attempt times out after 5 s. A direct pong also establishes the direct path, so pinging is itself a way to trigger hole punching (seen on the official client: the second `ping` to a NATed peer went direct).
+- Defaults: `-c 10`, `--until-direct=true`. Without `--until-direct`, relay pongs count as success.
+- The name shown is the first label of the peer's DNS name. Targets may be an IP, that short name, the host name, or the full DNS name; flowmesh resolves names from the netmap only (the official client also asks the system resolver).
+- Local API: `POST /localapi/v0/ping` with `{"ip": …}` returns the official field names (`IP NodeIP NodeName Err LatencySeconds Endpoint DERPRegionID DERPRegionCode`); open to every local user, 503 when not Running.
+
+## 5. `debug prefs` and `bugreport`
+
+- `debug prefs` prints the daemon's preferences (flowmesh's own field names; there is no compatibility requirement here).
+- `bugreport` writes a local JSON bundle (mode 0600, refuses to overwrite) with the status and preferences from the daemon, `uname -a`, `ip -o addr`, `ip route show table all`, `ip rule`, `/etc/resolv.conf` and the last 300 journal lines of `flowmeshd`. Each item records its own failure instead of aborting (e.g. no journalctl). Every `nodekey:`/`discokey:`/`mkey:`/`privkey:` value is shortened to 8 hex digits. **Deviation from the official client**, which uploads logs and prints an ID: flowmesh never uploads anything (deviation #3); the user decides whether to share the file.
+
+## 6. Lab notes
 
 - **Official client and a plain-HTTP control server.** After a noise dial has succeeded, the official client remembers it and insists on port 443 for later control dials ("forcing port 443 dial due to recent noise dial"); the memory does not expire on its own. The lab headscale serves plain HTTP on port 80, so a logout, or the login right after it, fails on the official side for this reason alone. `cli_diff.sh` restarts ts2 around each logout (state is persisted, so this clears only the in-memory heuristic). flowmesh has no such heuristic (deviation #2).
 - The official client also queries bootstrap DNS on vendor DERP hosts when the control name does not resolve; flowmesh never contacts built-in third-party addresses (deviation #3).

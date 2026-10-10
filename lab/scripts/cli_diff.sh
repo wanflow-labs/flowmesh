@@ -44,7 +44,7 @@ cut()     { dc "$1" ip route add blackhole 172.29.0.10/32; }
 restore() { dc "$1" ip route del blackhole 172.29.0.10/32; }
 
 # The official client remembers "a recent noise dial succeeded" and then insists on port 443 for later
-# dials, which this plain-HTTP lab control server cannot satisfy (cli.md §3). Logout and the login after
+# dials, which this plain-HTTP lab control server cannot satisfy (cli.md §6). Logout and the login after
 # it both dial, so ts2 is restarted around each logout; state is persisted, so the restart clears only
 # that in-memory heuristic.
 restart_ts2() {
