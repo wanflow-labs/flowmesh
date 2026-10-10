@@ -23,6 +23,7 @@ export TZ=UTC LC_ALL=C
 
 rustc --version | grep -q '^rustc 1.88.0 ' || { echo "rustc 1.88.0 required, got: $(rustc --version)"; exit 1; }
 zig version | grep -qx '0.13.0' || { echo "zig 0.13.0 required"; exit 1; }
+cargo cyclonedx --version | grep -qx 'cargo-cyclonedx-cyclonedx 0.5.9' || { echo "cargo-cyclonedx 0.5.9 required"; exit 1; }
 
 rm -rf "$out"
 mkdir -p "$out"
@@ -38,6 +39,18 @@ for t in $targets; do
   find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
   tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
       -C "$out" -cf - "$(basename "$stage")" | gzip -n -9 > "$stage.tar.gz"
+
+  # SBOM (CycloneDX 1.5) for each shipped binary. cargo-cyclonedx writes one file per workspace binary
+  # next to its Cargo.toml; keep the two we ship and drop the rest. Its timestamp follows
+  # SOURCE_DATE_EPOCH; workspace crates are referenced by absolute path, mapped to /flowmesh like the
+  # binaries' --remap-path-prefix.
+  cargo cyclonedx -q -f json --spec-version 1.5 --describe binaries --target "$t"
+  for b in flowmeshd flowmesh; do
+    f=$(find crates -name "${b}_bin.cdx.json")
+    sed "s|path+file://$PWD/|path+file:///flowmesh/|g" "$f" > "$out/$b-$version-linux-$arch.cdx.json"
+  done
+  find crates -name '*_bin.cdx.json' -delete
 done
-(cd "$out" && sha256sum flowmesh-*.tar.gz */flowmeshd */flowmesh > SHA256SUMS)
+grep -l "$PWD" "$out"/*.cdx.json && { echo "SBOM still names the build directory"; exit 1; }
+(cd "$out" && sha256sum flowmesh-*.tar.gz *.cdx.json */flowmeshd */flowmesh > SHA256SUMS)
 cat "$out/SHA256SUMS"

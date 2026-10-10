@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # Install the pinned release toolchain in the current user's home (no root, nothing system-wide):
-# rustup + Rust 1.88.0 with both musl targets, zig 0.13.0 (checksum-verified), cargo-zigbuild 0.19.8.
+# rustup + Rust 1.88.0 with both musl targets, zig 0.13.0 (checksum-verified), cargo-zigbuild 0.19.8,
+# cargo-cyclonedx 0.5.9 (SBOM).
 # Removing ~/.rustup, ~/.cargo and ~/.local/zig-0.13.0 undoes it.
 set -euo pipefail
 ZIG=0.13.0
@@ -34,4 +35,5 @@ if [ ! -x "$zig_dir/zig" ]; then
   rm -rf "$tmp"
 fi
 cargo +1.88.0 install cargo-zigbuild --version 0.19.8 --locked
+cargo +1.88.0 install cargo-cyclonedx --version 0.5.9 --locked
 echo "export PATH=\"$zig_dir:\$HOME/.cargo/bin:\$PATH\"  # add to the environment before build/release.sh"
