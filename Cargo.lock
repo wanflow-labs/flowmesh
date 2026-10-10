@@ -514,6 +514,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowmesh-pathsock"
+version = "0.1.0"
+dependencies = [
+ "flowmesh-disco",
+ "flowmesh-proto",
+]
+
+[[package]]
 name = "flowmesh-probe"
 version = "0.1.0"
 dependencies = [

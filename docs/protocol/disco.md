@@ -28,7 +28,12 @@ Source: `OBS-20261010-disco`. flowmesh-dev decrypts the disco messages that offi
 | Fact | Status |
 |---|---|
 | The source address in a pong over DERP is `127.3.3.40:<DERP region number>`, the same format as the legacy `DERP` field in the netmap | Observed |
-| Official clients send pings to a peer with no endpoints via DERP about every 5 seconds (tap timestamps 1.4s, 6.4s, 11.4s) | Observed (interval) |
+| Official clients send pings to a peer with no endpoints via DERP about every 5 seconds (tap timestamps 1.4s, 6.4s, 11.4s) | Observed (interval) → `DISCOVERY_INTERVAL = 5s` |
+| While a direct path is active, **both ends ping each other every 3.0 seconds** (heartbeat). UDP length 132 for a ping (8+62+46+16) and 118 for a pong (8+62+32+16) | Observed (packet capture between ts1 and ts2) → `HEARTBEAT = 3s` |
+| After the direct path stops responding (drops on the receive side only), the official client falls back to DERP about **6.2 seconds** later; since the heartbeat is 3 s, the trust window measured from the last pong is 6.2–9.2 s | Observed → `TRUST = 6.5s` (provisional) |
+| **When the send itself fails** (e.g. a local firewall DROP makes sendto return an error), the official client falls back to DERP within about 1 second | Observed → `on_send_error` falls back immediately |
+| A pong over UDP carries the source address this end saw (the address the ping came from) | flowmesh behavior, matching the Pong format |
+| The peer counts as active if data was sent within 45 seconds; idle peers get no heartbeat | Provisional (`ACTIVE_WINDOW`) |
 
 ## 4. STUN (used together with disco)
 
