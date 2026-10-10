@@ -2,10 +2,12 @@
 //! Per-peer WireGuard sessions plus routing and filtering.
 
 use crate::ippkt;
-use boringtun::noise::{Tunn, TunnResult};
+use boringtun::noise::handshake::parse_handshake_anon;
+use boringtun::noise::rate_limiter::RateLimiter;
+use boringtun::noise::{Packet, Tunn, TunnResult};
 use flowmesh_filter::compile::CompiledRule;
 use flowmesh_filter::matcher::{Filter, Verdict};
-use flowmesh_proto::key::{NodePrivate, NodePublic};
+use flowmesh_proto::key::{DiscoPublic, NodePrivate, NodePublic};
 use ipnet::IpNet;
 use std::collections::HashMap;
 use std::net::IpAddr;
@@ -20,6 +22,9 @@ fn next_session_index(current: u32) -> u32 {
 pub const MAX_PACKET: usize = 65_535;
 /// Upper bound on WireGuard encapsulation overhead, with headroom for handshake messages.
 const BUF_OVERHEAD: usize = 256;
+/// Handshake messages per second checked for peers recognized from the datagram, before the rate
+/// limiter answers with cookies (boringtun's default).
+const HANDSHAKE_RATE_LIMIT: u64 = 100;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Output {
@@ -29,10 +34,13 @@ pub enum Output {
     ToTun(Vec<u8>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct PeerConfig {
     pub key: NodePublic,
     pub allowed_ips: Vec<IpNet>,
+    /// The peer's disco key (zero while unknown). It is new each time the peer starts, so a change
+    /// from one known key to another means the peer lost its WireGuard session with us.
+    pub disco: DiscoPublic,
 }
 
 pub struct Dataplane {
@@ -46,16 +54,27 @@ pub struct Dataplane {
     subnets: Vec<(IpNet, NodePublic)>,
     /// Encapsulation/decapsulation output, allocated once; outputs copy out exactly what they need.
     scratch: Vec<u8>,
+    /// Session index (as given to boringtun) -> peer, to recognize responses and data by the
+    /// receiver index they carry.
+    by_index: HashMap<u32, NodePublic>,
+    /// Checks MACs and rate-limits handshakes recognized from the datagram.
+    limiter: RateLimiter,
+    static_secret: x25519_dalek::StaticSecret,
+    static_public: x25519_dalek::PublicKey,
 }
 
 struct Peer {
     tunn: Tunn,
     allowed: Vec<IpNet>,
+    disco: DiscoPublic,
+    index: u32,
 }
 
 impl Dataplane {
     /// Starts with no filter rules: inbound new connections are refused until rules arrive (fail-closed).
     pub fn new(me: NodePrivate) -> Self {
+        let static_secret = x25519_dalek::StaticSecret::from(*me.as_bytes());
+        let static_public = x25519_dalek::PublicKey::from(&static_secret);
         Self {
             me,
             peers: HashMap::new(),
@@ -64,19 +83,30 @@ impl Dataplane {
             hosts: HashMap::new(),
             subnets: Vec::new(),
             scratch: vec![0u8; MAX_PACKET + BUF_OVERHEAD],
+            by_index: HashMap::new(),
+            limiter: RateLimiter::new(&static_public, HANDSHAKE_RATE_LIMIT),
+            static_secret,
+            static_public,
         }
     }
 
-    /// Replace the peer set. Peers whose key is unchanged keep their WireGuard session (only AllowedIPs are updated).
+    /// Replace the peer set. Peers whose key is unchanged keep their WireGuard session (only AllowedIPs
+    /// are updated), unless their disco key changed from one known value to another: the peer
+    /// restarted, so the old session is replaced right away (the reference client removes and
+    /// re-adds such a peer for the same reason).
     pub fn set_peers(&mut self, peers: Vec<PeerConfig>) {
         let mut next = HashMap::with_capacity(peers.len());
         for cfg in peers {
+            let restarted = |p: &Peer| p.disco != cfg.disco && p.disco != DiscoPublic::default();
             let peer = match self.peers.remove(&cfg.key) {
-                Some(mut existing) => {
+                Some(mut existing) if !restarted(&existing) => {
                     existing.allowed = cfg.allowed_ips;
+                    if cfg.disco != DiscoPublic::default() {
+                        existing.disco = cfg.disco;
+                    }
                     existing
                 }
-                None => {
+                _ => {
                     let index = self.next_index;
                     self.next_index = next_session_index(self.next_index);
                     Peer {
@@ -89,12 +119,15 @@ impl Dataplane {
                             None,
                         ),
                         allowed: cfg.allowed_ips,
+                        disco: cfg.disco,
+                        index,
                     }
                 }
             };
             next.insert(cfg.key, peer);
         }
         self.peers = next;
+        self.by_index = self.peers.iter().map(|(k, p)| (p.index, *k)).collect();
         self.hosts.clear();
         self.subnets.clear();
         for (k, p) in &self.peers {
@@ -119,6 +152,31 @@ impl Dataplane {
                 .find(|(n, _)| n.contains(&dst))
                 .map(|(_, k)| *k)
         })
+    }
+
+    /// The peer a WireGuard datagram from `from` belongs to, read from the datagram itself: the
+    /// static key inside a handshake initiation (after its MAC check and the rate limit), or our
+    /// session index in a response, cookie or data message. For datagrams from an address no peer
+    /// is known at yet, e.g. right after this node restarted.
+    pub fn peer_for_datagram(&self, from: IpAddr, data: &[u8]) -> Option<NodePublic> {
+        let mut cookie = [0u8; 64];
+        let index = match self
+            .limiter
+            .verify_packet(Some(from), data, &mut cookie)
+            .ok()?
+        {
+            Packet::HandshakeInit(init) => {
+                let half =
+                    parse_handshake_anon(&self.static_secret, &self.static_public, &init).ok()?;
+                let key = NodePublic(half.peer_static_public);
+                return self.peers.contains_key(&key).then_some(key);
+            }
+            Packet::HandshakeResponse(p) => p.receiver_idx,
+            Packet::PacketCookieReply(p) => p.receiver_idx,
+            Packet::PacketData(p) => p.receiver_idx,
+        };
+        // boringtun keeps the session index in the upper 24 bits.
+        self.by_index.get(&(index >> 8)).copied()
     }
 
     pub fn set_filter_rules(&mut self, rules: Vec<CompiledRule>) {
@@ -185,6 +243,7 @@ impl Dataplane {
 
     /// Drive WireGuard timers (rekey, keepalive). Call roughly every 250 ms.
     pub fn tick(&mut self) -> Vec<Output> {
+        self.limiter.reset_count();
         let mut outputs = Vec::new();
         for (key, peer) in &mut self.peers {
             if let TunnResult::WriteToNetwork(out) = peer.tunn.update_timers(&mut self.scratch) {
@@ -231,10 +290,12 @@ mod tests {
         a.set_peers(vec![PeerConfig {
             key: pb,
             allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+            ..Default::default()
         }]);
         b.set_peers(vec![PeerConfig {
             key: pa,
             allowed_ips: vec!["100.64.0.1/32".parse().unwrap()],
+            ..Default::default()
         }]);
         (a, pa, b, pb)
     }
@@ -312,6 +373,7 @@ mod tests {
         a.set_peers(vec![PeerConfig {
             key: pb,
             allowed_ips: vec!["0.0.0.0/0".parse().unwrap()],
+            ..Default::default()
         }]);
         let spoof = build::v4([100, 64, 0, 9], B_IP, 1, &build::icmp(8));
         let first = a.outbound(&spoof, Duration::ZERO);
@@ -433,6 +495,7 @@ mod tests {
         let host = |k| PeerConfig {
             key: k,
             allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+            ..Default::default()
         };
         let subnet = |k| PeerConfig {
             key: k,
@@ -440,6 +503,7 @@ mod tests {
                 "100.64.0.0/24".parse().unwrap(),
                 "fd7a:115c:a1e0::/48".parse().unwrap(),
             ],
+            ..Default::default()
         };
         dp.set_peers(vec![host(b), subnet(c)]);
         assert_eq!(picked(&mut dp, B_IP), Some(b));
@@ -462,6 +526,98 @@ mod tests {
         assert_eq!(picked(&mut dp, B_IP), None);
     }
 
+    /// The next outbound packet's WireGuard message type: 1 = handshake initiation (new session),
+    /// 4 = data (session kept).
+    fn next_type(a: &mut Dataplane) -> u8 {
+        let ping = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        match a.outbound(&ping, Duration::ZERO).as_slice() {
+            [Output::ToPeer(_, bytes)] => bytes[0],
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A peer whose disco key changes has restarted and lost our session: replace it at once
+    /// instead of sending into the void until rekey (2-3 minutes in the lab). A key that was
+    /// unknown (zero) and becomes known is not a restart.
+    #[test]
+    fn disco_key_change_replaces_the_session() {
+        let (mut a, pa, mut b, pb) = pair();
+        b.set_filter_rules(allow_all());
+        let cfg = |disco: u8| PeerConfig {
+            key: pb,
+            allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+            disco: DiscoPublic([disco; 32]),
+        };
+        let ping = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        let first = a.outbound(&ping, Duration::ZERO);
+        run(&mut a, pa, &mut b, pb, first);
+        a.set_peers(vec![cfg(0)]);
+        a.set_peers(vec![cfg(7)]);
+        assert_eq!(next_type(&mut a), 4, "zero -> known: session kept");
+        a.set_peers(vec![cfg(7)]);
+        assert_eq!(next_type(&mut a), 4, "unchanged: session kept");
+        a.set_peers(vec![cfg(8)]);
+        assert_eq!(next_type(&mut a), 1, "changed: new handshake");
+    }
+
+    /// WireGuard identifies the sender from the datagram, not the address: a handshake initiation by
+    /// the static key inside it, later messages by our session index. A peer that just restarted
+    /// has not mapped our address yet and must still accept our handshake.
+    #[test]
+    fn peer_is_recognized_from_the_datagram_itself() {
+        let (mut a, pa, mut b, pb) = pair();
+        b.set_filter_rules(allow_all());
+        let from: IpAddr = "192.0.2.1".parse().unwrap();
+        let ping = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        let init = wire_of(a.outbound(&ping, Duration::ZERO), 0);
+        assert_eq!(
+            b.peer_for_datagram(from, &init),
+            Some(pa),
+            "initiation: by static key"
+        );
+        let resp = match b.inbound(pa, &init, Duration::ZERO).as_slice() {
+            [Output::ToPeer(_, r), ..] => r.clone(),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(
+            a.peer_for_datagram(from, &resp),
+            Some(pb),
+            "response: by session index"
+        );
+        let data = a.inbound(pb, &resp, Duration::ZERO);
+        let Some(Output::ToPeer(_, data)) = data.into_iter().next() else {
+            panic!("no queued data after the handshake")
+        };
+        assert_eq!(data[0], 4);
+        assert_eq!(
+            b.peer_for_datagram(from, &data),
+            Some(pa),
+            "data: by session index"
+        );
+
+        // Not a peer of B: a stranger's initiation is not attributed to anyone.
+        let mut stranger = Dataplane::new(NodePrivate::generate().unwrap());
+        stranger.set_peers(vec![PeerConfig {
+            key: pb,
+            allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+            ..Default::default()
+        }]);
+        let foreign = wire_of(stranger.outbound(&ping, Duration::ZERO), 0);
+        assert_eq!(b.peer_for_datagram(from, &foreign), None);
+        // Garbage, a bad MAC, an unknown index, a removed peer: nothing.
+        assert_eq!(
+            b.peer_for_datagram(from, &[4, 0, 0, 0, 0xff, 0xff, 0xff, 0x7f]),
+            None
+        );
+        let mut bad = init.clone();
+        bad[100] ^= 1;
+        assert_eq!(b.peer_for_datagram(from, &bad), None);
+        assert_eq!(b.peer_for_datagram(from, b"not wireguard"), None);
+        b.set_peers(vec![]);
+        assert_eq!(b.peer_for_datagram(from, &init), None);
+        assert_eq!(b.peer_for_datagram(from, &data), None);
+    }
+
     #[test]
     fn set_peers_keeps_session_for_unchanged_key() {
         let (mut a, pa, mut b, pb) = pair();
@@ -473,6 +629,7 @@ mod tests {
         a.set_peers(vec![PeerConfig {
             key: pb,
             allowed_ips: vec!["100.64.0.0/24".parse().unwrap()],
+            ..Default::default()
         }]);
         let again = a.outbound(&ping, Duration::ZERO);
         assert!(

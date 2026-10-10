@@ -69,10 +69,12 @@ fn main() {
     a.set_peers(vec![PeerConfig {
         key: pb,
         allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+        ..Default::default()
     }]);
     b.set_peers(vec![PeerConfig {
         key: pa,
         allowed_ips: vec!["100.64.0.1/32".parse().unwrap()],
+        ..Default::default()
     }]);
     a.set_filter_rules(allow_all());
     b.set_filter_rules(allow_all());

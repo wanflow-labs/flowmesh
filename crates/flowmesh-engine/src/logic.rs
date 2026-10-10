@@ -286,6 +286,7 @@ pub(crate) fn apply_netmap(
             .map(|n| PeerConfig {
                 key: n.key,
                 allowed_ips: n.allowed_ips.clone(),
+                disco: n.disco_key,
             })
             .collect(),
     );
@@ -842,10 +843,12 @@ mod tests {
         a.set_peers(vec![PeerConfig {
             key: pb,
             allowed_ips: vec!["100.64.0.2/32".parse().unwrap()],
+            ..Default::default()
         }]);
         b.set_peers(vec![PeerConfig {
             key: pa,
             allowed_ips: vec!["100.64.0.1/32".parse().unwrap()],
+            ..Default::default()
         }]);
         let pkt = flowmesh_dataplane::ippkt::build_udp4(
             SocketAddrV4::new([100, 64, 0, 1].into(), 1000),
@@ -1019,6 +1022,7 @@ mod tests {
         idle.set_peers(vec![PeerConfig {
             key: quiet,
             allowed_ips: vec![],
+            ..Default::default()
         }]);
         let s = status_of(&idle, quiet);
         assert_eq!((s.tx_bytes, s.rx_bytes, s.active), (0, 0, false));

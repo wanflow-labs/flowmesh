@@ -1084,7 +1084,10 @@ pub async fn run(
                             ctx.run_actions(acts).await;
                             Vec::new()
                         } else if h.protocol == PROTO_WIREGUARD {
-                            match ctx.ps.peer_for_relay(from, h.vni) {
+                            match dp
+                                .peer_for_datagram(from.ip(), payload)
+                                .or_else(|| ctx.ps.peer_for_relay(from, h.vni))
+                            {
                                 Some(peer) => dp.inbound(peer, payload, now),
                                 None => Vec::new(),
                             }
@@ -1121,7 +1124,15 @@ pub async fn run(
                             other => log(format!("ignoring STUN message: {other:?}")),
                         }
                         Vec::new()
-                    } else if let Some(peer) = ctx.ps.peer_for_addr(from) {
+                    } else if let Some(peer) = dp
+                        .peer_for_datagram(from.ip(), data)
+                        // WireGuard names the sender inside the datagram (static key, session
+                        // index); an address can be stale or shared by several node records (a
+                        // re-registered device keeps its address), or not mapped yet after a
+                        // restart. The address is the fallback, e.g. when handshakes are
+                        // rate-limited.
+                        .or_else(|| ctx.ps.peer_for_addr(from))
+                    {
                         dp.inbound(peer, data, now)
                     } else {
                         Vec::new()
