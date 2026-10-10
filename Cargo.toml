@@ -1,6 +1,8 @@
 [workspace]
 resolver = "3"
 members = ["xtask", "crates/*"]
+# The fuzz targets build with nightly and libFuzzer in their own workspace (make fuzz).
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.1.0"
@@ -15,3 +17,9 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 unwrap_used = "deny"
 expect_used = "deny"
+
+# Release binaries (design §6): one codegen unit and LTO for deterministic, compact output.
+[profile.release]
+codegen-units = 1
+lto = "fat"
+strip = true
