@@ -39,10 +39,12 @@ fuzz:
 	python3 fuzz/seed.py
 	fuzz/run_all.sh $(FUZZ_SECONDS)
 
-# Reproducible static release build in the pinned container (design §6.2).
+# Reproducible static release build in the pinned container (design §6.2). Always linux/amd64: the
+# build host's architecture changes the output (docs/reproducible-builds.md), so on an arm64 machine
+# this runs emulated (slow, same bytes).
 release:
-	docker build -q -f build/Dockerfile -t flowmesh-build:1 build
-	docker run --rm -v "$(CURDIR)":/flowmesh -e SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) flowmesh-build:1 build/release.sh dist
+	docker build -q --platform linux/amd64 -f build/Dockerfile -t flowmesh-build:1 build
+	docker run --rm --platform linux/amd64 -v "$(CURDIR)":/flowmesh -e SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) flowmesh-build:1 build/release.sh dist
 
 # Rebuild and compare with published checksums: make reproduce SUMS=path/to/SHA256SUMS
 reproduce: release

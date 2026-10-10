@@ -23,6 +23,10 @@ export TZ=UTC LC_ALL=C
 # Modes go into the tarballs: a builder's umask (002 for many login users) must not leak in.
 umask 022
 
+# The host architecture is a build input: cargo hashes `rustc -vV` (which names the host) into every
+# crate's metadata, and that changes type ids, symbol names and then code generation. Releases are
+# built on x86_64 hosts; elsewhere use `make release` (linux/amd64 container, emulated).
+[ "$(uname -m)" = x86_64 ] || { echo "release builds run on an x86_64 host (this is $(uname -m)): use make release"; exit 1; }
 rustc --version | grep -q '^rustc 1.88.0 ' || { echo "rustc 1.88.0 required, got: $(rustc --version)"; exit 1; }
 zig version | grep -qx '0.13.0' || { echo "zig 0.13.0 required"; exit 1; }
 cargo cyclonedx --version | grep -qx 'cargo-cyclonedx-cyclonedx 0.5.9' || { echo "cargo-cyclonedx 0.5.9 required"; exit 1; }
