@@ -209,17 +209,28 @@ fn sync_routes(
 /// How often the status snapshot is refreshed.
 const STATUS_INTERVAL: Duration = Duration::from_secs(1);
 
-/// The live netmap stream, as the reconnect loop sees it.
-struct Live(flowmesh_control::client::MapStream);
+/// The live netmap stream, as the reconnect loop sees it. With a tap directory (lab observation
+/// only, `flowmesh-dev --tap-dir`) every message's JSON is saved as `map-<n>.json`.
+struct Live {
+    stream: flowmesh_control::client::MapStream,
+    tap: Option<(std::path::PathBuf, Arc<std::sync::atomic::AtomicU64>)>,
+}
 
 impl MessageStream for Live {
     fn next(&mut self) -> LoopFut<'_, Result<Option<MapResponse>, String>> {
         Box::pin(async move {
-            self.0
+            let m = self
+                .stream
                 .next()
                 .await
-                .map(|m| m.map(|m| m.parsed))
-                .map_err(|e| format!("map stream: {e}"))
+                .map_err(|e| format!("map stream: {e}"))?;
+            if let (Some(m), Some((dir, seq))) = (&m, &self.tap) {
+                let n = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if let Err(e) = std::fs::write(dir.join(format!("map-{n:05}.json")), &m.json) {
+                    log(format!("tap write: {e}"));
+                }
+            }
+            Ok(m.map(|m| m.parsed))
         })
     }
 }
@@ -230,6 +241,24 @@ struct AbortOnDrop(tokio::task::JoinHandle<()>);
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
         self.0.abort();
+    }
+}
+
+/// Design §7.2: an expired node key ends the run as "not authorized", so the daemon shows NeedsLogin
+/// with the reason instead of carrying on with a key the mesh no longer accepts.
+fn check_key(nm: &NetMap, control_time: Option<&str>) -> Result<(), EngineError> {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    match &nm.self_node {
+        Some(me) if crate::logic::key_expired(me, control_time, now) => {
+            log("node key expired");
+            Err(EngineError::NotAuthorized {
+                auth_url: String::new(),
+                error: "node key expired".into(),
+            })
+        }
+        _ => Ok(()),
     }
 }
 
@@ -316,7 +345,7 @@ pub async fn run(
             }
         }
     };
-    let keys = flowmesh_state::load_or_create(&args.state_file).map_err(|e| e.to_string())?;
+    let mut keys = flowmesh_state::load_or_create(&args.state_file).map_err(|e| e.to_string())?;
     // The disco key is regenerated on every start (see flowmesh-state).
     let disco = flowmesh_proto::key::DiscoPrivate::generate().map_err(|e| e.to_string())?;
     if let Some(dir) = &args.tap_dir {
@@ -336,19 +365,33 @@ pub async fn run(
         machine: std::env::consts::ARCH.into(),
         ..Default::default()
     };
-    let (reg, _) = client
-        .register(&RegisterRequest {
-            version: CAPABILITY_VERSION,
-            node_key: keys.node.public(),
-            auth: args
-                .authkey
-                .clone()
-                .map(|auth_key| RegisterAuth { auth_key }),
-            hostinfo: hostinfo.clone(),
-            ..Default::default()
-        })
+    let register_req = |node_key: NodePublic, old_node_key: NodePublic| RegisterRequest {
+        version: CAPABILITY_VERSION,
+        node_key,
+        old_node_key,
+        auth: args
+            .authkey
+            .clone()
+            .map(|auth_key| RegisterAuth { auth_key }),
+        hostinfo: hostinfo.clone(),
+        ..Default::default()
+    };
+    let (mut reg, _) = client
+        .register(&register_req(keys.node.public(), NodePublic::default()))
         .await
         .map_err(|e| format!("register: {e}"))?;
+    if reg.node_key_expired {
+        // An expired node key cannot be renewed: register a fresh one in its place (OldNodeKey ties
+        // it to the same node), keeping the machine key.
+        let old = keys.node.public();
+        keys = flowmesh_state::rotate_node_key(&args.state_file).map_err(|e| e.to_string())?;
+        log("node key expired on the server; registering a new node key");
+        reg = client
+            .register(&register_req(keys.node.public(), old))
+            .await
+            .map_err(|e| format!("register: {e}"))?
+            .0;
+    }
     if !reg.machine_authorized {
         return Err(EngineError::NotAuthorized {
             auth_url: reg.auth_url,
@@ -378,6 +421,7 @@ pub async fn run(
         .map_err(|e| format!("map: {e}"))?
         .ok_or("map stream closed before first message")?;
     nm.apply(&first.parsed);
+    check_key(&nm, first.parsed.control_time.as_deref())?;
 
     let (home, home_node) = pick_home(&nm.derp_map).ok_or("no usable DERP region")?;
     hostinfo.net_info = Some(NetInfo {
@@ -482,7 +526,12 @@ pub async fn run(
         ..base_req.clone()
     });
     let (ctl_tx, mut ctl_rx) = mpsc::channel::<ControlEvent>(64);
+    let map_tap = args
+        .tap_dir
+        .clone()
+        .map(|d| (d, Arc::new(std::sync::atomic::AtomicU64::new(0))));
     let dial = {
+        let map_tap = map_tap.clone();
         let server = args.login_server.clone();
         let machine = keys.machine.clone();
         move || {
@@ -490,6 +539,7 @@ pub async fn run(
             let machine = machine.clone();
             let req = stream_req_rx.borrow().clone();
             let client_tx = client_tx.clone();
+            let tap = map_tap.clone();
             async move {
                 let c = Arc::new(
                     ControlClient::connect(&server, &machine)
@@ -498,12 +548,15 @@ pub async fn run(
                 );
                 let s = c.map(&req).await.map_err(|e| format!("map: {e}"))?;
                 let _ = client_tx.send(c);
-                Ok(Live(s))
+                Ok(Live { stream: s, tap })
             }
         }
     };
     let _control_loop = AbortOnDrop(tokio::spawn(crate::control_loop::run(
-        Some(Live(stream)),
+        Some(Live {
+            stream,
+            tap: map_tap,
+        }),
         dial,
         ctl_tx,
         Backoff::default(),
@@ -708,6 +761,9 @@ pub async fn run(
                         }
                     };
                     let changed = ctx.nm.apply(&m);
+                    if changed.self_node {
+                        check_key(&ctx.nm, m.control_time.as_deref())?;
+                    }
                     if changed.peers || changed.dns || changed.self_node {
                         view = dns_view(&ctx.nm, answer_aaaa);
                         if take_dns && changed.dns {

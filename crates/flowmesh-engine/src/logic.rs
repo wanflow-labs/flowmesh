@@ -231,6 +231,67 @@ pub(crate) fn apply_netmap(
     Ok(())
 }
 
+/// RFC 3339 time in UTC (`YYYY-MM-DDTHH:MM:SS[.fraction]Z`) as Unix seconds; `None` for any other
+/// shape. Control servers send UTC; offsets other than `Z` are not accepted rather than misread.
+pub(crate) fn parse_rfc3339_utc(s: &str) -> Option<i64> {
+    let b = s.as_bytes();
+    let num = |r: std::ops::Range<usize>| -> Option<i64> {
+        let part = s.get(r)?;
+        part.bytes()
+            .all(|c| c.is_ascii_digit())
+            .then(|| part.parse().ok())?
+    };
+    if b.len() < 20
+        || b[4] != b'-'
+        || b[7] != b'-'
+        || b[10] != b'T'
+        || b[13] != b':'
+        || b[16] != b':'
+    {
+        return None;
+    }
+    let rest = &s[19..];
+    let frac_ok = match rest.strip_suffix('Z') {
+        Some("") => true,
+        Some(f) => f
+            .strip_prefix('.')
+            .is_some_and(|d| !d.is_empty() && d.bytes().all(|c| c.is_ascii_digit())),
+        None => false,
+    };
+    if !frac_ok {
+        return None;
+    }
+    let (y, mo, d) = (num(0..4)?, num(5..7)?, num(8..10)?);
+    let (h, mi, se) = (num(11..13)?, num(14..16)?, num(17..19)?);
+    if !(1..=12).contains(&mo) || !(1..=31).contains(&d) || h > 23 || mi > 59 || se > 60 {
+        return None;
+    }
+    // Days from 1970-01-01 (civil-from-days inverse, proleptic Gregorian).
+    let y2 = if mo <= 2 { y - 1 } else { y };
+    let era = y2.div_euclid(400);
+    let yoe = y2 - era * 400;
+    let mp = (mo + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400 + h * 3600 + mi * 60 + se)
+}
+
+/// Whether this node's key has expired: `KeyExpiry` is set (not the zero time) and not later than
+/// the reference time, which is the message's `ControlTime` when present (the server's clock, so a
+/// skewed local clock cannot cause it) and otherwise `now_unix`.
+pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix: i64) -> bool {
+    let Some(expiry) = self_node.key_expiry.as_deref().and_then(parse_rfc3339_utc) else {
+        return false;
+    };
+    // Go's zero time, which means "never expires".
+    if expiry <= parse_rfc3339_utc("0001-01-01T00:00:00Z").unwrap_or(i64::MIN) {
+        return false;
+    }
+    let reference = control_time.and_then(parse_rfc3339_utc).unwrap_or(now_unix);
+    expiry <= reference
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -269,6 +330,90 @@ mod tests {
             regions: regions.into_iter().collect(),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn rfc3339_utc() {
+        assert_eq!(parse_rfc3339_utc("1970-01-01T00:00:00Z"), Some(0));
+        assert_eq!(
+            parse_rfc3339_utc("2026-10-10T06:18:17.53902463Z"),
+            Some(1_791_613_097)
+        );
+        assert_eq!(parse_rfc3339_utc("2000-02-29T12:00:00Z"), Some(951_825_600));
+        assert_eq!(parse_rfc3339_utc("1969-12-31T23:59:59Z"), Some(-1));
+        assert_eq!(
+            parse_rfc3339_utc("0001-01-01T00:00:00Z"),
+            Some(-62_135_596_800)
+        );
+        for bad in [
+            "",
+            "2026-10-10",
+            "2026-10-10T06:18:17",
+            "2026-10-10T06:18:17+08:00",
+            "2026-10-10 06:18:17Z",
+            "2026-13-10T06:18:17Z",
+            "2026-10-32T06:18:17Z",
+            "2026-10-10T24:00:00Z",
+            "2026-10-10T06:60:00Z",
+            "2026-10-10T06:18:61Z",
+            "2026-10-10T06:18:17.Z",
+            "2026-10-10T06:18:17.5xZ",
+            "+026-10-10T06:18:17Z",
+            "2026-1a-10T06:18:17Z",
+            "2026-00-10T06:18:17Z",
+            "2026-10-00T06:18:17Z",
+        ] {
+            assert_eq!(parse_rfc3339_utc(bad), None, "{bad}");
+        }
+        assert_eq!(
+            parse_rfc3339_utc("2026-10-10T06:18:60Z"),
+            Some(1_791_613_140),
+            "leap second accepted"
+        );
+    }
+
+    #[test]
+    fn key_expiry_against_server_time() {
+        let n = |e: Option<&str>| Node {
+            key_expiry: e.map(str::to_string),
+            ..Default::default()
+        };
+        let t = parse_rfc3339_utc("2026-10-10T06:18:17Z").unwrap();
+        // Expired according to the server, even though the local clock lags.
+        assert!(key_expired(
+            &n(Some("2026-10-10T06:18:17Z")),
+            Some("2026-10-10T06:18:20Z"),
+            t - 3600
+        ));
+        assert!(
+            key_expired(
+                &n(Some("2026-10-10T06:18:17Z")),
+                Some("2026-10-10T06:18:17Z"),
+                0
+            ),
+            "at the instant"
+        );
+        // Not yet expired according to the server, even though the local clock runs ahead.
+        assert!(!key_expired(
+            &n(Some("2026-10-10T06:18:17Z")),
+            Some("2026-10-10T06:18:16Z"),
+            t + 3600
+        ));
+        // No server time: the local clock decides.
+        assert!(key_expired(&n(Some("2026-10-10T06:18:17Z")), None, t + 1));
+        assert!(!key_expired(&n(Some("2026-10-10T06:18:17Z")), None, t - 1));
+        assert!(
+            !key_expired(&n(Some("2026-10-10T06:18:17Z")), Some("garbage"), t - 1),
+            "unparsable server time: local"
+        );
+        // Never expires.
+        assert!(!key_expired(
+            &n(Some("0001-01-01T00:00:00Z")),
+            Some("2026-10-10T06:18:17Z"),
+            t
+        ));
+        assert!(!key_expired(&n(None), None, t));
+        assert!(!key_expired(&n(Some("not a time")), None, t));
     }
 
     #[test]

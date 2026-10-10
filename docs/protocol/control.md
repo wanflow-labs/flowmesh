@@ -65,3 +65,12 @@
 ## 7. 已观测但尚未建模的字段
 
 `Debug`（headscale 发送 `{"DisableLogTail":true}`）、`CollectServices`、`UserProfiles[].ProfilePicURL`、`Node.Hostinfo` 中的 `NetInfo`、`Services`、`GoArch` 等、`RegisterResponse.NodeKeySignature`。宽容解析会忽略这些字段；如果后续功能需要，再补建模和测试。
+
+## 8. Node key expiry and the stream lifecycle
+
+Source: OBS-20261010-key-expiry (`lab/scripts/fault_key_expiry.sh`; map messages tapped with `flowmesh-dev --tap-dir`) and OBS-20261010-control-outage (`lab/scripts/fault_control.sh`).
+
+- **Expiry is pushed, not enforced by closing the stream.** After `headscale nodes expire`, the node receives a map message with a full `Node` whose `KeyExpiry` is in the past (with `ControlTime` alongside); the stream stays open and further messages keep arriving. The official client switches to `NeedsLogin` on that message (Health empty, no `AuthURL`). flowmesh does the same and puts `node key expired` in Health (design §7.2 asks for the reason).
+- Expiry is judged against the message's `ControlTime` (server clock) when present, otherwise the local clock. The zero time `0001-01-01T00:00:00Z` means "never expires".
+- **An expired key cannot be renewed.** Registering again with the same node key and an auth key is accepted (`MachineAuthorized`) but the node stays expired, with `NodeKeyExpired: true` in the register response. Registering a **new** node key with `OldNodeKey` set to the expired one (same machine key, same auth key) moves the node to the new key: it keeps its node ID and addresses.
+- **Control server restart closes the stream** (EOF). The client must reopen it on a new Noise connection; the first message after reopening is a full netmap. Tunnels are unaffected meanwhile (0% loss over a 15 s outage).
