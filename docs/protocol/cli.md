@@ -52,6 +52,7 @@ Source: `OBS-20261010-ping` (`lab/scripts/ping_diff.sh`; stdout, stderr and exit
 | relay only, `-c 3` | three `pong from … via DERP(wanflow-relay-1000) in 6ms` | `direct connection not established` | 1 |
 | peer offline, `-c 2` | `ping "100.64.0.10" timed out` per attempt | `no reply` | 1 |
 | IP not in the netmap | — | `no matching peer` | 1 |
+| peer whose node key has expired | — | `peer's node key has expired` (immediately, nothing is sent) | 1 |
 
 - One attempt is a disco ping over every path the relay mode allows (DERP always; candidate endpoints in Auto mode), answered by the first pong; an attempt times out after 5 s. A direct pong also establishes the direct path, so pinging is itself a way to trigger hole punching (seen on the official client: the second `ping` to a NATed peer went direct).
 - Defaults: `-c 10`, `--until-direct=true`. Without `--until-direct`, relay pongs count as success.

@@ -21,6 +21,10 @@ pub struct PeerStatus {
     pub tx_bytes: u64,
     pub active: bool,
     pub exit_node_option: bool,
+    /// RFC 3339, when the server set one.
+    pub key_expiry: Option<String>,
+    /// The node key has expired (the peer is listed but not reachable).
+    pub expired: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

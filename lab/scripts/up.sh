@@ -6,12 +6,15 @@ cd "$(dirname "$0")/.."
 
 hs() { docker compose exec -T headscale headscale "$@"; }
 
-if [ ! -f derp/certs/derp.lab.crt ]; then
-  mkdir -p derp/certs
-  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
-    -subj /CN=derp.lab -addext subjectAltName=DNS:derp.lab \
-    -keyout derp/certs/derp.lab.key -out derp/certs/derp.lab.crt
-fi
+# Two relay regions: 1000 (derp.lab) and 1001 (derp2.lab), for region failover (design §7.2).
+for host in derp.lab derp2.lab; do
+  if [ ! -f "derp/certs/$host.crt" ]; then
+    mkdir -p derp/certs
+    openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+      -subj "/CN=$host" -addext "subjectAltName=DNS:$host" \
+      -keyout "derp/certs/$host.key" -out "derp/certs/$host.crt"
+  fi
+done
 
 docker image inspect flowmesh-lab/headscale:native >/dev/null 2>&1 || scripts/build-images.sh
 docker compose up -d

@@ -52,6 +52,25 @@ services:
         ipv4_address: 172.29.0.11
         aliases: [derp.lab]
 
+  # Second relay region (1001), for home-region failover tests.
+  derp2:
+    image: ${FLOWMESH_LAB_DERP_IMAGE}
+    platform: linux/amd64
+    command:
+      - --hostname=derp2.lab
+      - --certmode=manual
+      - --certdir=/certs
+      - --a=:443
+      - --http-port=-1
+      - --stun=true
+      - --stun-port=3478
+    volumes:
+      - ./derp/certs:/certs:ro
+    networks:
+      lab:
+        ipv4_address: 172.29.0.12
+        aliases: [derp2.lab]
+
   ts1:
     <<: *official-client
     hostname: ts1

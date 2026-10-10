@@ -98,7 +98,7 @@ fn ips(list: &[std::net::IpAddr]) -> Value {
 }
 
 fn node(n: &PeerStatus) -> Value {
-    json!({
+    let mut v = json!({
         "ID": n.id.to_string(),
         "PublicKey": n.public_key,
         "HostName": n.host_name,
@@ -113,7 +113,17 @@ fn node(n: &PeerStatus) -> Value {
         "Online": n.online,
         "ExitNodeOption": n.exit_node_option,
         "Active": n.active,
-    })
+    });
+    // Official shape: present only when set / true.
+    if let Some(obj) = v.as_object_mut() {
+        if let Some(e) = &n.key_expiry {
+            obj.insert("KeyExpiry".into(), e.as_str().into());
+        }
+        if n.expired {
+            obj.insert("Expired".into(), true.into());
+        }
+    }
+    v
 }
 
 #[cfg(test)]
@@ -165,6 +175,8 @@ mod tests {
             tx_bytes: 6,
             active: true,
             exit_node_option: false,
+            key_expiry: None,
+            expired: false,
         }
     }
 
@@ -293,6 +305,19 @@ mod tests {
             out(BackendState::Running, true, &s)["Health"],
             json!(["resolv.conf left alone"])
         );
+    }
+
+    #[test]
+    fn expiry_fields_only_when_set() {
+        let mut s = running();
+        let plain = out(BackendState::Running, true, &s);
+        assert!(plain["Peer"]["nodekey:bb"].get("KeyExpiry").is_none());
+        assert!(plain["Peer"]["nodekey:bb"].get("Expired").is_none());
+        s.peers[0].key_expiry = Some("2026-10-10T06:26:42Z".into());
+        s.peers[0].expired = true;
+        let v = out(BackendState::Running, true, &s);
+        assert_eq!(v["Peer"]["nodekey:bb"]["KeyExpiry"], "2026-10-10T06:26:42Z");
+        assert_eq!(v["Peer"]["nodekey:bb"]["Expired"], true);
     }
 
     #[test]

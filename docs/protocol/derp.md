@@ -39,3 +39,15 @@ All entries above are interop-verified for 0x01–0x05 (handshake and relay roun
 | NaCl box (Curve25519 + XSalsa20-Poly1305). The client uses its own **node private key** and the server public key | Interop-verified |
 | ClientInfo JSON: `{"version":2,"canAckPings":true}` | Interop-verified (server accepted it) |
 | The identity key on DERP is the node key: when A sends to B's node key, B sees src = A's node key | Interop-verified |
+
+## Connection liveness (M8)
+
+Source: OBS-20261010-derp-liveness (`FLOWMESH_DERP_TRACE=1` frame trace; `crates/flowmesh-derp/tests/lab_relay.rs::server_echoes_client_ping`; `lab/scripts/fault_derp_restart.sh`, `fault_derp_failover.sh`).
+
+| Fact | Status |
+|---|---|
+| The server sends **KeepAlive (0x06)** about every **62.5 s** on an otherwise idle connection (62.5 / 124.9 / 187.4 s after connecting) | Observed |
+| The server **echoes a Ping (0x12) sent by the client** with a Pong (0x13) carrying the same 8 bytes | Interop-verified |
+| A server restart closes the connection (TLS EOF); reconnecting is refused until the server is listening again | Observed |
+
+flowmesh's choices (not observed behavior of the official client): after **15 s** without any frame the client pings the server, and if nothing at all arrives within **5 s** the connection is treated as dead (a silently lost path would otherwise take minutes to notice through keepalives). A dead or closed home connection is redialed at once, other regions on demand, with backoff 1 s doubling to 30 s per region; if home stays unreachable for **10 s**, another region of the map becomes home (one already connected first, else the lowest eligible ID), the new preferred region is reported to the control server, and the new relay is told it is home. Home does not move back when the old region returns (no flapping). Connecting happens in the background with a 10 s bound, so a dead relay never stalls the data plane.

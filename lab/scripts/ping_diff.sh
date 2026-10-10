@@ -54,7 +54,25 @@ for s in ts2 fm1; do dc "$s" ip route add blackhole 172.29.0.21/32; done
 sleep 7   # let any direct path expire (trust window 6.5 s)
 case_ relay    full -c 3 ts1
 for s in ts2 fm1; do dc "$s" ip route del blackhole 172.29.0.21/32; done
-case_ offline  full -c 2 100.64.0.10
+# Peers picked from the official client's view: an expired one and an offline (not expired) one.
+# Pruning removes such peers; never fall back to a missing IP, which would quietly turn the case
+# into "nopeer".
+pick() {
+  ts2 status --json | python3 -c '
+import json,sys
+want=sys.argv[1]
+d=json.load(sys.stdin)
+for p in (d.get("Peer") or {}).values():
+    if not p.get("TailscaleIPs"): continue
+    if want=="expired" and p.get("Expired"): print(p["TailscaleIPs"][0]); break
+    if want=="offline" and not p.get("Online") and not p.get("Expired"): print(p["TailscaleIPs"][0]); break
+' "$1"
+}
+for kind in expired offline; do
+  ip=$(pick "$kind")
+  if [ -n "$ip" ]; then case_ "$kind" full -c 2 "$ip"
+  else echo "skip $kind: no such peer in the netmap"; fi
+done
 case_ nopeer   full -c 1 100.64.99.99
 
 [ "$fails" = 0 ] && echo "ok: every case matches" || { echo "FAIL: $fails case(s) differ"; exit 1; }

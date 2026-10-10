@@ -71,6 +71,27 @@ pub enum PingError {
     NoPeer,
     #[error("timed out")]
     Timeout,
+    /// Official wording (OBS-20261010-ping): the peer is in the netmap but its key has expired.
+    #[error("peer's node key has expired")]
+    PeerKeyExpired,
+}
+
+/// The peer a `ping` goes to: its key, first mesh address and short name.
+pub fn ping_target(
+    nm: &NetMap,
+    ip: IpAddr,
+    now_unix: i64,
+) -> Result<(NodePublic, IpAddr, String), PingError> {
+    let n = nm
+        .peers
+        .values()
+        .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
+        .ok_or(PingError::NoPeer)?;
+    if crate::logic::key_expired(n, nm.control_time.as_deref(), now_unix) {
+        return Err(PingError::PeerKeyExpired);
+    }
+    let node_ip = n.addresses.first().map_or(ip, |a| a.addr());
+    Ok((n.key, node_ip, short_name(n)))
 }
 
 /// A `flowmesh ping` waiting for its pong.
@@ -314,6 +335,35 @@ mod tests {
         assert_eq!(
             whois(&NetMap::default(), "100.64.0.1".parse().unwrap()),
             None
+        );
+    }
+
+    #[test]
+    fn ping_target_rules() {
+        let mut nm = whois_netmap();
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        let (key, node_ip, name) = ping_target(&nm, ip("fd7a:115c:a1e0::1"), 0).unwrap();
+        assert_eq!(
+            (key, node_ip, name.as_str()),
+            (nm.peers[&1].key, ip("100.64.0.1"), "n1")
+        );
+        assert_eq!(
+            ping_target(&nm, ip("100.64.0.2"), 0),
+            Err(PingError::NoPeer),
+            "self is not a peer"
+        );
+        assert_eq!(
+            ping_target(&nm, ip("100.64.99.99"), 0),
+            Err(PingError::NoPeer)
+        );
+        nm.peers.get_mut(&7).unwrap().key_expiry = Some("2026-10-10T06:00:00Z".into());
+        assert_eq!(
+            ping_target(&nm, ip("100.64.0.7"), i64::MAX),
+            Err(PingError::PeerKeyExpired)
+        );
+        assert_eq!(
+            PingError::PeerKeyExpired.to_string(),
+            "peer's node key has expired"
         );
     }
 

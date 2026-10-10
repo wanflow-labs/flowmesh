@@ -3,14 +3,13 @@
 //!
 //! Route selection is done by flowmesh-pathsock: direct (UDP) or DERP for each peer.
 
-use crate::command::{
-    EngineCommand, PendingPing, PingError, deliver_pings, expire_pings, short_name,
-};
+use crate::command::{EngineCommand, PendingPing, deliver_pings, expire_pings};
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::logic::{
     apply_netmap, dns_upstreams, dns_view, endpoints_for, looks_like_wireguard, mode_of, peer_home,
     pick_home, snapshot, subnet_routes,
 };
+use crate::relay_plan::{RelayAction, RelayPlan};
 use crate::status::EngineStatus;
 use crate::{EngineConfig, EngineError};
 use flowmesh_control::client::ControlClient;
@@ -22,7 +21,7 @@ use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
 };
-use flowmesh_proto::derp::DerpMap;
+use flowmesh_proto::derp::{DerpMap, DerpNode};
 use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
@@ -32,6 +31,7 @@ use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, watch};
 
 const TICK: Duration = Duration::from_millis(250);
+const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const MTU: u16 = 1280;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
@@ -83,56 +83,158 @@ fn local_endpoints(tun: &str, port: u16) -> Vec<SocketAddr> {
         .collect()
 }
 
+/// DERP connections, driven by `RelayPlan` (design §7.2): reconnect when a relay drops, back off on
+/// failures, fail home over to another region. Connections after start-up are made in background
+/// tasks whose results come back on `ready`, so a dead relay cannot stall the event loop.
 struct Relays {
     me: NodePrivate,
     senders: HashMap<u32, DerpSender>,
     events: mpsc::Sender<(u32, Event)>,
+    ready: mpsc::Sender<(u32, Result<DerpSender, String>)>,
+    plan: RelayPlan,
+    epoch: Instant,
 }
 
 impl Relays {
-    async fn sender(&mut self, region: u32, dm: &DerpMap) -> Option<DerpSender> {
-        if let Some(s) = self.senders.get(&region) {
-            return Some(s.clone());
+    fn now(&self) -> Duration {
+        self.epoch.elapsed()
+    }
+
+    /// Start-up only: connect home inline, so the engine does not come up without a relay.
+    async fn connect_home(&mut self, region: u32, dm: &DerpMap) -> Result<DerpSender, String> {
+        let node = relay_node(region, dm).ok_or("no usable DERP region")?;
+        let c = DerpClient::connect(&node, &self.me)
+            .await
+            .map_err(|e| format!("cannot reach home DERP region {region}: {e}"))?;
+        log(format!(
+            "connected to DERP region {region} ({})",
+            node.host_name
+        ));
+        let s = forward_events(region, c, self.events.clone());
+        self.senders.insert(region, s.clone());
+        s.note_preferred(true).await.map_err(|e| e.to_string())?;
+        Ok(s)
+    }
+
+    fn spawn_connect(&self, region: u32, dm: &DerpMap) {
+        let ready = self.ready.clone();
+        let Some(node) = relay_node(region, dm) else {
+            let _ = ready.try_send((region, Err("region not in the DERP map".into())));
+            return;
+        };
+        let me = self.me.clone();
+        let events = self.events.clone();
+        tokio::spawn(async move {
+            // An unreachable address may never answer the TCP handshake: bound the attempt.
+            let result =
+                match tokio::time::timeout(RELAY_CONNECT_TIMEOUT, DerpClient::connect(&node, &me))
+                    .await
+                {
+                    Ok(Ok(c)) => Ok(forward_events(region, c, events)),
+                    Ok(Err(e)) => Err(format!("{}: {e}", node.host_name)),
+                    Err(_) => Err(format!(
+                        "{}: no answer within {RELAY_CONNECT_TIMEOUT:?}",
+                        node.host_name
+                    )),
+                };
+            let _ = ready.send((region, result)).await;
+        });
+    }
+
+    /// Carry out the plan's actions; returns the new home if it changed.
+    fn act(&mut self, acts: Vec<RelayAction>, dm: &DerpMap) -> Option<u32> {
+        let mut new_home = None;
+        for a in acts {
+            match a {
+                RelayAction::Connect(region) => self.spawn_connect(region, dm),
+                RelayAction::SetHome(region) => new_home = Some(region),
+            }
         }
-        let node = dm
-            .regions
-            .get(&region)?
-            .nodes
-            .iter()
-            .find(|n| !n.stun_only)?
-            .clone();
-        match DerpClient::connect(&node, &self.me).await {
-            Ok(c) => {
-                log(format!(
-                    "connected to DERP region {region} ({})",
-                    node.host_name
-                ));
-                let (s, mut rx) = c.split();
-                let tx = self.events.clone();
-                tokio::spawn(async move {
-                    while let Some(ev) = rx.recv().await {
-                        if tx.send((region, ev)).await.is_err() {
-                            return;
-                        }
-                    }
-                });
+        new_home
+    }
+
+    /// A background connection attempt finished.
+    fn on_ready(&mut self, region: u32, result: Result<DerpSender, String>) {
+        match result {
+            Ok(s) => {
+                self.plan.on_connected(region);
                 self.senders.insert(region, s.clone());
-                Some(s)
+                log(format!("connected to DERP region {region}"));
+                if region == self.plan.home() {
+                    tokio::spawn(async move {
+                        let _ = s.note_preferred(true).await;
+                    });
+                }
             }
             Err(e) => {
+                let now = self.now();
+                self.plan.on_failed(region, now);
                 log(format!("DERP region {region}: {e}"));
-                None
             }
         }
     }
 
-    async fn send(&mut self, region: u32, dm: &DerpMap, to: NodePublic, data: &[u8]) {
-        if let Some(s) = self.sender(region, dm).await {
-            if let Err(e) = s.send(to, data).await {
-                log(format!("DERP send: {e}"));
+    fn on_closed(&mut self, region: u32, dm: &DerpMap) -> Option<u32> {
+        self.senders.remove(&region);
+        let now = self.now();
+        let acts = self.plan.on_closed(region, now);
+        self.act(acts, dm)
+    }
+
+    fn tick(&mut self, dm: &DerpMap) -> Option<u32> {
+        let now = self.now();
+        let acts = self.plan.tick(now, dm);
+        let new_home = self.act(acts, dm);
+        if let Some(home) = new_home {
+            if let Some(s) = self.senders.get(&home).cloned() {
+                tokio::spawn(async move {
+                    let _ = s.note_preferred(true).await;
+                });
             }
         }
+        new_home
     }
+
+    /// Send via `region` if connected; otherwise start connecting and drop the packet, as a lossy
+    /// path would.
+    async fn send(&mut self, region: u32, dm: &DerpMap, to: NodePublic, data: &[u8]) {
+        let now = self.now();
+        let (ready, acts) = self.plan.want(region, now);
+        self.act(acts, dm);
+        if !ready {
+            return;
+        }
+        let Some(s) = self.senders.get(&region).cloned() else {
+            return;
+        };
+        if let Err(e) = s.send(to, data).await {
+            log(format!("DERP send via region {region}: {e}"));
+            self.on_closed(region, dm);
+        }
+    }
+}
+
+/// Split a connection, forward its events (tagged with the region) to the loop, return its sender.
+fn forward_events(region: u32, c: DerpClient, events: mpsc::Sender<(u32, Event)>) -> DerpSender {
+    let (s, mut rx) = c.split();
+    tokio::spawn(async move {
+        while let Some(ev) = rx.recv().await {
+            if events.send((region, ev)).await.is_err() {
+                return;
+            }
+        }
+    });
+    s
+}
+
+/// The node to connect to for a region: the first that is not STUN-only, in the server's order.
+fn relay_node(region: u32, dm: &DerpMap) -> Option<DerpNode> {
+    dm.regions
+        .get(&region)?
+        .nodes
+        .iter()
+        .find(|n| !n.stun_only)
+        .cloned()
 }
 
 /// MagicDNS address (dns.md).
@@ -247,9 +349,7 @@ impl Drop for AbortOnDrop {
 /// Design §7.2: an expired node key ends the run as "not authorized", so the daemon shows NeedsLogin
 /// with the reason instead of carrying on with a key the mesh no longer accepts.
 fn check_key(nm: &NetMap, control_time: Option<&str>) -> Result<(), EngineError> {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX));
+    let now = crate::logic::unix_now();
     match &nm.self_node {
         Some(me) if crate::logic::key_expired(me, control_time, now) => {
             log("node key expired");
@@ -277,7 +377,6 @@ struct Ctx {
     relays: Relays,
     ps: PathSock,
     nm: NetMap,
-    home: u32,
     rng: OsRandom,
 }
 
@@ -312,7 +411,12 @@ impl Ctx {
                         .find(|n| n.key == key)
                         .and_then(peer_home);
                     self.relays
-                        .send(region.unwrap_or(self.home), &self.nm.derp_map, key, bytes)
+                        .send(
+                            region.unwrap_or(self.relays.plan.home()),
+                            &self.nm.derp_map,
+                            key,
+                            bytes,
+                        )
                         .await;
                 }
             }
@@ -423,7 +527,7 @@ pub async fn run(
     nm.apply(&first.parsed);
     check_key(&nm, first.parsed.control_time.as_deref())?;
 
-    let (home, home_node) = pick_home(&nm.derp_map).ok_or("no usable DERP region")?;
+    let (mut home, home_node) = pick_home(&nm.derp_map).ok_or("no usable DERP region")?;
     hostinfo.net_info = Some(NetInfo {
         preferred_derp: home,
     });
@@ -503,19 +607,16 @@ pub async fn run(
     log(format!("{} up as {:?}", args.tun, me.addresses));
 
     let (ev_tx, mut ev_rx) = mpsc::channel::<(u32, Event)>(1024);
+    let (ready_tx, mut ready_rx) = mpsc::channel::<(u32, Result<DerpSender, String>)>(64);
     let mut relays = Relays {
         me: keys.node.clone(),
         senders: HashMap::new(),
         events: ev_tx,
+        ready: ready_tx,
+        plan: RelayPlan::new(home),
+        epoch: Instant::now(),
     };
-    let home_sender = relays
-        .sender(home, &nm.derp_map)
-        .await
-        .ok_or("cannot reach home DERP")?;
-    home_sender
-        .note_preferred(true)
-        .await
-        .map_err(|e| e.to_string())?;
+    relays.connect_home(home, &nm.derp_map).await?;
 
     // The netmap stream is kept alive by the reconnect loop (design §7.2): a redial opens a new
     // Noise connection, which `report` then uses too, and streams with the latest host info.
@@ -570,10 +671,9 @@ pub async fn run(
         relays,
         ps: PathSock::new(disco.clone(), keys.node.public()),
         nm,
-        home,
         rng: OsRandom,
     };
-    if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm) {
+    if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
         log(e);
     }
     ctx.ps.set_my_endpoints(endpoints.clone());
@@ -739,7 +839,10 @@ pub async fn run(
                         }
                     }
                     Event::Closed(reason) => {
-                        log(format!("DERP connection closed: {reason}"));
+                        log(format!("DERP region {region} closed: {reason}"));
+                        if let Some(h) = ctx.relays.on_closed(region, &ctx.nm.derp_map) {
+                            log(format!("home DERP region now {h}"));
+                        }
                         Vec::new()
                     }
                     _ => Vec::new(),
@@ -774,7 +877,7 @@ pub async fn run(
                         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                     }
                     if changed.peers || changed.filter || changed.derp || changed.self_node {
-                        if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm) {
+                        if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
             log(e);
         }
                         // Online/last-seen patches arrive constantly; log only when the peer set changes.
@@ -815,33 +918,47 @@ pub async fn run(
                             let _ = reply.send(crate::command::whois(&ctx.nm, ip));
                         }
                         EngineCommand::Ping { ip, reply } => {
-                            let found = ctx
-                                .nm
-                                .peers
-                                .values()
-                                .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
-                                .map(|n| (n.key, n.addresses.first().map(|a| a.addr()), short_name(n)));
-                            match found {
-                                Some((peer, node_ip, node_name)) => {
+                            match crate::command::ping_target(&ctx.nm, ip, crate::logic::unix_now()) {
+                                Ok((peer, node_ip, node_name)) => {
                                     let acts = ctx.ps.probe(peer, now, &mut ctx.rng);
                                     ctx.run_actions(acts).await;
                                     pings.push(PendingPing {
                                         peer,
-                                        node_ip: node_ip.unwrap_or(ip),
+                                        node_ip,
                                         node_name,
                                         deadline: now + PING_TIMEOUT,
                                         reply,
                                     });
                                 }
-                                None => {
-                                    let _ = reply.send(Err(PingError::NoPeer));
+                                Err(e) => {
+                                    let _ = reply.send(Err(e));
                                 }
                             }
                         }
                     }
                     Vec::new()
                 }
+                Some((region, result)) = ready_rx.recv() => {
+                    ctx.relays.on_ready(region, result);
+                    Vec::new()
+                }
                 _ = ticker.tick() => {
+                    if let Some(h) = ctx.relays.tick(&ctx.nm.derp_map) {
+                        // Peers reach us via our home relay: tell the control server about the new one.
+                        log(format!("home DERP region {home} unreachable; home is now region {h}"));
+                        home = h;
+                        hostinfo.net_info = Some(NetInfo { preferred_derp: h });
+                        report(client_rx.borrow().clone(), MapRequest {
+                            hostinfo: hostinfo.clone(),
+                            endpoints: endpoints.clone(),
+                            ..lite.clone()
+                        });
+                        stream_req_tx.send_replace(MapRequest {
+                            hostinfo: hostinfo.clone(),
+                            endpoints: endpoints.clone(),
+                            ..base_req.clone()
+                        });
+                    }
                     expire_pings(&mut pings, now);
                     let acts = ctx.ps.tick(now, &mut ctx.rng);
                     ctx.run_actions(acts).await;

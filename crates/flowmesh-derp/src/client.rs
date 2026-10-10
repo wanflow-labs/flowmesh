@@ -7,6 +7,7 @@ use crate::handshake::{self, NONCE_LEN};
 use flowmesh_proto::derp::DerpNode;
 use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
@@ -23,6 +24,8 @@ pub enum Event {
     },
     PeerGone(NodePublic),
     Health(String),
+    /// The server echoed one of our pings.
+    Pong([u8; 8]),
     /// Connection closed; the payload is the reason.
     Closed(String),
 }
@@ -41,6 +44,11 @@ pub struct DerpSender {
 }
 
 impl DerpSender {
+    /// Ask the server to echo `payload` back (Ping frame); the answer arrives as `Event::Pong`.
+    pub async fn ping(&self, payload: [u8; 8]) -> Result<(), Error> {
+        self.enqueue(encode(FrameType::Ping, &payload)?).await
+    }
+
     pub async fn send(&self, dst: NodePublic, packet: &[u8]) -> Result<(), Error> {
         let mut payload = Vec::with_capacity(32 + packet.len());
         payload.extend_from_slice(&dst.0);
@@ -227,7 +235,15 @@ impl DerpClient {
         let (tx, wrx) = mpsc::channel::<Vec<u8>>(QUEUE);
         let (etx, events) = mpsc::channel::<Event>(QUEUE);
         tokio::spawn(write_loop(writer, wrx));
-        tokio::spawn(read_loop(reader, dec, tx.clone(), etx));
+        let frames = Arc::new(AtomicU64::new(0));
+        let reader_task = tokio::spawn(read_loop(
+            reader,
+            dec,
+            tx.clone(),
+            etx.clone(),
+            frames.clone(),
+        ));
+        tokio::spawn(watch_liveness(reader_task, frames, tx.clone(), etx));
         Ok(Self {
             server_key,
             server_info,
@@ -270,17 +286,75 @@ async fn write_loop<W: AsyncWrite + Unpin>(mut w: W, mut rx: mpsc::Receiver<Vec<
     }
 }
 
+/// Ping a quiet server and declare the connection dead if nothing comes back (`liveness`). The
+/// reader is aborted rather than raced: cancelling a read mid-frame would corrupt the stream.
+async fn watch_liveness(
+    reader: tokio::task::JoinHandle<()>,
+    frames: Arc<AtomicU64>,
+    tx: mpsc::Sender<Vec<u8>>,
+    events: mpsc::Sender<Event>,
+) {
+    use crate::liveness::{Liveness, Verdict};
+    let start = tokio::time::Instant::now();
+    let mut live = Liveness::new(std::time::Duration::ZERO);
+    let mut seen = frames.load(Ordering::Relaxed);
+    let mut pings: u64 = 0;
+    let mut tick = tokio::time::interval(std::time::Duration::from_secs(1));
+    loop {
+        tick.tick().await;
+        if reader.is_finished() || events.is_closed() {
+            return;
+        }
+        let now = start.elapsed();
+        let n = frames.load(Ordering::Relaxed);
+        if n != seen {
+            seen = n;
+            live.on_frame(now);
+        }
+        match live.tick(now) {
+            Verdict::Quiet => {}
+            Verdict::SendPing => {
+                pings += 1;
+                if let Ok(frame) = encode(FrameType::Ping, &pings.to_be_bytes()) {
+                    let _ = tx.send(frame).await;
+                }
+            }
+            Verdict::Dead => {
+                reader.abort();
+                let _ = events
+                    .send(Event::Closed(
+                        "no reply from the relay; connection presumed dead".into(),
+                    ))
+                    .await;
+                return;
+            }
+        }
+    }
+}
+
 async fn read_loop<R: AsyncRead + Unpin>(
     mut r: R,
     mut dec: FrameDecoder,
     tx: mpsc::Sender<Vec<u8>>,
     events: mpsc::Sender<Event>,
+    frames: Arc<AtomicU64>,
 ) {
+    // Lab observation only: FLOWMESH_DERP_TRACE prints each frame type with its arrival time.
+    let trace = std::env::var_os("FLOWMESH_DERP_TRACE").map(|_| std::time::Instant::now());
     let reason = loop {
         let frame = match read_frame(&mut r, &mut dec).await {
             Ok(f) => f,
             Err(e) => break e.to_string(),
         };
+        frames.fetch_add(1, Ordering::Relaxed);
+        if let Some(t0) = trace {
+            eprintln!(
+                "derp-trace {:.1}s {:?} len={}",
+                t0.elapsed().as_secs_f64(),
+                frame.ty,
+                frame.payload.len()
+            );
+        }
         let event = match frame.ty {
             FrameType::RecvPacket if frame.payload.len() >= 32 => {
                 let mut src = [0u8; 32];
@@ -298,6 +372,11 @@ async fn read_loop<R: AsyncRead + Unpin>(
             FrameType::Health => Some(Event::Health(
                 String::from_utf8_lossy(&frame.payload).into_owned(),
             )),
+            FrameType::Pong if frame.payload.len() == 8 => {
+                let mut p = [0u8; 8];
+                p.copy_from_slice(&frame.payload);
+                Some(Event::Pong(p))
+            }
             FrameType::Ping => {
                 // Echo the 8-byte payload back as-is.
                 match encode(FrameType::Pong, &frame.payload) {

@@ -19,6 +19,9 @@ pub struct NetMap {
     pub packet_filters: BTreeMap<String, Vec<FilterRule>>,
     /// Keyed by user ID. Each message carries the profiles it references; they accumulate.
     pub user_profiles: BTreeMap<i64, UserProfile>,
+    /// The server's clock as of the latest message that carried it (`ControlTime`), for judging
+    /// key expiry without trusting the local clock.
+    pub control_time: Option<String>,
 }
 
 /// Which parts a message touched, so the caller only redoes the parts that need it.
@@ -48,6 +51,9 @@ impl NetMap {
         }
         if !m.domain.is_empty() {
             self.domain = m.domain.clone();
+        }
+        if let Some(t) = &m.control_time {
+            self.control_time = Some(t.clone());
         }
         for u in &m.user_profiles {
             self.user_profiles.insert(u.id, u.clone());
@@ -375,5 +381,21 @@ mod tests {
             ..Default::default()
         });
         assert!(!c.peers, "removing an unknown peer changes nothing");
+    }
+
+    #[test]
+    fn control_time_is_the_latest_one_given() {
+        let mut nm = NetMap::default();
+        nm.apply(&MapResponse {
+            control_time: Some("2026-10-10T06:00:00Z".into()),
+            ..Default::default()
+        });
+        nm.apply(&MapResponse::default());
+        assert_eq!(nm.control_time.as_deref(), Some("2026-10-10T06:00:00Z"));
+        nm.apply(&MapResponse {
+            control_time: Some("2026-10-10T06:01:00Z".into()),
+            ..Default::default()
+        });
+        assert_eq!(nm.control_time.as_deref(), Some("2026-10-10T06:01:00Z"));
     }
 }

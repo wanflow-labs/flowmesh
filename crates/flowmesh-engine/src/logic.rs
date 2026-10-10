@@ -152,6 +152,11 @@ pub(crate) fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
         last_seen: n.last_seen.clone(),
         relay,
         exit_node_option: n.allowed_ips.iter().any(|p| p.prefix_len() == 0),
+        key_expiry: n
+            .key_expiry
+            .clone()
+            .filter(|e| parse_rfc3339_utc(e) > parse_rfc3339_utc("0001-01-01T00:00:00Z")),
+        expired: key_expired(n, nm.control_time.as_deref(), unix_now()),
         ..Default::default()
     }
 }
@@ -198,14 +203,29 @@ pub(crate) fn snapshot(
     }
 }
 
+/// Seconds since the Unix epoch by the local clock (0 if the clock is before 1970).
+pub(crate) fn unix_now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| i64::try_from(d.as_secs()).unwrap_or(i64::MAX))
+}
+
+/// Peers the data plane may talk to: an expired node key is shown in status but not reached, as on
+/// the official client (control.md §8).
+pub(crate) fn live_peers(nm: &NetMap, now_unix: i64) -> impl Iterator<Item = &Node> {
+    nm.peers
+        .values()
+        .filter(move |n| !key_expired(n, nm.control_time.as_deref(), now_unix))
+}
+
 pub(crate) fn apply_netmap(
     dp: &mut Dataplane,
     ps: &mut PathSock,
     nm: &NetMap,
+    now_unix: i64,
 ) -> Result<(), String> {
     dp.set_peers(
-        nm.peers
-            .values()
+        live_peers(nm, now_unix)
             .map(|n| PeerConfig {
                 key: n.key,
                 allowed_ips: n.allowed_ips.clone(),
@@ -213,8 +233,7 @@ pub(crate) fn apply_netmap(
             .collect(),
     );
     ps.set_peers(
-        nm.peers
-            .values()
+        live_peers(nm, now_unix)
             .map(|n| PeerInfo {
                 node: n.key,
                 disco: n.disco_key,
@@ -360,6 +379,10 @@ mod tests {
             "2026-10-10T06:18:17.5xZ",
             "+026-10-10T06:18:17Z",
             "2026-1a-10T06:18:17Z",
+            "2026/10-10T06:18:17Z",
+            "2026-10/10T06:18:17Z",
+            "2026-10-10T06.18:17Z",
+            "2026-10-10T06:18.17Z",
             "2026-00-10T06:18:17Z",
             "2026-10-00T06:18:17Z",
         ] {
@@ -893,7 +916,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(apply_netmap(&mut dp, &mut ps, &nm), Ok(()));
+        assert_eq!(apply_netmap(&mut dp, &mut ps, &nm, 0), Ok(()));
         assert_eq!(
             ps.current_route(pb, Duration::ZERO),
             Route::Derp(1000),
@@ -903,7 +926,89 @@ mod tests {
             "SrcIPs": ["not-an-address"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }]
         })).unwrap();
         nm.packet_filters.insert("g".into(), vec![bad]);
-        let err = apply_netmap(&mut dp, &mut ps, &nm).unwrap_err();
+        let err = apply_netmap(&mut dp, &mut ps, &nm, 0).unwrap_err();
         assert!(err.contains("keeping previous"), "{err}");
+    }
+
+    #[test]
+    fn expired_peers_are_left_out_of_the_data_plane() {
+        let (mut dp, _, _, pb) = handshake(true);
+        let mut ps = PathSock::new(DiscoPrivate::generate().unwrap(), NodePublic([1; 32]));
+        let gone = NodePublic([9; 32]);
+        let mut nm = NetMap {
+            control_time: Some("2026-10-10T07:00:00Z".into()),
+            ..Default::default()
+        };
+        nm.peers.insert(
+            2,
+            Node {
+                id: 2,
+                key: pb,
+                home_derp: 1000,
+                ..Default::default()
+            },
+        );
+        nm.peers.insert(
+            3,
+            Node {
+                id: 3,
+                key: gone,
+                home_derp: 1000,
+                key_expiry: Some("2026-10-10T06:00:00Z".into()),
+                ..Default::default()
+            },
+        );
+        let ids: Vec<i64> = live_peers(&nm, 0).map(|n| n.id).collect();
+        assert_eq!(ids, [2], "judged by the server's clock, not the local 0");
+        apply_netmap(&mut dp, &mut ps, &nm, 0).unwrap();
+        assert_eq!(ps.current_route(pb, Duration::ZERO), Route::Derp(1000));
+        assert_eq!(
+            ps.current_route(gone, Duration::ZERO),
+            Route::None,
+            "not given to path selection"
+        );
+        assert!(
+            dp.stats().iter().all(|(k, _, _)| *k != gone),
+            "not given to WireGuard"
+        );
+    }
+
+    #[test]
+    fn peer_status_expiry_fields() {
+        let mut nm = NetMap {
+            control_time: Some("2026-10-10T07:00:00Z".into()),
+            ..Default::default()
+        };
+        let mut n = Node {
+            id: 4,
+            ..Default::default()
+        };
+        n.key_expiry = Some("2026-10-10T06:26:42Z".into());
+        let s = peer_status(&n, &nm);
+        assert_eq!(
+            (s.key_expiry.as_deref(), s.expired),
+            (Some("2026-10-10T06:26:42Z"), true)
+        );
+        n.key_expiry = Some("2026-10-10T08:00:00Z".into());
+        let s = peer_status(&n, &nm);
+        assert_eq!(
+            (s.key_expiry.as_deref(), s.expired),
+            (Some("2026-10-10T08:00:00Z"), false)
+        );
+        // The zero time means "never": not shown, like the official output.
+        n.key_expiry = Some("0001-01-01T00:00:00Z".into());
+        assert_eq!(peer_status(&n, &nm).key_expiry, None);
+        n.key_expiry = Some("0001-01-01T00:00:01Z".into());
+        nm.control_time = None;
+        assert_eq!(
+            peer_status(&n, &nm).key_expiry.as_deref(),
+            Some("0001-01-01T00:00:01Z")
+        );
+    }
+
+    #[test]
+    fn unix_now_is_plausible() {
+        let t = unix_now();
+        assert!((1_700_000_000..4_000_000_000).contains(&t), "{t}");
     }
 }

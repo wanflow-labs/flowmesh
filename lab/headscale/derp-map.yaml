@@ -13,3 +13,15 @@ regions:
         derpport: 443
         stunport: 3478
         insecurefortests: true
+  1001:
+    regionid: 1001
+    regioncode: wanflow-relay-1001
+    regionname: Lab Relay 2
+    nodes:
+      - name: lab-2
+        regionid: 1001
+        hostname: derp2.lab
+        ipv4: 172.29.0.12
+        derpport: 443
+        stunport: 3478
+        insecurefortests: true

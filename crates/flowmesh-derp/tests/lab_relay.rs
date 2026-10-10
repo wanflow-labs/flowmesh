@@ -46,3 +46,26 @@ async fn two_clients_relay_a_packet_through_lab_derper() {
         }
     );
 }
+
+/// Observation: does the server answer a ping sent by the client? (derp.md frames 0x12/0x13)
+#[tokio::test]
+#[ignore = "needs the lab derper (make lab-up)"]
+async fn server_echoes_client_ping() {
+    let key = NodePrivate::generate().unwrap();
+    let (sender, mut events) = DerpClient::connect(&lab_node(), &key)
+        .await
+        .unwrap()
+        .split();
+    sender.ping(*b"fm-ping1").await.unwrap();
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+    loop {
+        let ev = tokio::time::timeout_at(deadline, events.recv())
+            .await
+            .expect("no pong within 3 s")
+            .unwrap();
+        if let Event::Pong(p) = ev {
+            assert_eq!(&p, b"fm-ping1");
+            break;
+        }
+    }
+}

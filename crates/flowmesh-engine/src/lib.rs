@@ -4,6 +4,7 @@
 pub mod command;
 pub mod control_loop;
 mod logic;
+pub mod relay_plan;
 pub mod status;
 
 use flowmesh_control::client::ControlClient;
