@@ -15,17 +15,30 @@ use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
 
-/// Choose the home relay: the lowest-numbered region that may be home and has a non-STUN-only node.
-pub(crate) fn pick_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
+/// Regions that may be home, in ID order, each with the node to use (the first that is not
+/// STUN-only, in the order the server sent: that order is the server's site steering).
+pub(crate) fn home_candidates(dm: &DerpMap) -> Vec<(u32, DerpNode)> {
     dm.regions
         .iter()
         .filter(|(_, r)| !r.no_measure_no_home)
-        .find_map(|(id, r)| {
+        .filter_map(|(id, r)| {
             r.nodes
                 .iter()
                 .find(|n| !n.stun_only)
                 .map(|n| (*id, n.clone()))
         })
+        .collect()
+}
+
+/// Choose the home relay from measured latencies: the fastest region that answered; if none
+/// answered, the first candidate (the lowest ID). Ties keep the lower ID.
+pub(crate) fn pick_by_latency(measured: &[(u32, Option<Duration>)]) -> Option<u32> {
+    measured
+        .iter()
+        .filter_map(|(id, rtt)| rtt.map(|r| (r, *id)))
+        .min()
+        .map(|(_, id)| id)
+        .or_else(|| measured.first().map(|(id, _)| *id))
 }
 
 /// relay-only (deviation #1): every DERP node has STUNPort == -1.
@@ -314,6 +327,10 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn first_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
+        home_candidates(dm).into_iter().next()
+    }
     use flowmesh_dataplane::plane::Output;
     use flowmesh_disco::{envelope, message};
     use flowmesh_proto::control::{DnsConfig, DnsResolver};
@@ -455,14 +472,14 @@ mod tests {
             ),
             region(1100, "c", false, vec![node("c1", 3478, false)]),
         ]);
-        let (id, n) = pick_home(&dm).unwrap();
+        let (id, n) = first_home(&dm).unwrap();
         assert_eq!(
             (id, n.name.as_str()),
             (1000, "b-site2"),
             "first eligible node, in the order the server sent"
         );
         assert_eq!(
-            pick_home(&map(vec![region(
+            first_home(&map(vec![region(
                 900,
                 "a",
                 true,
@@ -471,10 +488,54 @@ mod tests {
             None
         );
         assert_eq!(
-            pick_home(&map(vec![region(1, "x", false, vec![node("s", 1, true)])])),
+            first_home(&map(vec![region(1, "x", false, vec![node("s", 1, true)])])),
             None
         );
-        assert_eq!(pick_home(&DerpMap::default()), None);
+        assert_eq!(first_home(&DerpMap::default()), None);
+    }
+
+    #[test]
+    fn latency_picks_the_fastest_answering_region() {
+        let ms = Duration::from_millis;
+        assert_eq!(
+            pick_by_latency(&[(1000, Some(ms(40))), (1001, Some(ms(5))), (1002, None)]),
+            Some(1001)
+        );
+        assert_eq!(
+            pick_by_latency(&[(1000, Some(ms(5))), (1001, Some(ms(5)))]),
+            Some(1000),
+            "tie: lower ID"
+        );
+        assert_eq!(
+            pick_by_latency(&[(1000, None), (1001, Some(ms(90)))]),
+            Some(1001),
+            "only one answered"
+        );
+        assert_eq!(
+            pick_by_latency(&[(1000, None), (1001, None)]),
+            Some(1000),
+            "nobody answered: lowest ID"
+        );
+        assert_eq!(pick_by_latency(&[]), None);
+    }
+
+    #[test]
+    fn candidates_follow_region_order() {
+        let dm = map(vec![
+            region(1002, "c", false, vec![node("c1", 1, false)]),
+            region(
+                1000,
+                "a",
+                false,
+                vec![node("a-stun", 1, true), node("a1", 1, false)],
+            ),
+            region(1001, "b", true, vec![node("b1", 1, false)]),
+        ]);
+        let got: Vec<(u32, String)> = home_candidates(&dm)
+            .into_iter()
+            .map(|(id, n)| (id, n.name))
+            .collect();
+        assert_eq!(got, [(1000, "a1".to_string()), (1002, "c1".to_string())]);
     }
 
     #[test]

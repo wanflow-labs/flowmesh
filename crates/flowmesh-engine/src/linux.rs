@@ -7,7 +7,7 @@ use crate::command::{EngineCommand, PendingPing, deliver_pings, expire_pings};
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::logic::{
     apply_netmap, dns_upstreams, dns_view, endpoints_for, looks_like_wireguard, mode_of, peer_home,
-    pick_home, snapshot, subnet_routes,
+    snapshot, subnet_routes,
 };
 use crate::relay_plan::{RelayAction, RelayPlan};
 use crate::status::EngineStatus;
@@ -225,6 +225,52 @@ fn forward_events(region: u32, c: DerpClient, events: mpsc::Sender<(u32, Event)>
         }
     });
     s
+}
+
+/// How long one latency probe may take before the region counts as not answering.
+const HOME_PROBE_TIMEOUT: Duration = Duration::from_secs(2);
+
+/// Pick home among several regions by TCP connect time to each region's relay (flowmesh's choice:
+/// it works in every relay mode, including prefer where STUN is off; derp.md "Connection liveness").
+async fn choose_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
+    let candidates = crate::logic::home_candidates(dm);
+    if candidates.len() <= 1 {
+        return candidates.into_iter().next();
+    }
+    let mut probes = tokio::task::JoinSet::new();
+    for (id, node) in &candidates {
+        let id = *id;
+        let host = if node.ipv4.is_empty() {
+            node.host_name.clone()
+        } else {
+            node.ipv4.clone()
+        };
+        let port = if node.derp_port == 0 {
+            443
+        } else {
+            node.derp_port
+        };
+        probes.spawn(async move {
+            let t = Instant::now();
+            let ok = tokio::time::timeout(
+                HOME_PROBE_TIMEOUT,
+                tokio::net::TcpStream::connect((host.as_str(), port)),
+            )
+            .await
+            .is_ok_and(|r| r.is_ok());
+            (id, ok.then(|| t.elapsed()))
+        });
+    }
+    let mut measured = Vec::with_capacity(candidates.len());
+    while let Some(r) = probes.join_next().await {
+        if let Ok(m) = r {
+            measured.push(m);
+        }
+    }
+    measured.sort_by_key(|(id, _)| *id);
+    log(format!("home DERP latency: {measured:?}"));
+    let id = crate::logic::pick_by_latency(&measured)?;
+    candidates.into_iter().find(|(c, _)| *c == id)
 }
 
 /// The node to connect to for a region: the first that is not STUN-only, in the server's order.
@@ -527,7 +573,9 @@ pub async fn run(
     nm.apply(&first.parsed);
     check_key(&nm, first.parsed.control_time.as_deref())?;
 
-    let (mut home, home_node) = pick_home(&nm.derp_map).ok_or("no usable DERP region")?;
+    let (mut home, home_node) = choose_home(&nm.derp_map)
+        .await
+        .ok_or("no usable DERP region")?;
     hostinfo.net_info = Some(NetInfo {
         preferred_derp: home,
     });
