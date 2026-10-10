@@ -1,0 +1,12 @@
+{
+  "captured_at": "2026-10-10T14:54:50+00:00",
+  "files": [
+    "notes.md",
+    "run-h1.tsv",
+    "run-h2.tsv"
+  ],
+  "label": "peer-relay-handshake",
+  "method": "flowmesh-probe --udp-control --udp-payload ... against tsr after an allocation over DERP",
+  "note": "negative results; lab-only keys",
+  "official_client": "1.94.2"
+}
