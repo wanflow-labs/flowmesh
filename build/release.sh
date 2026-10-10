@@ -20,6 +20,8 @@ export CARGO_HOME=${CARGO_HOME:-$HOME/.cargo}
 export RUSTFLAGS="--remap-path-prefix=$PWD=/flowmesh --remap-path-prefix=$CARGO_HOME=/cargo -C strip=symbols"
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-target/release-build}
 export TZ=UTC LC_ALL=C
+# Modes go into the tarballs: a builder's umask (002 for many login users) must not leak in.
+umask 022
 
 rustc --version | grep -q '^rustc 1.88.0 ' || { echo "rustc 1.88.0 required, got: $(rustc --version)"; exit 1; }
 zig version | grep -qx '0.13.0' || { echo "zig 0.13.0 required"; exit 1; }
@@ -34,7 +36,7 @@ for t in $targets; do
   mkdir -p "$stage"
   cp "$CARGO_TARGET_DIR/$t/release/flowmeshd" "$CARGO_TARGET_DIR/$t/release/flowmesh" "$stage/"
   cp LICENSE NOTICE packaging/systemd/flowmeshd.service "$stage/"
-  chmod 0755 "$stage/flowmeshd" "$stage/flowmesh"
+  chmod 0755 "$stage" "$stage/flowmeshd" "$stage/flowmesh"
   chmod 0644 "$stage/LICENSE" "$stage/NOTICE" "$stage/flowmeshd.service"
   find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
   tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
