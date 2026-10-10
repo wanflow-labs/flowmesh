@@ -4,3 +4,5 @@
 /mutants.out/
 /mutants.out.old/
 build/cache/
+/dist/
+__pycache__/
