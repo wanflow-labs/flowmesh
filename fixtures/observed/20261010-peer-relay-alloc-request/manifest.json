@@ -1,0 +1,16 @@
+{
+  "captured_at": "2026-10-10T14:35:14+00:00",
+  "files": [
+    "cond-A.tsv",
+    "cond-B.tsv",
+    "cond-C.tsv",
+    "conditions.sh",
+    "disco.tsv",
+    "map-0000.json",
+    "notes.md"
+  ],
+  "label": "peer-relay-alloc-request",
+  "method": "flowmesh-probe --derp-region 1000 listening in fm1; ts1/ts2 with direct UDP dropped and tsr stopped; conditions.sh for the A/B/C runs",
+  "note": "lab-only keys; decrypted payloads only, no private keys",
+  "official_client": "1.94.2"
+}
