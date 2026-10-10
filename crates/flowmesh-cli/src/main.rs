@@ -61,10 +61,7 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             Ok(0)
         }
         Command::Logout => {
-            let r = client.post("logout", &json!({})).await.map_err(e)?;
-            if let Some(w) = r["warning"].as_str() {
-                eprintln!("warning: logged out locally, but the control server was not told: {w}");
-            }
+            client.post("logout", &json!({})).await.map_err(e)?;
             Ok(0)
         }
         Command::Set(update) => {

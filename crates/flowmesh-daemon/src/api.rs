@@ -91,8 +91,9 @@ fn error(code: StatusCode, msg: impl std::fmt::Display) -> Response<Full<Bytes>>
 
 fn daemon_error(e: &DaemonError) -> Response<Full<Bytes>> {
     let code = match e {
-        DaemonError::Prefs(_) => StatusCode::BAD_REQUEST,
+        DaemonError::Prefs(_) | DaemonError::Unsupported(_) => StatusCode::BAD_REQUEST,
         DaemonError::Persist(_) => StatusCode::INTERNAL_SERVER_ERROR,
+        DaemonError::Logout(_) => StatusCode::BAD_GATEWAY,
     };
     error(code, e)
 }
@@ -157,7 +158,7 @@ where
             Err(e) => daemon_error(&e),
         },
         (&Method::POST, "logout") => match d.logout().await {
-            Ok(warning) => reply(StatusCode::OK, &json!({ "warning": warning })),
+            Ok(()) => reply(StatusCode::OK, &json!({})),
             Err(e) => daemon_error(&e),
         },
         _ => error(StatusCode::NOT_FOUND, "not found"),

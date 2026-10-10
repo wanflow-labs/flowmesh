@@ -74,6 +74,23 @@ pub enum DaemonError {
     Prefs(#[from] PrefsError),
     #[error("persist preferences: {0}")]
     Persist(String),
+    /// Accepted by the preference model for forward compatibility, but the engine does not do it yet:
+    /// refusing is better than silently ignoring it.
+    #[error("{0} is not supported yet")]
+    Unsupported(&'static str),
+    #[error("logout failed: {0}")]
+    Logout(String),
+}
+
+fn check_supported(update: &PrefsUpdate) -> Result<(), DaemonError> {
+    if update
+        .advertise_routes
+        .as_ref()
+        .is_some_and(|r| !r.is_empty())
+    {
+        return Err(DaemonError::Unsupported("--advertise-routes"));
+    }
+    Ok(())
 }
 
 /// Body of `up`.
@@ -146,6 +163,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn up(&self, req: UpRequest) -> Result<(), DaemonError> {
+        check_supported(&req.update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_up(&req.update, req.reset)?;
         let mut stored = sh.stored.clone();
@@ -166,6 +184,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn set(&self, update: PrefsUpdate) -> Result<(), DaemonError> {
+        check_supported(&update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_set(&update);
         if prefs == sh.stored.prefs {
@@ -195,28 +214,31 @@ impl<L: Launcher> Daemon<L> {
         Ok(())
     }
 
-    /// Returns a warning when only the local half succeeded (control server unreachable).
-    pub async fn logout(&self) -> Result<Option<String>, DaemonError> {
+    /// Official behavior (cli.md §1): the network is stopped first; if the control server cannot be
+    /// told, the logout fails and the node stays logged in but Stopped.
+    pub async fn logout(&self) -> Result<(), DaemonError> {
         let mut sh = self.shared.lock().await;
         self.stop_engine(&mut sh).await;
-        let warning = if sh.stored.prefs.control_url.is_empty() {
-            None
-        } else {
+        if sh.stored.logged_in && !sh.stored.prefs.control_url.is_empty() {
+            let mut stopped = sh.stored.clone();
+            stopped.prefs.want_running = false;
+            save(&self.opts.prefs_file(), &stopped)?;
+            sh.stored = stopped;
             self.launcher
                 .logout(sh.stored.prefs.control_url.clone(), self.opts.node_file())
                 .await
-                .err()
-        };
-        let mut stored = sh.stored.clone();
-        stored.prefs.want_running = false;
-        stored.logged_in = false;
+                .map_err(DaemonError::Logout)?;
+        }
+        // Official behavior (cli.md §1): logout resets every preference to its default, so the next
+        // login starts clean and is not subject to the "mention all non-default flags" rule.
+        let stored = Stored::default();
         save(&self.opts.prefs_file(), &stored)?;
         sh.stored = stored;
         sh.authkey = None;
         sh.refused = None;
         sh.errors.clear();
         sh.snap = EngineStatus::default();
-        Ok(warning)
+        Ok(())
     }
 
     pub async fn prefs(&self) -> Prefs {

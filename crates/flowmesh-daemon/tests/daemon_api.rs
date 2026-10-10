@@ -27,6 +27,7 @@ struct World {
     last_cfg: Option<EngineConfig>,
     /// Runs that ended because the daemon asked them to stop.
     stops: u32,
+    logout_fails: bool,
     logout_state_file: Option<PathBuf>,
     /// Control servers that never answer (the engine keeps trying, no netmap).
     unreachable: Vec<String>,
@@ -95,6 +96,9 @@ impl Launcher for Fake {
         Box::pin(async move {
             let mut w = world.lock().unwrap();
             w.logout_state_file = Some(state_file);
+            if w.logout_fails {
+                return Err("control connect: refused".to_string());
+            }
             w.logouts += 1;
             w.registered = false;
             Ok(())
@@ -216,8 +220,7 @@ async fn lifecycle_matches_official_transitions() {
     h.up(json!({ "update": full_flags() })).await.unwrap();
     h.wait_state("Running").await;
 
-    let r = h.client.post("logout", &json!({})).await.unwrap();
-    assert_eq!(r["warning"], Value::Null);
+    h.client.post("logout", &json!({})).await.unwrap();
     let s = h.wait_state("NeedsLogin").await;
     assert_eq!(h.fake.0.lock().unwrap().logouts, 1);
     assert_eq!(s["Peer"], Value::Null);
@@ -226,8 +229,19 @@ async fn lifecycle_matches_official_transitions() {
         flowmesh_daemon::status_json::ZERO_NODE_KEY
     );
     assert_eq!(h.stored()["logged_in"], false);
+    assert_eq!(
+        h.stored()["prefs"]["control_url"],
+        "",
+        "logout resets preferences"
+    );
+    assert_eq!(h.stored()["prefs"]["accept_dns"], true);
 
-    // Logged out: the old flags are still the prefs, but the control server refuses without a key.
+    // Logged out: a bare up has no control server to go to.
+    let (code, msg) = api_error(h.up(json!({})).await);
+    assert_eq!(code, 400);
+    assert!(msg.contains("--login-server"), "{msg}");
+
+    // Fewer flags than before are fine after logout, but the control server refuses without a key.
     h.up(json!({ "update": full_flags() })).await.unwrap();
     let s = h.wait_state("NeedsLogin").await;
     assert_eq!(s["AuthURL"], AUTH_URL);
@@ -516,6 +530,69 @@ async fn request_body_limit() {
         .body(Full::new(Bytes::from(huge)))
         .unwrap();
     assert_eq!(api::handle(&h.daemon, req, true).await.status(), 400);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn unimplemented_advertise_routes_is_refused_not_ignored() {
+    let h = start(temp_dir("advroutes"), Fake::default()).await;
+    let mut flags = full_flags();
+    flags["advertise_routes"] = json!(["10.99.0.0/24"]);
+    let (code, msg) = api_error(h.up(json!({ "update": flags, "authkey": GOOD_KEY })).await);
+    assert_eq!(
+        (code, msg.as_str()),
+        (400, "--advertise-routes is not supported yet")
+    );
+    let (code, _) = api_error(
+        h.client
+            .post("set", &json!({ "advertise_routes": ["10.99.0.0/24"] }))
+            .await,
+    );
+    assert_eq!(code, 400);
+    // Clearing (the default) is fine.
+    let mut flags = full_flags();
+    flags["advertise_routes"] = json!([]);
+    h.up(json!({ "update": flags, "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_needs_the_control_server() {
+    let h = start(temp_dir("logoutfail"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    h.fake.0.lock().unwrap().logout_fails = true;
+    let (code, msg) = api_error(h.client.post("logout", &json!({})).await);
+    assert_eq!(code, 502);
+    assert!(msg.contains("control connect: refused"), "{msg}");
+    // Same as observed on the official client: stopped, still logged in, preferences kept.
+    assert_eq!(h.status().await["BackendState"], "Stopped");
+    assert_eq!(h.stored()["logged_in"], true);
+    assert_eq!(h.stored()["prefs"]["control_url"], "http://h");
+
+    h.fake.0.lock().unwrap().logout_fails = false;
+    h.client.post("logout", &json!({})).await.unwrap();
+    assert_eq!(h.status().await["BackendState"], "NeedsLogin");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn logout_when_never_logged_in_does_not_call_the_server() {
+    let h = start(temp_dir("logoutnone"), Fake::default()).await;
+    h.client.post("logout", &json!({})).await.unwrap();
+    assert_eq!(h.fake.0.lock().unwrap().logouts, 0);
+    assert_eq!(h.status().await["BackendState"], "NeedsLogin");
+
+    // A control server is configured but refused the node: its key was never registered, so there
+    // is nothing to expire there.
+    h.up(json!({ "update": full_flags() })).await.unwrap();
+    h.wait_state("NeedsLogin").await;
+    assert_eq!(h.stored()["prefs"]["control_url"], "http://h");
+    h.client.post("logout", &json!({})).await.unwrap();
+    assert_eq!(h.fake.0.lock().unwrap().logouts, 0);
+    assert_eq!(h.stored()["prefs"]["control_url"], "");
 }
 
 #[tokio::test(flavor = "multi_thread")]

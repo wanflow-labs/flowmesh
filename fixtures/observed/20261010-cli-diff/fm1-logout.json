@@ -1,0 +1,29 @@
+{
+  "AuthURL": "",
+  "BackendState": "NeedsLogin",
+  "CurrentTailnet": null,
+  "Health": [
+    "flowmesh is stopped."
+  ],
+  "MagicDNSSuffix": "",
+  "Peer": null,
+  "Self": {
+    "Active": false,
+    "CurAddr": "",
+    "DNSName": "",
+    "ExitNodeOption": false,
+    "HostName": "",
+    "ID": "",
+    "LastSeen": "0001-01-01T00:00:00Z",
+    "OS": "linux",
+    "Online": false,
+    "PublicKey": "nodekey:0000000000000000000000000000000000000000000000000000000000000000",
+    "Relay": "",
+    "RxBytes": 0,
+    "TailscaleIPs": null,
+    "TxBytes": 0
+  },
+  "TUN": true,
+  "TailscaleIPs": null,
+  "Version": "0.1.0"
+}

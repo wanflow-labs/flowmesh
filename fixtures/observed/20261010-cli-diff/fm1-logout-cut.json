@@ -1,0 +1,364 @@
+{
+  "AuthURL": "",
+  "BackendState": "Stopped",
+  "CurrentTailnet": {
+    "MagicDNSEnabled": true,
+    "MagicDNSSuffix": "mesh.lab.internal",
+    "Name": "mesh.lab.internal"
+  },
+  "HaveNodeKey": true,
+  "Health": [
+    "flowmesh is stopped."
+  ],
+  "MagicDNSSuffix": "mesh.lab.internal",
+  "Peer": {
+    "nodekey:00f3b8a7b027ce17180f445f36aa90e4705da8c37f40e7de573ecd586b9d4037": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1-dbxlfhrh.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "39",
+      "LastSeen": "2026-10-10T04:14:45.27941638Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:00f3b8a7b027ce17180f445f36aa90e4705da8c37f40e7de573ecd586b9d4037",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.43",
+        "fd7a:115c:a1e0::2b"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:0f1a58780fc19548f86162766cdd74ceafc80e95dbb1ab08e4eb099f310afb1b": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "38",
+      "LastSeen": "2026-10-10T04:12:12.412926796Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:0f1a58780fc19548f86162766cdd74ceafc80e95dbb1ab08e4eb099f310afb1b",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.40",
+        "fd7a:115c:a1e0::28"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:2e00667d113d4f46e3a8b3248a75518d33dda1d1c50a485f06b292eaea93c979": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-a-yvfqgzsx.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-a",
+      "ID": "14",
+      "LastSeen": "2026-10-10T02:26:22.675696846Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:2e00667d113d4f46e3a8b3248a75518d33dda1d1c50a485f06b292eaea93c979",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.14",
+        "fd7a:115c:a1e0::e"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:3b4447c514ab809ea65f211a5f13b56980327a65ad37b3d0086fcb4ececbe213": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1-juhupvkj.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "5",
+      "LastSeen": "2026-10-10T04:08:38.371406419Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:3b4447c514ab809ea65f211a5f13b56980327a65ad37b3d0086fcb4ececbe213",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.5",
+        "fd7a:115c:a1e0::5"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:3f1b077d852dfe6820cd347292b21e747d1f483009f840596943734f2ba9550f": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1-d4dsvqtz.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "42",
+      "LastSeen": "2026-10-10T04:21:09.773935252Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:3f1b077d852dfe6820cd347292b21e747d1f483009f840596943734f2ba9550f",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.54",
+        "fd7a:115c:a1e0::36"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:4db33d0671eb0cbf7c8dd515a3cb57706adca62dcda56f75386e2c8b8e96f328": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts2.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts2",
+      "ID": "2",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:4db33d0671eb0cbf7c8dd515a3cb57706adca62dcda56f75386e2c8b8e96f328",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.2",
+        "fd7a:115c:a1e0::2"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:69428d0d0adb921a5321800768bc58b641cbce156513c182393cb811c1d4494a": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-a-qxt83dvo.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-a",
+      "ID": "36",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:69428d0d0adb921a5321800768bc58b641cbce156513c182393cb811c1d4494a",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.36",
+        "fd7a:115c:a1e0::24"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:89800e2413c6be00d547d561529f1ba4b9206b9a80aeb209f9702dc5bc1bb11c": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-b-lq5eqgx0.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-b",
+      "ID": "37",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:89800e2413c6be00d547d561529f1ba4b9206b9a80aeb209f9702dc5bc1bb11c",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.37",
+        "fd7a:115c:a1e0::25"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:8fdf0938d7c89e761f6a9a098a449e3faf4cd691e373f58125808c74bfcda81f": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "wm1.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "wm1",
+      "ID": "6",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:8fdf0938d7c89e761f6a9a098a449e3faf4cd691e373f58125808c74bfcda81f",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.6",
+        "fd7a:115c:a1e0::6"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:9143775de46525799775efa4c0c205ccaa55ede72f1828cc6d45e8219588de50": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1-cspat8ab.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "40",
+      "LastSeen": "2026-10-10T04:15:47.084161464Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:9143775de46525799775efa4c0c205ccaa55ede72f1828cc6d45e8219588de50",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.46",
+        "fd7a:115c:a1e0::2e"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:91703ecf4ce99dd58a58efca5cec6789ada6df1092a64c048a31d59f95d3004f": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-a-9wsvohnz.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-a",
+      "ID": "16",
+      "LastSeen": "2026-10-10T02:27:28.209054418Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:91703ecf4ce99dd58a58efca5cec6789ada6df1092a64c048a31d59f95d3004f",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.16",
+        "fd7a:115c:a1e0::10"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:a1e005cba160bc2ad17b9b7e78bf58ed01838941fcff84e20a301f24c4611d0f": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-b-ygavdkds.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-b",
+      "ID": "15",
+      "LastSeen": "2026-10-10T02:26:14.487943134Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:a1e005cba160bc2ad17b9b7e78bf58ed01838941fcff84e20a301f24c4611d0f",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.15",
+        "fd7a:115c:a1e0::f"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:ae237857013bb12d6948a0700c1a2971dc54756f52a2834da1c7d415084cc162": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm1-cuuu36tc.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm1",
+      "ID": "41",
+      "LastSeen": "2026-10-10T04:19:43.929377671Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:ae237857013bb12d6948a0700c1a2971dc54756f52a2834da1c7d415084cc162",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.50",
+        "fd7a:115c:a1e0::32"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:ce776a3e2b958a35eeaaecc51690bb59ce9b8c2bc58362436eb8aceb10d9fa0c": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "fm-a.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "fm-a",
+      "ID": "9",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:ce776a3e2b958a35eeaaecc51690bb59ce9b8c2bc58362436eb8aceb10d9fa0c",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.9",
+        "fd7a:115c:a1e0::9"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:ceddf2cea872b465809ae5d0aa990fe42787a841f7bb341dbe5b8c0524580402": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-b-of2cxez7.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-b",
+      "ID": "13",
+      "LastSeen": "2026-10-10T02:25:21.236342595Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:ceddf2cea872b465809ae5d0aa990fe42787a841f7bb341dbe5b8c0524580402",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.13",
+        "fd7a:115c:a1e0::d"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:d4ac46d0290628e6647cf7481d1320ed2368d5a7c94aa52e825c0707cd75bb58": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts-a-e2zlhu95.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts-a",
+      "ID": "10",
+      "LastSeen": "2026-10-10T02:24:56.660621042Z",
+      "OS": "linux",
+      "Online": false,
+      "PublicKey": "nodekey:d4ac46d0290628e6647cf7481d1320ed2368d5a7c94aa52e825c0707cd75bb58",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.10",
+        "fd7a:115c:a1e0::a"
+      ],
+      "TxBytes": 0
+    },
+    "nodekey:eb0b5cd0c6d2755d28357e02f6c0c261c0b024633c9919ff83261f505eda840b": {
+      "Active": false,
+      "CurAddr": "",
+      "DNSName": "ts1.mesh.lab.internal.",
+      "ExitNodeOption": false,
+      "HostName": "ts1",
+      "ID": "1",
+      "LastSeen": "0001-01-01T00:00:00Z",
+      "OS": "linux",
+      "Online": true,
+      "PublicKey": "nodekey:eb0b5cd0c6d2755d28357e02f6c0c261c0b024633c9919ff83261f505eda840b",
+      "Relay": "wanflow-relay-1000",
+      "RxBytes": 0,
+      "TailscaleIPs": [
+        "100.64.0.1",
+        "fd7a:115c:a1e0::1"
+      ],
+      "TxBytes": 0
+    }
+  },
+  "Self": {
+    "Active": false,
+    "CurAddr": "",
+    "DNSName": "fm1-4xfexlba.mesh.lab.internal.",
+    "ExitNodeOption": false,
+    "HostName": "fm1",
+    "ID": "43",
+    "LastSeen": "2026-10-10T04:21:24.307958884Z",
+    "OS": "linux",
+    "Online": false,
+    "PublicKey": "nodekey:bd4ee582d7f111655d39e99166edce2874c8dfe2c9bd1765a243b49f2ae21310",
+    "Relay": "wanflow-relay-1000",
+    "RxBytes": 0,
+    "TailscaleIPs": [
+      "100.64.0.58",
+      "fd7a:115c:a1e0::3a"
+    ],
+    "TxBytes": 0
+  },
+  "TUN": true,
+  "TailscaleIPs": [
+    "100.64.0.58",
+    "fd7a:115c:a1e0::3a"
+  ],
+  "Version": "0.1.0"
+}

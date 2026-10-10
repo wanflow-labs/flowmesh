@@ -70,30 +70,37 @@ impl From<&str> for EngineError {
 /// (The zero time means "no expiry requested", so it must be a real past instant.)
 pub const LOGOUT_EXPIRY: &str = "1970-01-01T00:00:01Z";
 
+/// How long logout waits for the control server. The official client waits until it answers or the
+/// caller gives up; a bound gives scripts a definite exit code with the same end state (deviation #7).
+pub const LOGOUT_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(15);
+
 /// Log out: ask the control server to expire the current node key, then replace the node key locally.
-/// The local part always happens; `Err` means only the server could not be told.
+/// Like the official client, nothing changes locally when the server cannot be told (cli.md §1).
 pub async fn logout(login_server: &str, state_file: &std::path::Path) -> Result<(), String> {
     let keys = flowmesh_state::load_or_create(state_file).map_err(|e| e.to_string())?;
-    let told = async {
-        let client = ControlClient::connect(login_server, &keys.machine)
-            .await
-            .map_err(|e| format!("control connect: {e}"))?;
-        client
-            .register(&RegisterRequest {
-                version: CAPABILITY_VERSION,
-                node_key: keys.node.public(),
-                expiry: Some(LOGOUT_EXPIRY.into()),
-                hostinfo: Hostinfo {
-                    os: "linux".into(),
-                    ..Default::default()
-                },
-                ..Default::default()
-            })
-            .await
-            .map(|_| ())
-            .map_err(|e| format!("register: {e}"))
-    }
-    .await;
+    tokio::time::timeout(LOGOUT_TIMEOUT, tell_logout(login_server, &keys))
+        .await
+        .map_err(|_| format!("control server did not answer within {LOGOUT_TIMEOUT:?}"))??;
     flowmesh_state::rotate_node_key(state_file).map_err(|e| e.to_string())?;
-    told
+    Ok(())
+}
+
+async fn tell_logout(login_server: &str, keys: &flowmesh_state::NodeState) -> Result<(), String> {
+    let client = ControlClient::connect(login_server, &keys.machine)
+        .await
+        .map_err(|e| format!("control connect: {e}"))?;
+    client
+        .register(&RegisterRequest {
+            version: CAPABILITY_VERSION,
+            node_key: keys.node.public(),
+            expiry: Some(LOGOUT_EXPIRY.into()),
+            hostinfo: Hostinfo {
+                os: "linux".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await
+        .map_err(|e| format!("register: {e}"))?;
+    Ok(())
 }
