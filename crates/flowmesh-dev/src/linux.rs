@@ -1,25 +1,32 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Main loop: handles TUN reads, DERP receives, network map updates, and the WireGuard timer concurrently.
+//! Main loop: TUN, UDP (WireGuard / disco / STUN sharing one port), DERP, network map updates, and timers.
+//!
+//! Route selection is done by flowmesh-pathsock: direct (UDP) or DERP for each peer.
 
 use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
+use flowmesh_pathsock::{Action, PathSock, PeerInfo, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
-    Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
+    Hostinfo, MapRequest, MapResponse, NetInfo, Node, RegisterAuth, RegisterRequest,
 };
 use flowmesh_proto::derp::{DerpMap, DerpNode};
 use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::collections::HashMap;
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::path::PathBuf;
 use std::process::ExitCode;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
+use tokio::net::UdpSocket;
 use tokio::sync::mpsc;
 
 const TICK: Duration = Duration::from_millis(250);
 const MTU: u16 = 1280;
+const DEFAULT_PORT: u16 = 41641;
+const DEFAULT_STUN_PORT: u16 = 3478;
 
 struct Args {
     login_server: String,
@@ -27,18 +34,17 @@ struct Args {
     state: PathBuf,
     hostname: String,
     tun: String,
-    /// Debug only: write every non-WireGuard packet received via DERP into this directory (observation material for disco etc.).
+    port: u16,
+    /// Debug only: write every disco/unknown message received (UDP and DERP) into this directory, for observation.
     tap_dir: Option<PathBuf>,
-    /// Debug only: send one disco Ping via DERP to every peer at startup (to observe the peer's Pong).
-    disco_probe: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
     let mut it = std::env::args().skip(1);
     let (mut login, mut authkey, mut state, mut host) = (None, None, None, None);
     let mut tun = "flowmesh0".to_string();
+    let mut port = DEFAULT_PORT;
     let mut tap_dir = None;
-    let mut disco_probe = false;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -47,8 +53,11 @@ fn parse_args() -> Result<Args, String> {
             "--state" => state = Some(PathBuf::from(val()?)),
             "--hostname" => host = Some(val()?),
             "--tun" => tun = val()?,
+            "--port" => {
+                let v = val()?;
+                port = v.parse().map_err(|_| format!("bad --port {v}"))?;
+            }
             "--tap-dir" => tap_dir = Some(PathBuf::from(val()?)),
-            "--disco-probe" => disco_probe = true,
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -58,8 +67,8 @@ fn parse_args() -> Result<Args, String> {
         state: state.ok_or("--state is required")?,
         hostname: host.ok_or("--hostname is required")?,
         tun,
+        port,
         tap_dir,
-        disco_probe,
     })
 }
 
@@ -67,12 +76,18 @@ fn log(msg: impl std::fmt::Display) {
     eprintln!("flowmesh-dev: {msg}");
 }
 
-/// A WireGuard message starts with a type byte 1–4 followed by three zero bytes (WireGuard whitepaper §5.4, PUB-2).
-fn looks_like_wireguard(b: &[u8]) -> bool {
-    b.len() >= 4 && (1..=4).contains(&b[0]) && b[1..4] == [0, 0, 0]
+struct OsRandom;
+
+impl Random for OsRandom {
+    fn fill(&mut self, buf: &mut [u8]) {
+        if getrandom::fill(buf).is_err() {
+            // Without a system random source we must not produce a predictable transaction ID; abort.
+            panic!("system random source failed");
+        }
+    }
 }
 
-/// Choose the home relay: the lowest-numbered region that may be used as home and has a non-STUN-only node.
+/// Choose the home relay: the lowest-numbered region that may be home and has a non-STUN-only node.
 fn pick_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
     dm.regions
         .iter()
@@ -85,8 +100,14 @@ fn pick_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
         })
 }
 
+/// relay-only (deviation #1): every DERP node has STUNPort == -1.
+fn relay_only(dm: &DerpMap) -> bool {
+    let mut nodes = dm.regions.values().flat_map(|r| r.nodes.iter()).peekable();
+    nodes.peek().is_some() && nodes.all(|n| n.stun_port == -1)
+}
+
 /// A peer's home relay: prefer `HomeDERP`, otherwise parse the legacy `127.3.3.40:<region>`.
-fn peer_home(n: &flowmesh_proto::control::Node) -> Option<u32> {
+fn peer_home(n: &Node) -> Option<u32> {
     if n.home_derp != 0 {
         return Some(n.home_derp);
     }
@@ -94,6 +115,11 @@ fn peer_home(n: &flowmesh_proto::control::Node) -> Option<u32> {
         .strip_prefix("127.3.3.40:")
         .and_then(|r| r.parse().ok())
         .filter(|r| *r != 0)
+}
+
+/// A WireGuard message starts with a type byte 1–4 followed by three zero bytes (WireGuard whitepaper §5.4, PUB-2).
+fn looks_like_wireguard(b: &[u8]) -> bool {
+    b.len() >= 4 && (1..=4).contains(&b[0]) && b[1..4] == [0, 0, 0]
 }
 
 fn ip(args: &[&str]) -> Result<(), String> {
@@ -106,6 +132,27 @@ fn ip(args: &[&str]) -> Result<(), String> {
     } else {
         Err(format!("ip {} failed: {status}", args.join(" ")))
     }
+}
+
+/// Local IPv4 addresses (global scope, excluding the TUN itself) as endpoint candidates.
+fn local_endpoints(tun: &str, port: u16) -> Vec<SocketAddr> {
+    let Ok(out) = std::process::Command::new("ip")
+        .args(["-o", "-4", "addr", "show", "scope", "global"])
+        .output()
+    else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter(|l| l.split_whitespace().nth(1) != Some(tun))
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            w.find(|t| *t == "inet")?;
+            let cidr = w.next()?;
+            let ip: IpAddr = cidr.split('/').next()?.parse().ok()?;
+            Some(SocketAddr::new(ip, port))
+        })
+        .collect()
 }
 
 struct Relays {
@@ -150,24 +197,38 @@ impl Relays {
             }
         }
     }
-}
 
-fn apply_netmap(dp: &mut Dataplane, nm: &NetMap, homes: &mut HashMap<NodePublic, u32>) {
-    let peers = nm
-        .peers
-        .values()
-        .map(|n| PeerConfig {
-            key: n.key,
-            allowed_ips: n.allowed_ips.clone(),
-        })
-        .collect();
-    dp.set_peers(peers);
-    homes.clear();
-    for n in nm.peers.values() {
-        if let Some(r) = peer_home(n) {
-            homes.insert(n.key, r);
+    async fn send(&mut self, region: u32, dm: &DerpMap, to: NodePublic, data: &[u8]) {
+        if let Some(s) = self.sender(region, dm).await {
+            if let Err(e) = s.send(to, data).await {
+                log(format!("DERP send: {e}"));
+            }
         }
     }
+}
+
+fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
+    dp.set_peers(
+        nm.peers
+            .values()
+            .map(|n| PeerConfig {
+                key: n.key,
+                allowed_ips: n.allowed_ips.clone(),
+            })
+            .collect(),
+    );
+    ps.set_peers(
+        nm.peers
+            .values()
+            .map(|n| PeerInfo {
+                node: n.key,
+                disco: n.disco_key,
+                home_region: peer_home(n),
+                endpoints: n.endpoints.clone(),
+            })
+            .collect(),
+    );
+    ps.set_relay_only(relay_only(&nm.derp_map));
     match flowmesh_filter::compile::compile(&nm.filter_rules()) {
         Ok(rules) => dp.set_filter_rules(rules),
         // fail-closed: keep the previous valid rules (design doc §7.2).
@@ -175,18 +236,92 @@ fn apply_netmap(dp: &mut Dataplane, nm: &NetMap, homes: &mut HashMap<NodePublic,
     }
 }
 
+/// Send a one-shot, non-streaming map update to the control server (home relay and endpoints).
+fn report(client: Arc<ControlClient>, req: MapRequest) {
+    tokio::spawn(async move {
+        match client.map(&req).await {
+            Ok(mut s) => while let Ok(Some(_)) = s.next().await {},
+            Err(e) => log(format!("map update: {e}")),
+        }
+    });
+}
+
+struct Ctx {
+    udp: Arc<UdpSocket>,
+    relays: Relays,
+    ps: PathSock,
+    nm: NetMap,
+    home: u32,
+    rng: OsRandom,
+}
+
+impl Ctx {
+    async fn run_actions(&mut self, actions: Vec<Action>) {
+        for a in actions {
+            match a {
+                Action::Udp { to, data } => {
+                    if let Err(e) = self.udp.send_to(&data, to).await {
+                        log(format!("udp send {to}: {e}"));
+                    }
+                }
+                Action::Derp { to, region, data } => {
+                    self.relays.send(region, &self.nm.derp_map, to, &data).await;
+                }
+            }
+        }
+    }
+
+    async fn send_to_peer(&mut self, key: NodePublic, bytes: &[u8], now: Duration) {
+        let (route, actions) = self.ps.route(key, now, &mut self.rng);
+        self.run_actions(actions).await;
+        match route {
+            Route::Direct(addr) => {
+                if self.udp.send_to(bytes, addr).await.is_err() {
+                    // Send failure: fall back to DERP immediately and resend (observed behavior).
+                    self.ps.on_send_error(key);
+                    let region = self
+                        .nm
+                        .peers
+                        .values()
+                        .find(|n| n.key == key)
+                        .and_then(peer_home);
+                    self.relays
+                        .send(region.unwrap_or(self.home), &self.nm.derp_map, key, bytes)
+                        .await;
+                }
+            }
+            Route::Derp(region) => {
+                self.relays
+                    .send(region, &self.nm.derp_map, key, bytes)
+                    .await
+            }
+            Route::None => {}
+        }
+    }
+}
+
 async fn run(args: Args) -> Result<(), String> {
     if let Some(dir) = &args.tap_dir {
         std::fs::create_dir_all(dir).map_err(|e| format!("tap dir: {e}"))?;
     }
+    let tap = |prefix: &str, data: &[u8], t: Duration| {
+        if let Some(dir) = &args.tap_dir {
+            let name = format!("{prefix}-{:010}.bin", t.as_millis());
+            if let Err(e) = std::fs::write(dir.join(name), data) {
+                log(format!("tap write: {e}"));
+            }
+        }
+    };
     let authkey = std::fs::read_to_string(&args.authkey_file)
         .map_err(|e| format!("read authkey: {e}"))?
         .trim()
         .to_string();
     let keys = flowmesh_state::load_or_create(&args.state).map_err(|e| e.to_string())?;
-    let client = ControlClient::connect(&args.login_server, &keys.machine)
-        .await
-        .map_err(|e| format!("control connect: {e}"))?;
+    let client = Arc::new(
+        ControlClient::connect(&args.login_server, &keys.machine)
+            .await
+            .map_err(|e| format!("control connect: {e}"))?,
+    );
     let mut hostinfo = Hostinfo {
         ipn_version: format!("flowmesh-{}", env!("CARGO_PKG_VERSION")),
         os: "linux".into(),
@@ -238,18 +373,62 @@ async fn run(args: Args) -> Result<(), String> {
     hostinfo.net_info = Some(NetInfo {
         preferred_derp: home,
     });
-    // Tell the control server our home relay (one-shot, non-streaming update).
-    let mut lite = client
-        .map(&MapRequest {
-            stream: false,
-            omit_peers: true,
+    let udp = Arc::new(
+        UdpSocket::bind(("0.0.0.0", args.port))
+            .await
+            .map_err(|e| format!("udp bind :{}: {e}", args.port))?,
+    );
+    let relay_only_mode = relay_only(&nm.derp_map);
+    let mut endpoints = if relay_only_mode {
+        Vec::new()
+    } else {
+        local_endpoints(&args.tun, args.port)
+    };
+    let lite = MapRequest {
+        stream: false,
+        omit_peers: true,
+        ..base_req.clone()
+    };
+    report(
+        client.clone(),
+        MapRequest {
             hostinfo: hostinfo.clone(),
-            ..base_req.clone()
-        })
-        .await
-        .map_err(|e| format!("map update: {e}"))?;
-    while let Ok(Some(_)) = lite.next().await {}
-    log(format!("home DERP region {home} ({})", home_node.host_name));
+            endpoints: endpoints.clone(),
+            ..lite.clone()
+        },
+    );
+    log(format!(
+        "home DERP region {home} ({}); relay-only={relay_only_mode}; local endpoints {endpoints:?}",
+        home_node.host_name
+    ));
+
+    // STUN to learn the externally visible address (skipped in relay-only mode or when the node has STUNPort == -1).
+    let mut stun_tx = None;
+    if !relay_only_mode && home_node.stun_port != -1 {
+        let port = u16::try_from(home_node.stun_port)
+            .ok()
+            .filter(|p| *p != 0)
+            .unwrap_or(DEFAULT_STUN_PORT);
+        let host = if home_node.ipv4.is_empty() {
+            home_node.host_name.clone()
+        } else {
+            home_node.ipv4.clone()
+        };
+        let mut tx = [0u8; flowmesh_stun::TX_ID_LEN];
+        OsRandom.fill(&mut tx);
+        match tokio::net::lookup_host((host.as_str(), port))
+            .await
+            .map(|mut a| a.next())
+        {
+            Ok(Some(addr)) => {
+                if let Err(e) = udp.send_to(&flowmesh_stun::binding_request(tx), addr).await {
+                    log(format!("stun send: {e}"));
+                }
+                stun_tx = Some(tx);
+            }
+            other => log(format!("stun resolve {host}: {other:?}")),
+        }
+    }
 
     let me = nm.self_node.clone().ok_or("no self node in netmap")?;
     let mut builder = tun_rs::DeviceBuilder::new().name(args.tun.clone()).mtu(MTU);
@@ -301,49 +480,70 @@ async fn run(args: Args) -> Result<(), String> {
         }
     });
 
-    if args.disco_probe {
-        for peer in nm.peers.values().filter(|p| p.online == Some(true)) {
-            let mut tx_id = [0u8; flowmesh_disco::message::TX_ID_LEN];
-            getrandom::fill(&mut tx_id).map_err(|e| e.to_string())?;
-            let mut nonce = [0u8; flowmesh_disco::envelope::NONCE_LEN];
-            getrandom::fill(&mut nonce).map_err(|e| e.to_string())?;
-            let ping = flowmesh_disco::message::encode(&flowmesh_disco::message::Message::Ping {
-                tx_id,
-                node_key: keys.node.public(),
-            });
-            let sealed = flowmesh_disco::envelope::seal(&keys.disco, &peer.disco_key, &ping, nonce)
-                .map_err(|e| e.to_string())?;
-            let region = peer_home(peer).unwrap_or(home);
-            if let Some(s) = relays.sender(region, &nm.derp_map).await {
-                s.send(peer.key, &sealed).await.map_err(|e| e.to_string())?;
-                log(format!("disco ping -> {} tx={tx_id:02x?}", peer.name));
-            }
-        }
-    }
-
     let mut dp = Dataplane::new(keys.node.clone());
-    let mut homes = HashMap::new();
-    apply_netmap(&mut dp, &nm, &mut homes);
+    let mut ctx = Ctx {
+        udp: udp.clone(),
+        relays,
+        ps: PathSock::new(keys.disco.clone(), keys.node.public()),
+        nm,
+        home,
+        rng: OsRandom,
+    };
+    apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
     let start = Instant::now();
     let mut ticker = tokio::time::interval(TICK);
-    let mut buf = vec![0u8; usize::from(u16::MAX)];
+    let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
+    let mut udp_buf = vec![0u8; usize::from(u16::MAX)];
     loop {
+        let now = start.elapsed();
         let outputs = tokio::select! {
-            r = tun.recv(&mut buf) => {
+            r = tun.recv(&mut tun_buf) => {
                 let n = r.map_err(|e| format!("tun read: {e}"))?;
-                dp.outbound(&buf[..n], start.elapsed())
+                dp.outbound(&tun_buf[..n], now)
             }
-            Some((_region, ev)) = ev_rx.recv() => match ev {
-                Event::Packet { src, data } => {
-                    if !looks_like_wireguard(&data) {
-                        if let Some(dir) = &args.tap_dir {
-                            let name = format!("derp-{:010}-{}.bin", start.elapsed().as_millis(), &src.to_string()[8..16]);
-                            if let Err(e) = std::fs::write(dir.join(name), &data) {
-                                log(format!("tap write: {e}"));
+            r = udp.recv_from(&mut udp_buf) => {
+                let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
+                let data = &udp_buf[..n];
+                if flowmesh_disco::envelope::is_disco(data) {
+                    tap("udp-disco", data, now);
+                    let acts = ctx.ps.on_disco(Source::Udp(from), data, now, &mut ctx.rng);
+                    ctx.run_actions(acts).await;
+                    Vec::new()
+                } else if flowmesh_stun::is_stun(data) {
+                    match flowmesh_stun::parse_response(data) {
+                        Ok((tx, mapped)) if Some(tx) == stun_tx => {
+                            if !endpoints.contains(&mapped) {
+                                endpoints.push(mapped);
+                                log(format!("STUN: external address {mapped}; endpoints {endpoints:?}"));
+                                report(client.clone(), MapRequest {
+                                    hostinfo: hostinfo.clone(),
+                                    endpoints: endpoints.clone(),
+                                    ..lite.clone()
+                                });
                             }
                         }
+                        other => log(format!("ignoring STUN message: {other:?}")),
                     }
-                    dp.inbound(src, &data, start.elapsed())
+                    Vec::new()
+                } else if let Some(peer) = ctx.ps.peer_for_addr(from) {
+                    dp.inbound(peer, data, now)
+                } else {
+                    Vec::new()
+                }
+            }
+            Some((region, ev)) = ev_rx.recv() => match ev {
+                Event::Packet { src, data } => {
+                    if flowmesh_disco::envelope::is_disco(&data) {
+                        tap("derp-disco", &data, now);
+                        let acts = ctx.ps.on_disco(Source::Derp { node: src, region }, &data, now, &mut ctx.rng);
+                        ctx.run_actions(acts).await;
+                        Vec::new()
+                    } else {
+                        if !looks_like_wireguard(&data) {
+                            tap("derp-other", &data, now);
+                        }
+                        dp.inbound(src, &data, now)
+                    }
                 }
                 Event::Closed(reason) => {
                     log(format!("DERP connection closed: {reason}"));
@@ -352,14 +552,18 @@ async fn run(args: Args) -> Result<(), String> {
                 _ => Vec::new(),
             },
             Some(m) = map_rx.recv() => {
-                let changed = nm.apply(&m);
-                if changed.peers || changed.filter {
-                    apply_netmap(&mut dp, &nm, &mut homes);
-                    log(format!("netmap: {} peers", nm.peers.len()));
+                let changed = ctx.nm.apply(&m);
+                if changed.peers || changed.filter || changed.derp {
+                    apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
+                    log(format!("netmap: {} peers", ctx.nm.peers.len()));
                 }
                 Vec::new()
             }
-            _ = ticker.tick() => dp.tick(),
+            _ = ticker.tick() => {
+                let acts = ctx.ps.tick(now, &mut ctx.rng);
+                ctx.run_actions(acts).await;
+                dp.tick()
+            }
         };
         for out in outputs {
             match out {
@@ -368,14 +572,7 @@ async fn run(args: Args) -> Result<(), String> {
                         log(format!("tun write: {e}"));
                     }
                 }
-                Output::ToPeer(key, bytes) => {
-                    let region = homes.get(&key).copied().unwrap_or(home);
-                    if let Some(s) = relays.sender(region, &nm.derp_map).await {
-                        if let Err(e) = s.send(key, &bytes).await {
-                            log(format!("DERP send: {e}"));
-                        }
-                    }
-                }
+                Output::ToPeer(key, bytes) => ctx.send_to_peer(key, &bytes, now).await,
             }
         }
     }

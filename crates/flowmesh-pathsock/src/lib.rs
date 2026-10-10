@@ -307,6 +307,19 @@ impl PathSock {
             .collect()
     }
 
+    /// Which peer a packet arriving over UDP from `addr` belongs to: the established direct path takes precedence, then the candidate endpoints.
+    pub fn peer_for_addr(&self, addr: SocketAddr) -> Option<NodePublic> {
+        self.peers
+            .values()
+            .find(|p| p.best.is_some_and(|(a, _)| a == addr))
+            .or_else(|| {
+                self.peers
+                    .values()
+                    .find(|p| p.info.endpoints.contains(&addr))
+            })
+            .map(|p| p.info.node)
+    }
+
     /// A direct send failed (e.g. the socket returned an error): fall back to DERP immediately (observed).
     pub fn on_send_error(&mut self, peer: NodePublic) {
         if let Some(p) = self.peers.get_mut(&peer) {
@@ -673,6 +686,22 @@ mod tests {
                 .iter()
                 .all(|a| matches!(a, Action::Derp { .. }))
         );
+    }
+
+    #[test]
+    fn peer_for_addr_prefers_established_path_then_endpoints() {
+        let mut w = world(vec![E.parse().unwrap()]);
+        assert_eq!(w.a.peer_for_addr(E.parse().unwrap()), Some(w.b_node));
+        assert_eq!(w.a.peer_for_addr("9.9.9.9:9".parse().unwrap()), None);
+        // After the direct path is established, the netmap no longer carries that endpoint: it is still recognized via the established path.
+        let to = establish(&mut w, S);
+        w.a.set_peers(vec![PeerInfo {
+            node: w.b_node,
+            disco: w.b_disco.public(),
+            home_region: Some(1000),
+            endpoints: vec![],
+        }]);
+        assert_eq!(w.a.peer_for_addr(to), Some(w.b_node));
     }
 
     #[test]
