@@ -108,9 +108,12 @@ fn row(n: &Value, is_self: bool) -> [String; 4] {
     } else if n["Online"] != true {
         "offline".to_string()
     } else if n["Active"] == true {
-        let path = match n["CurAddr"].as_str().filter(|a| !a.is_empty()) {
-            Some(addr) => format!("direct {addr}"),
-            None => format!("relay {:?}", n["Relay"].as_str().unwrap_or("")),
+        let cur = n["CurAddr"].as_str().filter(|a| !a.is_empty());
+        let peer_relay = n["PeerRelay"].as_str().filter(|a| !a.is_empty());
+        let path = match (cur, peer_relay) {
+            (Some(addr), _) => format!("direct {addr}"),
+            (None, Some(pr)) => format!("peer-relay {pr}"),
+            (None, None) => format!("relay {:?}", n["Relay"].as_str().unwrap_or("")),
         };
         format!(
             "active; {path}, tx {} rx {}",
@@ -166,7 +169,11 @@ mod tests {
                 "nodekey:c": { "DNSName": "", "HostName": "old", "OS": "windows", "Online": false,
                                "TailscaleIPs": ["100.64.0.9"] },
                 "nodekey:d": { "DNSName": "idle.mesh.lab.internal.", "OS": "linux", "Online": true,
-                               "Active": false, "TailscaleIPs": ["100.64.0.4"] }
+                               "Active": false, "TailscaleIPs": ["100.64.0.4"] },
+                "nodekey:e": { "DNSName": "tsr.mesh.lab.internal.", "OS": "linux", "Online": true,
+                               "Active": true, "CurAddr": "", "PeerRelay": "172.29.0.23:40000:vni:5",
+                               "Relay": "wanflow-relay-1000", "TxBytes": 3, "RxBytes": 4,
+                               "TailscaleIPs": ["100.64.0.5"] }
             },
             "Health": []
         })
@@ -181,6 +188,7 @@ mod tests {
 100.64.0.1  ts1   linux    active; direct 172.29.0.21:41641, tx 1 rx 2
 100.64.0.2  ts2   linux    active; relay \"wanflow-relay-1000\", tx 10 rx 20
 100.64.0.4  idle  linux    -
+100.64.0.5  tsr   linux    active; peer-relay 172.29.0.23:40000:vni:5, tx 3 rx 4
 100.64.0.9  old   windows  offline
 "
         );

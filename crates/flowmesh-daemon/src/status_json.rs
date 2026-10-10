@@ -109,6 +109,7 @@ fn node(n: &PeerStatus) -> Value {
         "OS": n.os,
         "TailscaleIPs": ips(&n.tailscale_ips),
         "CurAddr": n.cur_addr.map(|a| a.to_string()).unwrap_or_default(),
+        "PeerRelay": n.peer_relay,
         "Relay": n.relay,
         "RxBytes": n.rx_bytes,
         "TxBytes": n.tx_bytes,
@@ -164,6 +165,7 @@ mod tests {
 
     fn peer(key: &str) -> PeerStatus {
         PeerStatus {
+            peer_relay: String::new(),
             id: 7,
             public_key: key.into(),
             host_name: "ts1".into(),
@@ -347,5 +349,19 @@ mod tests {
             out(BackendState::Running, true, &s)["CurrentTailnet"]["MagicDNSEnabled"],
             false
         );
+    }
+
+    /// A peer on a peer relay: `PeerRelay` carries the path, `CurAddr` stays empty (as the official
+    /// client, OBS-20261010-peer-relay-official); without one the field is present and empty.
+    #[test]
+    fn peer_relay_field() {
+        let mut p = peer("nodekey:a");
+        assert_eq!(node(&p)["PeerRelay"], "");
+        // The snapshot sets one or the other, never both.
+        p.cur_addr = None;
+        p.peer_relay = "172.29.0.23:40000:vni:5".into();
+        let v = node(&p);
+        assert_eq!(v["PeerRelay"], "172.29.0.23:40000:vni:5");
+        assert_eq!(v["CurAddr"], "");
     }
 }

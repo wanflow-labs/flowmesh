@@ -191,8 +191,10 @@ pub(crate) fn snapshot(
         .values()
         .map(|n| {
             let mut s = peer_status(n, nm);
-            if let Route::Direct(addr) = ps.current_route(n.key, now) {
-                s.cur_addr = Some(addr);
+            match ps.current_route(n.key, now) {
+                Route::Direct(addr) => s.cur_addr = Some(addr),
+                Route::PeerRelay { server, vni } => s.peer_relay = format!("{server}:vni:{vni}"),
+                _ => {}
             }
             if let Some((tx, rx)) = stats.get(&n.key) {
                 s.tx_bytes = *tx;
