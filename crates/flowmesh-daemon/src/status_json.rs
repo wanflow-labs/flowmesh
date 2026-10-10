@@ -30,6 +30,7 @@ pub fn render(i: &Input<'_>) -> Value {
         health.push("flowmesh is stopped.".into());
     }
     health.extend(i.errors.iter().map(|e| Value::from(e.as_str())));
+    health.extend(i.snap.health.iter().map(|h| Value::from(h.as_str())));
 
     let me = i.snap.self_node.as_ref();
     let self_json = match me {
@@ -282,6 +283,16 @@ mod tests {
             hostname: "fm1",
         });
         assert_eq!(v["Health"], json!(["control connect: refused"]));
+    }
+
+    #[test]
+    fn engine_health_is_surfaced() {
+        let mut s = running();
+        s.health = vec!["resolv.conf left alone".into()];
+        assert_eq!(
+            out(BackendState::Running, true, &s)["Health"],
+            json!(["resolv.conf left alone"])
+        );
     }
 
     #[test]

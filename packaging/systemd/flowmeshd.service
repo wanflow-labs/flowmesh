@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: Apache-2.0
+[Unit]
+Description=flowmesh mesh networking daemon
+Wants=network-pre.target
+After=network-pre.target NetworkManager.service systemd-resolved.service
+
+[Service]
+ExecStart=/usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock
+Restart=on-failure
+RestartSec=2
+# The daemon restores resolv.conf and routes on SIGTERM; give the engine time to do it.
+TimeoutStopSec=15
+
+RuntimeDirectory=flowmesh
+RuntimeDirectoryMode=0755
+StateDirectory=flowmesh
+StateDirectoryMode=0700
+
+# Runs as root, but holds only the two capabilities network setup needs.
+CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
+AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
+NoNewPrivileges=yes
+
+# The file system is read-only except the state/runtime directories and resolv.conf
+# (written in place; its backup lives in the state directory).
+ProtectSystem=strict
+ReadWritePaths=-/etc/resolv.conf
+ProtectHome=yes
+PrivateTmp=yes
+DevicePolicy=closed
+DeviceAllow=/dev/net/tun rw
+
+# Nothing writes kernel tunables today; advertising subnet routes or exit nodes (ip_forward) will
+# need ProtectKernelTunables relaxed.
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectProc=invisible
+UMask=0077
+ProtectClock=yes
+ProtectHostname=yes
+ProtectControlGroups=yes
+ProtectKernelLogs=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

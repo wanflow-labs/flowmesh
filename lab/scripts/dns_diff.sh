@@ -19,5 +19,5 @@ while IFS= read -r line; do
   case "$1" in ts1|example.com|headscale.lab) cmp_exp=${expected##*|}; cmp_got=${got##*|}; kind=forward ;; *) cmp_exp=$expected; cmp_got=$got; kind=local ;; esac
   if [ "$cmp_exp" = "$cmp_got" ]; then echo "ok   [$kind] $q"; else echo "DIFF [$kind] $q: official=$expected flowmesh=$got"; fail=1; fi
 done < ../fixtures/observed/20261010-magicdns/answers.txt
-docker compose exec -T fm1 sh -c 'pkill -x flowmesh-dev; sleep 1; echo "after stop:"; cat /etc/resolv.conf | sed "s/^/  /"; ls /etc/resolv.conf.flowmesh-backup 2>/dev/null || echo "  (backup removed)"'
+docker compose exec -T fm1 sh -c 'pkill -x flowmesh-dev; sleep 1; echo "after stop:"; cat /etc/resolv.conf | sed "s/^/  /"; ls /target/resolv.conf.backup 2>/dev/null || echo "  (backup removed)"'
 exit $fail

@@ -194,7 +194,6 @@ impl Relays {
 /// MagicDNS address (dns.md).
 const QUAD100: std::net::Ipv4Addr = std::net::Ipv4Addr::new(100, 100, 100, 100);
 const RESOLV: &str = "/etc/resolv.conf";
-const RESOLV_BACKUP: &str = "/etc/resolv.conf.flowmesh-backup";
 const DNS_FORWARD_TIMEOUT: Duration = Duration::from_secs(3);
 
 fn dns_view(nm: &NetMap, answer_aaaa: bool) -> flowmesh_dns::DnsView {
@@ -339,7 +338,13 @@ fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
     }
 }
 
-fn snapshot(nm: &NetMap, ps: &PathSock, dp: &Dataplane, now: Duration) -> EngineStatus {
+fn snapshot(
+    nm: &NetMap,
+    ps: &PathSock,
+    dp: &Dataplane,
+    now: Duration,
+    health: &[String],
+) -> EngineStatus {
     let stats: HashMap<NodePublic, (u64, u64)> = dp
         .stats()
         .into_iter()
@@ -371,7 +376,7 @@ fn snapshot(nm: &NetMap, ps: &PathSock, dp: &Dataplane, now: Duration) -> Engine
         peers,
         magic_dns_suffix: suffix.clone(),
         tailnet_name: suffix,
-        health: Vec::new(),
+        health: health.to_vec(),
     }
 }
 
@@ -670,8 +675,26 @@ pub async fn run(
     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
     ctx.ps.set_my_endpoints(endpoints.clone());
 
+    // The backup lives in the state directory, so /etc needs to be writable only for resolv.conf itself
+    // (the systemd unit opens just that file).
+    let resolv_backup = args.state_file.with_file_name("resolv.conf.backup");
+    let mut health: Vec<String> = Vec::new();
+    let dns_owner = if args.accept_dns {
+        flowmesh_netcfg::resolv::managed_elsewhere(std::path::Path::new(RESOLV))
+    } else {
+        None
+    };
+    if let Some(target) = &dns_owner {
+        let msg = format!(
+            "{RESOLV} links to {} (managed by another service), so it was left alone; MagicDNS still answers at {QUAD100}",
+            target.display()
+        );
+        log(&msg);
+        health.push(msg);
+    }
+    let take_dns = args.accept_dns && dns_owner.is_none();
     // MagicDNS: the upstream is the host's original nameserver (if a backup was left by a crash, take it from the backup).
-    let original_resolv = std::fs::read_to_string(RESOLV_BACKUP)
+    let original_resolv = std::fs::read_to_string(&resolv_backup)
         .or_else(|_| std::fs::read_to_string(RESOLV))
         .unwrap_or_default();
     let host_upstreams: Vec<IpAddr> = flowmesh_netcfg::resolv::parse_nameservers(&original_resolv)
@@ -687,25 +710,18 @@ pub async fn run(
             .map(|d| d.domains.clone())
             .unwrap_or_default();
         let content = flowmesh_netcfg::resolv::render(IpAddr::V4(QUAD100), &domains);
-        flowmesh_netcfg::resolv::takeover(
-            std::path::Path::new(RESOLV),
-            std::path::Path::new(RESOLV_BACKUP),
-            &content,
-        )
-        .map_err(|e| format!("resolv.conf takeover: {e}"))
+        flowmesh_netcfg::resolv::takeover(std::path::Path::new(RESOLV), &resolv_backup, &content)
+            .map_err(|e| format!("resolv.conf takeover: {e}"))
     };
-    if args.accept_dns {
+    if take_dns {
         take_over_dns(&ctx.nm)?;
         log(format!(
             "MagicDNS: resolv.conf -> {QUAD100}; upstreams {host_upstreams:?}; answer AAAA={answer_aaaa}"
         ));
     }
     let restore_dns = || {
-        if args.accept_dns {
-            match flowmesh_netcfg::resolv::restore(
-                std::path::Path::new(RESOLV),
-                std::path::Path::new(RESOLV_BACKUP),
-            ) {
+        if take_dns {
+            match flowmesh_netcfg::resolv::restore(std::path::Path::new(RESOLV), &resolv_backup) {
                 Ok(_) => log("resolv.conf restored"),
                 Err(e) => log(format!("resolv.conf restore failed: {e}")),
             }
@@ -821,7 +837,7 @@ pub async fn run(
                 let changed = ctx.nm.apply(&m);
                 if changed.peers || changed.dns || changed.self_node {
                     view = dns_view(&ctx.nm, answer_aaaa);
-                    if args.accept_dns && changed.dns {
+                    if take_dns && changed.dns {
                         take_over_dns(&ctx.nm)?;
                     }
                 }
@@ -857,7 +873,7 @@ pub async fn run(
                 ctx.run_actions(acts).await;
                 if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
                     last_publish = Some(now);
-                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now));
+                    status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &health));
                 }
                 dp.tick()
             }

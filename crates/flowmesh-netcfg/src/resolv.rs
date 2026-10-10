@@ -69,6 +69,13 @@ fn write_replace(path: &Path, content: &str) -> io::Result<()> {
     }
 }
 
+/// When `path` is a symbolic link, another service (systemd-resolved, resolvconf, NetworkManager) owns
+/// the system resolver configuration; returns the link target. Writing through the link would edit
+/// that service's own file, so flowmesh leaves it alone.
+pub fn managed_elsewhere(path: &Path) -> Option<std::path::PathBuf> {
+    std::fs::read_link(path).ok()
+}
+
 /// Restore the backup (if any) to `path` and delete it. Returns whether anything was restored.
 pub fn restore(path: &Path, backup: &Path) -> io::Result<bool> {
     let original = match std::fs::read_to_string(backup) {
@@ -139,6 +146,22 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), ORIGINAL);
         assert!(!backup.exists());
         assert!(!restore(&path, &backup).unwrap(), "nothing left to restore");
+    }
+
+    #[test]
+    fn symlinked_resolv_conf_is_managed_elsewhere() {
+        let d = dir("symlink");
+        let target = d.join("stub-resolv.conf");
+        std::fs::write(&target, "nameserver 127.0.0.53\n").unwrap();
+        let link = d.join("resolv.conf");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        assert_eq!(managed_elsewhere(&link), Some(target.clone()));
+        assert_eq!(
+            managed_elsewhere(&target),
+            None,
+            "a regular file is ours to manage"
+        );
+        assert_eq!(managed_elsewhere(&d.join("missing")), None);
     }
 
     /// Restart after a crash: the second takeover must not overwrite the backup with our managed content.
