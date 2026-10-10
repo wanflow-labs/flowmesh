@@ -1,0 +1,15 @@
+[package]
+name = "flowmesh-udprelay"
+description = "flowmesh peer relay client: allocation, forwarding and the bind handshake (sans-IO)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+flowmesh-disco = { version = "0.1.0", path = "../flowmesh-disco" }
+flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }

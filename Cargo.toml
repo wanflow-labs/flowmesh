@@ -9,7 +9,7 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.88"
 license = "Apache-2.0"
-repository = "https://github.com/OWNER-TBD/flowmesh"
+repository = "https://github.com/wanflow-labs/flowmesh"
 
 [workspace.lints.rust]
 unsafe_code = "forbid"
