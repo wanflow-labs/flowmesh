@@ -6,6 +6,7 @@ pub mod client;
 pub mod conn;
 pub mod early;
 pub mod mapstream;
+pub mod netmap;
 pub mod upgrade;
 
 #[derive(Debug, thiserror::Error)]

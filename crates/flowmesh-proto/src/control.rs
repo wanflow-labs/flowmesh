@@ -40,6 +40,17 @@ pub struct Hostinfo {
     pub routable_ips: Vec<IpNet>,
     #[serde(rename = "RequestTags", skip_serializing_if = "Vec::is_empty")]
     pub request_tags: Vec<String>,
+    #[serde(rename = "NetInfo", skip_serializing_if = "Option::is_none")]
+    pub net_info: Option<NetInfo>,
+}
+
+/// This node's network conditions. The control server derives this node's `HomeDERP` from `PreferredDERP`,
+/// and peers use it to find the DERP relay that reaches us (observed: the self node's DERP stays 127.3.3.40:0 when this is unset).
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct NetInfo {
+    #[serde(rename = "PreferredDERP")]
+    pub preferred_derp: u32,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -403,6 +414,24 @@ mod tests {
         let pf = m.packet_filters.unwrap();
         assert_eq!(pf.get("base"), Some(&None));
         assert_eq!(pf.get("*"), Some(&None));
+    }
+
+    #[test]
+    fn hostinfo_netinfo_preferred_derp_field_name() {
+        let h = Hostinfo {
+            net_info: Some(NetInfo {
+                preferred_derp: 1000,
+            }),
+            ..Default::default()
+        };
+        let v = serde_json::to_value(&h).unwrap();
+        assert_eq!(v["NetInfo"]["PreferredDERP"], 1000);
+        assert!(
+            serde_json::to_value(Hostinfo::default())
+                .unwrap()
+                .get("NetInfo")
+                .is_none()
+        );
     }
 
     #[test]

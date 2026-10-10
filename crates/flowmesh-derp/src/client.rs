@@ -30,8 +30,35 @@ pub enum Event {
 pub struct DerpClient {
     server_key: NodePublic,
     server_info: serde_json::Value,
-    tx: mpsc::Sender<Vec<u8>>,
+    sender: DerpSender,
     events: mpsc::Receiver<Event>,
+}
+
+/// Sending half: cheap to clone, can be held by multiple tasks.
+#[derive(Clone)]
+pub struct DerpSender {
+    tx: mpsc::Sender<Vec<u8>>,
+}
+
+impl DerpSender {
+    pub async fn send(&self, dst: NodePublic, packet: &[u8]) -> Result<(), Error> {
+        let mut payload = Vec::with_capacity(32 + packet.len());
+        payload.extend_from_slice(&dst.0);
+        payload.extend_from_slice(packet);
+        self.enqueue(encode(FrameType::SendPacket, &payload)?).await
+    }
+
+    pub async fn note_preferred(&self, preferred: bool) -> Result<(), Error> {
+        self.enqueue(encode(FrameType::NotePreferred, &[u8::from(preferred)])?)
+            .await
+    }
+
+    async fn enqueue(&self, frame: Vec<u8>) -> Result<(), Error> {
+        self.tx
+            .send(frame)
+            .await
+            .map_err(|_| Error::Protocol("DERP connection closed".into()))
+    }
 }
 
 /// TLS certificate verification used only when `InsecureForTests` is set: accepts any certificate (lab self-signed only).
@@ -204,7 +231,7 @@ impl DerpClient {
         Ok(Self {
             server_key,
             server_info,
-            tx,
+            sender: DerpSender { tx },
             events,
         })
     }
@@ -218,22 +245,16 @@ impl DerpClient {
     }
 
     pub async fn send(&self, dst: NodePublic, packet: &[u8]) -> Result<(), Error> {
-        let mut payload = Vec::with_capacity(32 + packet.len());
-        payload.extend_from_slice(&dst.0);
-        payload.extend_from_slice(packet);
-        self.enqueue(encode(FrameType::SendPacket, &payload)?).await
+        self.sender.send(dst, packet).await
     }
 
     pub async fn note_preferred(&self, preferred: bool) -> Result<(), Error> {
-        self.enqueue(encode(FrameType::NotePreferred, &[u8::from(preferred)])?)
-            .await
+        self.sender.note_preferred(preferred).await
     }
 
-    async fn enqueue(&self, frame: Vec<u8>) -> Result<(), Error> {
-        self.tx
-            .send(frame)
-            .await
-            .map_err(|_| Error::Protocol("DERP connection closed".into()))
+    /// Split into the sending half and the event receiver.
+    pub fn split(self) -> (DerpSender, mpsc::Receiver<Event>) {
+        (self.sender, self.events)
     }
 
     pub async fn recv(&mut self) -> Option<Event> {
