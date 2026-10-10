@@ -73,7 +73,8 @@ fn save(path: &Path, state: &NodeState) -> Result<(), StateError> {
     Ok(())
 }
 
-/// Atomic write with mode 0600: temp file → fsync → rename.
+/// Atomic write with mode 0600: temp file → fsync → rename → fsync the directory. After a power
+/// loss the file holds either the old or the new content, never a mix or nothing.
 pub fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
@@ -86,7 +87,17 @@ pub fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
         .open(&tmp)?;
     f.write_all(data)?;
     f.sync_all()?;
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path)?;
+    sync_dir_of(path)
+}
+
+/// Make a rename in `path`'s directory durable: the rename lives in the directory, not the file.
+pub fn sync_dir_of(path: &Path) -> std::io::Result<()> {
+    let dir = match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    std::fs::File::open(dir)?.sync_all()
 }
 
 #[cfg(test)]
@@ -139,6 +150,32 @@ mod tests {
         assert_eq!(rotated.machine, before.machine);
         assert_ne!(rotated.node, before.node);
         assert_eq!(load_or_create(&path).unwrap(), rotated);
+    }
+
+    /// A state file that exists but cannot be read must never be replaced by fresh keys: that would
+    /// silently give the node a new identity.
+    #[test]
+    fn unreadable_state_is_an_error_not_a_new_identity() {
+        let path = temp_path("unreadable");
+        load_or_create(&path).unwrap();
+        let before = std::fs::read(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o000)).unwrap();
+        if std::fs::read(&path).is_ok() {
+            // Running as root: permissions do not stop the read, so the scenario cannot be built.
+            return;
+        }
+        assert!(load_or_create(&path).is_err());
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), before);
+    }
+
+    #[test]
+    fn dir_sync_targets() {
+        assert!(
+            sync_dir_of(Path::new("relative-name")).is_ok(),
+            "a bare name means the cwd"
+        );
+        assert!(sync_dir_of(Path::new("/nonexistent-flowmesh-dir/x")).is_err());
     }
 
     #[test]

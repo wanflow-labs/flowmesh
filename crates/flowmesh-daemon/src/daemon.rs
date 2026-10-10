@@ -127,11 +127,32 @@ pub struct Daemon<L: Launcher> {
     shared: Arc<Mutex<Shared>>,
 }
 
+/// Where an unparsable prefs file is moved, so it can be inspected.
+pub fn quarantine_path(prefs_file: &Path) -> PathBuf {
+    prefs_file.with_extension("json.corrupt")
+}
+
+/// Read errors refuse to start; unparsable content is moved aside and defaults are used, so an
+/// unattended host comes back up (the node key lives in another file, so `up` needs no auth key).
 fn load(path: &Path) -> Result<Stored, String> {
-    match std::fs::read(path) {
-        Ok(b) => serde_json::from_slice(&b).map_err(|e| format!("{}: {e}", path.display())),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Stored::default()),
-        Err(e) => Err(format!("{}: {e}", path.display())),
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Stored::default()),
+        Err(e) => return Err(format!("{}: {e}", path.display())),
+    };
+    match serde_json::from_slice(&bytes) {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            let aside = quarantine_path(path);
+            std::fs::rename(path, &aside)
+                .map_err(|re| format!("{}: {e}; moving it aside failed: {re}", path.display()))?;
+            eprintln!(
+                "flowmeshd: {} could not be parsed ({e}); moved to {} and starting with default preferences",
+                path.display(),
+                aside.display()
+            );
+            Ok(Stored::default())
+        }
     }
 }
 

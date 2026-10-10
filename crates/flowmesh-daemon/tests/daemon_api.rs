@@ -488,6 +488,22 @@ async fn unreadable_prefs_refuse_to_start() {
     );
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn corrupt_prefs_are_moved_aside_and_defaults_used() {
+    let dir = temp_dir("corrupt");
+    std::fs::write(dir.join("prefs.json"), b"{\"prefs\": {\"control_u").unwrap();
+    let h = start(dir.clone(), Fake::default()).await;
+    assert_eq!(h.status().await["BackendState"], "NeedsLogin");
+    let aside = flowmesh_daemon::daemon::quarantine_path(&dir.join("prefs.json"));
+    assert_eq!(std::fs::read(&aside).unwrap(), b"{\"prefs\": {\"control_u");
+    assert!(!dir.join("prefs.json").exists());
+    // And it is usable right away.
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+}
+
 #[test]
 fn bind_replaces_only_a_stale_socket() {
     let dir = temp_dir("bind");

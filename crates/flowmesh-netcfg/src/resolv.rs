@@ -55,7 +55,17 @@ fn write_atomic(path: &Path, content: &str) -> io::Result<()> {
     let mut f = std::fs::File::create(&tmp)?;
     f.write_all(content.as_bytes())?;
     f.sync_all()?;
-    std::fs::rename(&tmp, path)
+    std::fs::rename(&tmp, path)?;
+    sync_dir_of(path)
+}
+
+/// The rename lives in the directory; sync it so the swap survives a power loss.
+fn sync_dir_of(path: &Path) -> io::Result<()> {
+    let dir = match path.parent() {
+        Some(d) if !d.as_os_str().is_empty() => d,
+        _ => Path::new("."),
+    };
+    std::fs::File::open(dir)?.sync_all()
 }
 
 /// Replace the file: prefer atomic rename; if that fails (e.g. the target is a bind mount), write in place instead.
@@ -146,6 +156,15 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&path).unwrap(), ORIGINAL);
         assert!(!backup.exists());
         assert!(!restore(&path, &backup).unwrap(), "nothing left to restore");
+    }
+
+    #[test]
+    fn dir_sync_targets() {
+        assert!(
+            sync_dir_of(Path::new("relative-name")).is_ok(),
+            "a bare name means the cwd"
+        );
+        assert!(sync_dir_of(Path::new("/nonexistent-flowmesh-dir/x")).is_err());
     }
 
     #[test]
