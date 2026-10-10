@@ -76,6 +76,9 @@ pub struct RegisterRequest {
     pub hostinfo: Hostinfo,
     #[serde(rename = "Ephemeral", skip_serializing_if = "std::ops::Not::not")]
     pub ephemeral: bool,
+    /// RFC 3339. A time in the past asks the server to expire (log out) this node key (control.md).
+    #[serde(rename = "Expiry", skip_serializing_if = "Option::is_none")]
+    pub expiry: Option<String>,
 }
 
 /// 用户信息。headscale 回送的字段远多于此，未建模的字段在 control.md "未建模字段"中列出。

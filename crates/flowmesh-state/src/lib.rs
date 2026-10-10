@@ -43,21 +43,38 @@ pub fn load_or_create(path: &Path) -> Result<NodeState, StateError> {
                 machine: MachinePrivate::generate()?,
                 node: NodePrivate::generate()?,
             };
-            write_private(
-                path,
-                &serde_json::to_vec_pretty(&StateFile {
-                    machine_private: state.machine.to_hex(),
-                    node_private: state.node.to_hex(),
-                })?,
-            )?;
+            save(path, &state)?;
             Ok(state)
         }
         Err(e) => Err(e.into()),
     }
 }
 
-/// 以 0600 权限原子写入：临时文件 → fsync → rename。
-fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
+/// Logout: keep the machine key, replace the node key, so the next login registers a new node
+/// (the official client behaves the same way: logout discards the node key, the machine identity stays).
+pub fn rotate_node_key(path: &Path) -> Result<NodeState, StateError> {
+    let old = load_or_create(path)?;
+    let state = NodeState {
+        machine: old.machine,
+        node: NodePrivate::generate()?,
+    };
+    save(path, &state)?;
+    Ok(state)
+}
+
+fn save(path: &Path, state: &NodeState) -> Result<(), StateError> {
+    write_private(
+        path,
+        &serde_json::to_vec_pretty(&StateFile {
+            machine_private: state.machine.to_hex(),
+            node_private: state.node.to_hex(),
+        })?,
+    )?;
+    Ok(())
+}
+
+/// Atomic write with mode 0600: temp file → fsync → rename.
+pub fn write_private(path: &Path, data: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
     use std::os::unix::fs::OpenOptionsExt;
     let tmp = path.with_extension("tmp");
@@ -112,6 +129,16 @@ mod tests {
         std::fs::write(&path, legacy).unwrap();
         let s = load_or_create(&path).unwrap();
         assert_eq!((s.machine, s.node), (m, n));
+    }
+
+    #[test]
+    fn rotate_keeps_machine_replaces_node() {
+        let path = temp_path("rotate");
+        let before = load_or_create(&path).unwrap();
+        let rotated = rotate_node_key(&path).unwrap();
+        assert_eq!(rotated.machine, before.machine);
+        assert_ne!(rotated.node, before.node);
+        assert_eq!(load_or_create(&path).unwrap(), rotated);
     }
 
     #[test]

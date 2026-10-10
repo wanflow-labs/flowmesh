@@ -3,8 +3,8 @@
 //!
 //! Route selection is done by flowmesh-pathsock: direct (UDP) or DERP for each peer.
 
-use crate::EngineConfig;
 use crate::status::{EngineStatus, PeerStatus};
+use crate::{EngineConfig, EngineError};
 use flowmesh_control::client::ControlClient;
 use flowmesh_control::netmap::NetMap;
 use flowmesh_dataplane::plane::{Dataplane, Output, PeerConfig};
@@ -473,7 +473,7 @@ pub async fn run(
     cfg: EngineConfig,
     status: watch::Sender<EngineStatus>,
     mut stop: watch::Receiver<bool>,
-) -> Result<(), String> {
+) -> Result<(), EngineError> {
     let args = &cfg;
     if let Some(dir) = &args.tap_dir {
         std::fs::create_dir_all(dir).map_err(|e| format!("tap dir: {e}"))?;
@@ -520,10 +520,10 @@ pub async fn run(
         .await
         .map_err(|e| format!("register: {e}"))?;
     if !reg.machine_authorized {
-        return Err(format!(
-            "not authorized: {:?} {:?}",
-            reg.error, reg.auth_url
-        ));
+        return Err(EngineError::NotAuthorized {
+            auth_url: reg.auth_url,
+            error: reg.error,
+        });
     }
     let base_req = MapRequest {
         version: CAPABILITY_VERSION,

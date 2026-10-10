@@ -1,0 +1,6 @@
+# Linux-only glue is not compiled on the development machine, so its mutants "survive" without ever
+# being built. It is covered by the lab acceptance scripts instead (docs/mutants-allowlist.md).
+exclude_globs = [
+    "crates/*/src/main.rs",
+    "crates/flowmesh-engine/src/linux.rs",
+]

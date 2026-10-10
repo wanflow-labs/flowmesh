@@ -1,0 +1,381 @@
+// SPDX-License-Identifier: Apache-2.0
+//! The daemon core: persisted preferences, engine supervision, and the operations behind the local API.
+//! The engine is reached through [`Launcher`] so this logic is tested off-Linux with a fake engine.
+
+use crate::prefs::{Prefs, PrefsError, PrefsUpdate};
+use crate::state::{BackendState, Facts, derive};
+use crate::status_json;
+use flowmesh_engine::status::EngineStatus;
+use flowmesh_engine::{EngineConfig, EngineError};
+use serde::{Deserialize, Serialize};
+use std::future::Future;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::{Mutex, watch};
+use tokio::task::JoinHandle;
+
+pub type BoxFut<T> = Pin<Box<dyn Future<Output = T> + Send>>;
+
+/// How the daemon starts the network engine and logs out.
+pub trait Launcher: Send + Sync + 'static {
+    fn run(
+        &self,
+        cfg: EngineConfig,
+        status: watch::Sender<EngineStatus>,
+        stop: watch::Receiver<bool>,
+    ) -> BoxFut<Result<(), EngineError>>;
+    fn logout(&self, login_server: String, state_file: PathBuf) -> BoxFut<Result<(), String>>;
+}
+
+#[derive(Debug, Clone)]
+pub struct Options {
+    pub state_dir: PathBuf,
+    pub tun: String,
+    pub port: u16,
+    /// First retry delay after an engine failure; doubles up to `retry_max`.
+    pub retry_min: Duration,
+    pub retry_max: Duration,
+    /// How long `down`/`logout`/shutdown wait for the engine to restore the system before giving up on it.
+    pub stop_timeout: Duration,
+}
+
+impl Options {
+    pub fn new(state_dir: PathBuf) -> Self {
+        Self {
+            state_dir,
+            tun: "flowmesh0".into(),
+            port: 41641,
+            retry_min: Duration::from_secs(1),
+            retry_max: Duration::from_secs(30),
+            stop_timeout: Duration::from_secs(10),
+        }
+    }
+    pub fn prefs_file(&self) -> PathBuf {
+        self.state_dir.join("prefs.json")
+    }
+    pub fn node_file(&self) -> PathBuf {
+        self.state_dir.join("node.json")
+    }
+}
+
+/// What is written to `prefs.json`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Stored {
+    pub prefs: Prefs,
+    pub logged_in: bool,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum DaemonError {
+    #[error(transparent)]
+    Prefs(#[from] PrefsError),
+    #[error("persist preferences: {0}")]
+    Persist(String),
+}
+
+/// Body of `up`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct UpRequest {
+    pub update: PrefsUpdate,
+    pub reset: bool,
+    /// Used only for registration; kept in memory, never written to disk.
+    pub authkey: Option<String>,
+}
+
+struct Engine {
+    stop: watch::Sender<bool>,
+    task: JoinHandle<()>,
+}
+
+#[derive(Default)]
+struct Shared {
+    stored: Stored,
+    authkey: Option<String>,
+    /// `Some(auth_url)` after the control server refused the node.
+    refused: Option<String>,
+    errors: Vec<String>,
+    live: bool,
+    /// Last snapshot; kept after `down` (official behavior), cleared by `logout`.
+    snap: EngineStatus,
+    engine: Option<Engine>,
+}
+
+pub struct Daemon<L: Launcher> {
+    launcher: Arc<L>,
+    opts: Options,
+    shared: Arc<Mutex<Shared>>,
+}
+
+fn load(path: &Path) -> Result<Stored, String> {
+    match std::fs::read(path) {
+        Ok(b) => serde_json::from_slice(&b).map_err(|e| format!("{}: {e}", path.display())),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Stored::default()),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+fn save(path: &Path, s: &Stored) -> Result<(), DaemonError> {
+    let bytes = serde_json::to_vec_pretty(s).map_err(|e| DaemonError::Persist(e.to_string()))?;
+    flowmesh_state::write_private(path, &bytes).map_err(|e| DaemonError::Persist(e.to_string()))
+}
+
+impl<L: Launcher> Daemon<L> {
+    /// Load preferences and, if the user left the network up, bring it back.
+    pub async fn start(launcher: L, opts: Options) -> Result<Self, String> {
+        std::fs::create_dir_all(&opts.state_dir)
+            .map_err(|e| format!("{}: {e}", opts.state_dir.display()))?;
+        let stored = load(&opts.prefs_file())?;
+        let d = Self {
+            launcher: Arc::new(launcher),
+            opts,
+            shared: Arc::new(Mutex::new(Shared {
+                stored,
+                ..Default::default()
+            })),
+        };
+        let mut sh = d.shared.lock().await;
+        if sh.stored.prefs.want_running {
+            d.spawn_engine(&mut sh);
+        }
+        drop(sh);
+        Ok(d)
+    }
+
+    pub async fn up(&self, req: UpRequest) -> Result<(), DaemonError> {
+        let mut sh = self.shared.lock().await;
+        let prefs = sh.stored.prefs.apply_up(&req.update, req.reset)?;
+        let mut stored = sh.stored.clone();
+        if prefs.control_url != stored.prefs.control_url {
+            // A different control server knows nothing about our node key.
+            stored.logged_in = false;
+        }
+        stored.prefs = prefs;
+        save(&self.opts.prefs_file(), &stored)?;
+        sh.stored = stored;
+        if req.authkey.is_some() {
+            sh.authkey = req.authkey;
+        }
+        sh.refused = None;
+        self.stop_engine(&mut sh).await;
+        self.spawn_engine(&mut sh);
+        Ok(())
+    }
+
+    pub async fn set(&self, update: PrefsUpdate) -> Result<(), DaemonError> {
+        let mut sh = self.shared.lock().await;
+        let prefs = sh.stored.prefs.apply_set(&update);
+        if prefs == sh.stored.prefs {
+            return Ok(());
+        }
+        let mut stored = sh.stored.clone();
+        if prefs.control_url != stored.prefs.control_url {
+            stored.logged_in = false;
+        }
+        stored.prefs = prefs;
+        save(&self.opts.prefs_file(), &stored)?;
+        sh.stored = stored;
+        if sh.stored.prefs.want_running {
+            self.stop_engine(&mut sh).await;
+            self.spawn_engine(&mut sh);
+        }
+        Ok(())
+    }
+
+    pub async fn down(&self) -> Result<(), DaemonError> {
+        let mut sh = self.shared.lock().await;
+        let mut stored = sh.stored.clone();
+        stored.prefs.want_running = false;
+        save(&self.opts.prefs_file(), &stored)?;
+        sh.stored = stored;
+        self.stop_engine(&mut sh).await;
+        Ok(())
+    }
+
+    /// Returns a warning when only the local half succeeded (control server unreachable).
+    pub async fn logout(&self) -> Result<Option<String>, DaemonError> {
+        let mut sh = self.shared.lock().await;
+        self.stop_engine(&mut sh).await;
+        let warning = if sh.stored.prefs.control_url.is_empty() {
+            None
+        } else {
+            self.launcher
+                .logout(sh.stored.prefs.control_url.clone(), self.opts.node_file())
+                .await
+                .err()
+        };
+        let mut stored = sh.stored.clone();
+        stored.prefs.want_running = false;
+        stored.logged_in = false;
+        save(&self.opts.prefs_file(), &stored)?;
+        sh.stored = stored;
+        sh.authkey = None;
+        sh.refused = None;
+        sh.errors.clear();
+        sh.snap = EngineStatus::default();
+        Ok(warning)
+    }
+
+    pub async fn prefs(&self) -> Prefs {
+        self.shared.lock().await.stored.prefs.clone()
+    }
+
+    pub async fn backend_state(&self) -> BackendState {
+        let sh = self.shared.lock().await;
+        derive(facts(&sh))
+    }
+
+    pub async fn status_json(&self) -> serde_json::Value {
+        let sh = self.shared.lock().await;
+        status_json::render(&status_json::Input {
+            state: derive(facts(&sh)),
+            logged_in: sh.stored.logged_in,
+            auth_url: sh.refused.as_deref().unwrap_or(""),
+            errors: &sh.errors,
+            snap: &sh.snap,
+            hostname: &sh.stored.prefs.hostname,
+        })
+    }
+
+    /// Stop the engine (it restores DNS/routes on the way out). Preferences are untouched, so the
+    /// next start brings the network back.
+    pub async fn shutdown(&self) {
+        let mut sh = self.shared.lock().await;
+        self.stop_engine(&mut sh).await;
+    }
+
+    async fn stop_engine(&self, sh: &mut Shared) {
+        sh.live = false;
+        let Some(engine) = sh.engine.take() else {
+            return;
+        };
+        let _ = engine.stop.send(true);
+        let abort = engine.task.abort_handle();
+        if tokio::time::timeout(self.opts.stop_timeout, engine.task)
+            .await
+            .is_err()
+        {
+            abort.abort();
+        }
+    }
+
+    fn spawn_engine(&self, sh: &mut Shared) {
+        let p = &sh.stored.prefs;
+        let cfg = EngineConfig {
+            login_server: p.control_url.clone(),
+            authkey: sh.authkey.clone(),
+            state_file: self.opts.node_file(),
+            hostname: p.hostname.clone(),
+            tun: self.opts.tun.clone(),
+            port: self.opts.port,
+            tap_dir: None,
+            accept_dns: p.accept_dns,
+            accept_routes: p.accept_routes,
+        };
+        let (stop_tx, stop_rx) = watch::channel(false);
+        sh.errors.clear();
+        sh.live = false;
+        let task = tokio::spawn(supervise(
+            self.launcher.clone(),
+            self.shared.clone(),
+            self.opts.clone(),
+            cfg,
+            stop_rx,
+        ));
+        sh.engine = Some(Engine {
+            stop: stop_tx,
+            task,
+        });
+    }
+}
+
+fn facts(sh: &Shared) -> Facts {
+    Facts {
+        logged_in: sh.stored.logged_in,
+        want_running: sh.stored.prefs.want_running,
+        refused: sh.refused.is_some(),
+        live: sh.live,
+    }
+}
+
+/// Run the engine until stopped; retry failures with backoff; stop retrying when refused.
+async fn supervise<L: Launcher>(
+    launcher: Arc<L>,
+    shared: Arc<Mutex<Shared>>,
+    opts: Options,
+    mut cfg: EngineConfig,
+    mut stop: watch::Receiver<bool>,
+) {
+    let mut delay = opts.retry_min;
+    loop {
+        let (status_tx, status_rx) = watch::channel(EngineStatus::default());
+        let watcher = tokio::spawn(follow_status(shared.clone(), opts.clone(), status_rx));
+        let result = launcher.run(cfg.clone(), status_tx, stop.clone()).await;
+        watcher.abort();
+        // A requested stop is awaited by `stop_engine` while it holds the lock: leave without taking it.
+        if *stop.borrow() {
+            return;
+        }
+        let mut sh = tokio::select! {
+            g = shared.lock() => g,
+            _ = stop.changed() => return,
+        };
+        sh.live = false;
+        match result {
+            Ok(()) => return,
+            Err(EngineError::NotAuthorized { auth_url, error }) => {
+                sh.refused = Some(auth_url);
+                sh.errors = if error.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![error]
+                };
+                if sh.stored.logged_in {
+                    sh.stored.logged_in = false;
+                    let stored = sh.stored.clone();
+                    if let Err(e) = save(&opts.prefs_file(), &stored) {
+                        sh.errors.push(e.to_string());
+                    }
+                }
+                return;
+            }
+            Err(EngineError::Other(e)) => sh.errors = vec![e],
+        }
+        // A registered node key no longer needs the auth key; keep it only until registration sticks.
+        cfg.authkey = sh.authkey.clone();
+        drop(sh);
+        tokio::select! {
+            _ = tokio::time::sleep(delay) => {}
+            _ = stop.changed() => return,
+        }
+        delay = (delay * 2).min(opts.retry_max);
+    }
+}
+
+/// Mirror engine snapshots into the shared state; the first netmap marks the node as logged in.
+async fn follow_status(
+    shared: Arc<Mutex<Shared>>,
+    opts: Options,
+    mut rx: watch::Receiver<EngineStatus>,
+) {
+    while rx.changed().await.is_ok() {
+        let snap = rx.borrow_and_update().clone();
+        let mut sh = shared.lock().await;
+        if snap.self_node.is_some() {
+            sh.live = true;
+            sh.errors.clear();
+            sh.authkey = None;
+            if !sh.stored.logged_in {
+                sh.stored.logged_in = true;
+                let stored = sh.stored.clone();
+                if let Err(e) = save(&opts.prefs_file(), &stored) {
+                    sh.errors.push(e.to_string());
+                }
+            }
+        }
+        sh.snap = snap;
+    }
+}
