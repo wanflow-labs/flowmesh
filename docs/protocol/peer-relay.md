@@ -76,7 +76,7 @@ Same 72-byte body for all three (Observed: a probe completed the handshake and i
 - Each client of a pair binds separately and gets its own challenge (Observed).
 - After both members have answered, disco messages sealed to the other member and sent without the O bit are forwarded by the relay (Observed).
 
-**Pending:** the 250-byte message one official client sends the other after the handshake.
+**Inferred:** the 250-byte message one official client sends the other after the handshake has 164 bytes of plaintext, which fits a disco Ping (46 bytes) followed by 118 zero bytes of padding, as used to probe a path's MTU. flowmesh's Ping decoder reads the transaction ID and node key and ignores what follows, so a padded Ping is accepted. To be confirmed by pairing an official client with a probe through the relay.
 
 ## 4. Behavior
 
