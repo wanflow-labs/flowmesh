@@ -37,6 +37,8 @@ struct Args {
     port: u16,
     /// Debug only: write every disco/unknown message received (UDP and DERP) into this directory, for observation.
     tap_dir: Option<PathBuf>,
+    /// Take over the system DNS (resolv.conf → 100.100.100.100), same as the official default `--accept-dns=true`.
+    accept_dns: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -45,6 +47,7 @@ fn parse_args() -> Result<Args, String> {
     let mut tun = "flowmesh0".to_string();
     let mut port = DEFAULT_PORT;
     let mut tap_dir = None;
+    let mut accept_dns = false;
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));
         match a.as_str() {
@@ -58,6 +61,7 @@ fn parse_args() -> Result<Args, String> {
                 port = v.parse().map_err(|_| format!("bad --port {v}"))?;
             }
             "--tap-dir" => tap_dir = Some(PathBuf::from(val()?)),
+            "--accept-dns" => accept_dns = true,
             other => return Err(format!("unknown argument {other}")),
         }
     }
@@ -69,6 +73,7 @@ fn parse_args() -> Result<Args, String> {
         tun,
         port,
         tap_dir,
+        accept_dns,
     })
 }
 
@@ -234,6 +239,96 @@ impl Relays {
             }
         }
     }
+}
+
+/// MagicDNS address (dns.md).
+const QUAD100: std::net::Ipv4Addr = std::net::Ipv4Addr::new(100, 100, 100, 100);
+const RESOLV: &str = "/etc/resolv.conf";
+const RESOLV_BACKUP: &str = "/etc/resolv.conf.flowmesh-backup";
+const DNS_FORWARD_TIMEOUT: Duration = Duration::from_secs(3);
+
+fn dns_view(nm: &NetMap, answer_aaaa: bool) -> flowmesh_dns::DnsView {
+    let Some(dns) = &nm.dns else {
+        return flowmesh_dns::DnsView::default();
+    };
+    let routes: Vec<(String, bool)> = dns
+        .routes
+        .iter()
+        .map(|(k, v)| (k.clone(), v.is_empty()))
+        .collect();
+    let nodes: Vec<flowmesh_dns::HostEntry> = nm
+        .peers
+        .values()
+        .chain(nm.self_node.iter())
+        .map(|n| flowmesh_dns::HostEntry {
+            fqdn: n.name.clone(),
+            addrs: n.addresses.iter().map(|a| a.addr()).collect(),
+        })
+        .collect();
+    flowmesh_dns::DnsView::new(
+        &dns.domains,
+        &routes,
+        &nodes,
+        &dns.extra_records,
+        answer_aaaa,
+    )
+}
+
+/// Whether the host has a global IPv6 address (excluding our own TUN); used to decide whether to answer AAAA (dns.md §2, pending verification).
+fn host_has_ipv6(tun: &str) -> bool {
+    std::process::Command::new("ip")
+        .args(["-o", "-6", "addr", "show", "scope", "global"])
+        .output()
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .any(|l| l.split_whitespace().nth(1) != Some(tun))
+        })
+        .unwrap_or(false)
+}
+
+/// Forwarding upstreams: `DNSConfig.Resolvers` first, otherwise the host's original nameservers.
+fn dns_upstreams(nm: &NetMap, host: &[IpAddr]) -> Vec<IpAddr> {
+    let from_config: Vec<IpAddr> = nm
+        .dns
+        .iter()
+        .flat_map(|d| d.resolvers.iter())
+        .filter_map(|r| r.addr.parse().ok())
+        .collect();
+    if from_config.is_empty() {
+        host.to_vec()
+    } else {
+        from_config
+    }
+}
+
+/// Forward a query to the first upstream; wrap the answer as a packet from 100.100.100.100 back to the querier and send it to the main loop to write to TUN.
+fn forward_dns(
+    upstreams: Vec<IpAddr>,
+    query: Vec<u8>,
+    client: std::net::SocketAddrV4,
+    quad100: std::net::SocketAddrV4,
+    tx: mpsc::Sender<Vec<u8>>,
+) {
+    tokio::spawn(async move {
+        let Some(&up) = upstreams.first() else {
+            return;
+        };
+        let bind = if up.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
+        let Ok(sock) = UdpSocket::bind(bind).await else {
+            return;
+        };
+        if sock.send_to(&query, (up, 53)).await.is_err() {
+            return;
+        }
+        let mut buf = vec![0u8; 4096];
+        if let Ok(Ok((n, _))) =
+            tokio::time::timeout(DNS_FORWARD_TIMEOUT, sock.recv_from(&mut buf)).await
+        {
+            let pkt = flowmesh_dataplane::ippkt::build_udp4(quad100, client, &buf[..n]);
+            let _ = tx.send(pkt).await;
+        }
+    });
 }
 
 fn apply_netmap(dp: &mut Dataplane, ps: &mut PathSock, nm: &NetMap) {
@@ -525,6 +620,54 @@ async fn run(args: Args) -> Result<(), String> {
     };
     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
     ctx.ps.set_my_endpoints(endpoints.clone());
+
+    // MagicDNS: the upstream is the host's original nameserver (if a backup was left by a crash, take it from the backup).
+    let original_resolv = std::fs::read_to_string(RESOLV_BACKUP)
+        .or_else(|_| std::fs::read_to_string(RESOLV))
+        .unwrap_or_default();
+    let host_upstreams: Vec<IpAddr> = flowmesh_netcfg::resolv::parse_nameservers(&original_resolv)
+        .into_iter()
+        .filter(|a| *a != IpAddr::V4(QUAD100))
+        .collect();
+    let answer_aaaa = host_has_ipv6(&args.tun);
+    let mut view = dns_view(&ctx.nm, answer_aaaa);
+    let take_over_dns = |nm: &NetMap| -> Result<(), String> {
+        let domains = nm
+            .dns
+            .as_ref()
+            .map(|d| d.domains.clone())
+            .unwrap_or_default();
+        let content = flowmesh_netcfg::resolv::render(IpAddr::V4(QUAD100), &domains);
+        flowmesh_netcfg::resolv::takeover(
+            std::path::Path::new(RESOLV),
+            std::path::Path::new(RESOLV_BACKUP),
+            &content,
+        )
+        .map_err(|e| format!("resolv.conf takeover: {e}"))
+    };
+    if args.accept_dns {
+        take_over_dns(&ctx.nm)?;
+        log(format!(
+            "MagicDNS: resolv.conf -> {QUAD100}; upstreams {host_upstreams:?}; answer AAAA={answer_aaaa}"
+        ));
+    }
+    let restore_dns = || {
+        if args.accept_dns {
+            match flowmesh_netcfg::resolv::restore(
+                std::path::Path::new(RESOLV),
+                std::path::Path::new(RESOLV_BACKUP),
+            ) {
+                Ok(_) => log("resolv.conf restored"),
+                Err(e) => log(format!("resolv.conf restore failed: {e}")),
+            }
+        }
+    };
+    let quad100_dns = std::net::SocketAddrV4::new(QUAD100, 53);
+    let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .map_err(|e| format!("signal: {e}"))?;
+    let mut sigint = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::interrupt())
+        .map_err(|e| format!("signal: {e}"))?;
     let start = Instant::now();
     let mut ticker = tokio::time::interval(TICK);
     let mut tun_buf = vec![0u8; usize::from(u16::MAX)];
@@ -534,7 +677,43 @@ async fn run(args: Args) -> Result<(), String> {
         let outputs = tokio::select! {
             r = tun.recv(&mut tun_buf) => {
                 let n = r.map_err(|e| format!("tun read: {e}"))?;
-                dp.outbound(&tun_buf[..n], now)
+                let pkt = &tun_buf[..n];
+                match flowmesh_dataplane::ippkt::udp4_payload(pkt).filter(|(_, d, _)| *d == quad100_dns) {
+                    Some((client, _, query)) => {
+                        match flowmesh_dns::handle(&view, query) {
+                            flowmesh_dns::Decision::Local(resp) => {
+                                let reply = flowmesh_dataplane::ippkt::build_udp4(quad100_dns, client, &resp);
+                                if let Err(e) = tun.send(&reply).await {
+                                    log(format!("tun write: {e}"));
+                                }
+                            }
+                            flowmesh_dns::Decision::Forward => forward_dns(
+                                dns_upstreams(&ctx.nm, &host_upstreams),
+                                query.to_vec(),
+                                client,
+                                quad100_dns,
+                                dns_tx.clone(),
+                            ),
+                            flowmesh_dns::Decision::Drop => {}
+                        }
+                        Vec::new()
+                    }
+                    None => dp.outbound(pkt, now),
+                }
+            }
+            Some(reply) = dns_rx.recv() => {
+                if let Err(e) = tun.send(&reply).await {
+                    log(format!("tun write: {e}"));
+                }
+                Vec::new()
+            }
+            _ = sigterm.recv() => {
+                restore_dns();
+                return Ok(());
+            }
+            _ = sigint.recv() => {
+                restore_dns();
+                return Ok(());
             }
             r = udp.recv_from(&mut udp_buf) => {
                 let (n, from) = r.map_err(|e| format!("udp read: {e}"))?;
@@ -591,6 +770,12 @@ async fn run(args: Args) -> Result<(), String> {
             },
             Some(m) = map_rx.recv() => {
                 let changed = ctx.nm.apply(&m);
+                if changed.peers || changed.dns || changed.self_node {
+                    view = dns_view(&ctx.nm, answer_aaaa);
+                    if args.accept_dns && changed.dns {
+                        take_over_dns(&ctx.nm)?;
+                    }
+                }
                 if changed.peers || changed.filter || changed.derp || changed.self_node {
                     apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm);
                     let summary: Vec<String> = ctx
