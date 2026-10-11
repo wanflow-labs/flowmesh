@@ -15,7 +15,8 @@ name = "flowmesh"
 path = "src/main.rs"
 
 [dependencies]
-flowmesh-daemon = { version = "0.1.0", path = "../flowmesh-daemon" }
+# Only the client and preference types; the daemon's features (SSH) stay out of the CLI.
+flowmesh-daemon = { version = "0.1.0", path = "../flowmesh-daemon", default-features = false }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 flowmesh-stun = { version = "0.1.0", path = "../flowmesh-stun" }
 getrandom = "0.3"

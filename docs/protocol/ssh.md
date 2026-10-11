@@ -29,6 +29,7 @@ flowmesh additionally refuses (deviation #15): actions with `holdAndDelegate` (t
 - **Forwarding.** Local (`-L`, `direct-tcpip`) when the rule allows it, connecting from the daemon like the official server; agent forwarding when allowed, through a socket in a fresh 0700 directory owned by the user; remote forwarding (`-R`) refused (headscale never allows it).
 - **Session duration.** A rule's `sessionDuration` ends the connection when it is up.
 - **Logs.** One line per accepted or refused login (`ssh: login of <node> (<ip>) as "<user>" accepted|refused: <reason>`), an audit line (`ssh: audit: login user=… uid=… from=… node=…`), one per started program.
+- **Optional in the build.** The server is the `ssh` cargo feature of `flowmesh-daemon` (on by default). `--no-default-features` leaves the SSH stack out — `flowmeshd` is about 2 MB smaller (aarch64: 7.48 → 5.51 MB) — and such a daemon refuses `--ssh` with `this flowmeshd was built without SSH support` instead of storing a setting it cannot honor.
 - **Turning it on and off** (`set --ssh`, `set --ssh=false`) needs no engine restart: listeners, host keys in Hostinfo and the port 22 redirect follow the setting.
 
 ## 4. The client

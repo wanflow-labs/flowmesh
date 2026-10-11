@@ -93,6 +93,8 @@ pub enum PrefsError {
     },
     #[error("--login-server is required (there is no default control server)")]
     NoControlUrl,
+    #[error("this flowmeshd was built without SSH support, so --ssh is not available")]
+    NoSsh,
 }
 
 impl Prefs {

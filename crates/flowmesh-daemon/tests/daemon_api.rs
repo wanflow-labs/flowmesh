@@ -1005,6 +1005,34 @@ async fn operator_may_change_settings_but_not_the_operator() {
     );
 }
 
+/// `--ssh` is stored only by a build that has the SSH server; one without refuses it instead of
+/// keeping a setting that would do nothing.
+#[tokio::test(flavor = "multi_thread")]
+async fn ssh_setting_follows_the_build() {
+    let h = start(temp_dir("sshfeature"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    let r = h.client.post("set", &json!({ "run_ssh": true })).await;
+    if cfg!(feature = "ssh") {
+        r.unwrap();
+        assert_eq!(h.client.get("prefs").await.unwrap()["run_ssh"], json!(true));
+    } else {
+        let (code, msg) = api_error(r);
+        assert_eq!(code, 400);
+        assert!(msg.contains("built without SSH support"), "{msg}");
+        assert_eq!(
+            h.client.get("prefs").await.unwrap()["run_ssh"],
+            json!(false)
+        );
+        let (code, _) = api_error(
+            h.up(json!({ "update": { "control_url": "http://h", "hostname": "fm1", "accept_dns": false, "run_ssh": true } }))
+                .await,
+        );
+        assert_eq!(code, 400);
+    }
+}
+
 #[test]
 fn operator_change_rule() {
     assert!(!api::changes_operator("alice", Some("alice"), false));

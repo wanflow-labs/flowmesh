@@ -128,6 +128,14 @@ pub struct Daemon<L: Launcher> {
 }
 
 /// Where an unparsable prefs file is moved, so it can be inspected.
+/// Settings this build cannot honor are refused, not stored to be silently ignored.
+fn refuse_missing_features(update: &PrefsUpdate) -> Result<(), DaemonError> {
+    if update.run_ssh == Some(true) && !cfg!(feature = "ssh") {
+        return Err(DaemonError::Prefs(crate::prefs::PrefsError::NoSsh));
+    }
+    Ok(())
+}
+
 pub fn quarantine_path(prefs_file: &Path) -> PathBuf {
     prefs_file.with_extension("json.corrupt")
 }
@@ -185,6 +193,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn up(&self, req: UpRequest) -> Result<(), DaemonError> {
+        refuse_missing_features(&req.update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_up(&req.update, req.reset)?;
         let same_server = prefs.control_url == sh.stored.prefs.control_url;
@@ -209,6 +218,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn set(&self, update: PrefsUpdate) -> Result<(), DaemonError> {
+        refuse_missing_features(&update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_set(&update);
         if prefs == sh.stored.prefs {

@@ -8,6 +8,14 @@ cargo build --release -p flowmesh-daemon -p flowmesh-cli
 
 产物为 `target/release/flowmeshd`（守护进程）和 `target/release/flowmesh`（命令行）。
 
+存储空间紧张的设备（如路由器）可以不编入 SSH 服务端，`flowmeshd` 约小 2 MB：
+
+```bash
+cargo build --release -p flowmesh-daemon -p flowmesh-cli --no-default-features
+```
+
+这样构建的 `flowmeshd` 会拒绝 `--ssh`（`this flowmeshd was built without SSH support`），其余功能不变；`flowmesh ssh` / `flowmesh nc` 客户端命令用的是系统自带的 `ssh`，两种构建都有。
+
 ## 2. 安装
 
 ### 用安装包（推荐）

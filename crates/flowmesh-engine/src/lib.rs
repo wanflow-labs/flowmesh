@@ -20,6 +20,8 @@ mod features;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
+mod sshd;
+#[cfg(target_os = "linux")]
 mod tunio;
 #[cfg(target_os = "linux")]
 pub use linux::run;
