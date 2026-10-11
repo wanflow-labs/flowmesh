@@ -72,24 +72,19 @@ fn select_exit_node(
     }
 }
 
-/// Removes the exit node policy routing when dropped.
-struct ExitRouting;
-
-impl Drop for ExitRouting {
-    fn drop(&mut self) {
-        flowmesh_netcfg::exit_route::remove();
-        log("exit node: policy routing removed");
+/// With --accept-dns, the health message when resolv.conf belongs to another service (it is then
+/// left alone; MagicDNS still answers).
+fn dns_owner_message(accept_dns: bool) -> Option<String> {
+    if !accept_dns {
+        return None;
     }
-}
-
-/// Removes the subnet-router netfilter rules when dropped.
-struct ForwardRules(flowmesh_netcfg::forward::Backend);
-
-impl Drop for ForwardRules {
-    fn drop(&mut self) {
-        flowmesh_netcfg::forward::remove(self.0);
-        log("subnet router: forwarding rules removed");
-    }
+    let target = flowmesh_netcfg::resolv::managed_elsewhere(std::path::Path::new(RESOLV))?;
+    let msg = format!(
+        "{RESOLV} links to {} (managed by another service), so it was left alone; MagicDNS still answers at {QUAD100}",
+        target.display()
+    );
+    log(&msg);
+    Some(msg)
 }
 
 pub(crate) fn log(msg: impl std::fmt::Display) {
@@ -121,7 +116,7 @@ fn ip(args: &[&str]) -> Result<(), String> {
 
 /// This host's interface networks and addresses, both families, without the mesh interface and
 /// loopback (`ip -o addr`), for the exit node's shrunk default route.
-fn interfaces(tun: &str) -> crate::logic::Interfaces {
+pub(crate) fn interfaces(tun: &str) -> crate::logic::Interfaces {
     let Ok(out) = std::process::Command::new("ip")
         .args(["-o", "addr", "show"])
         .output()
@@ -552,7 +547,7 @@ impl MessageStream for Live {
 }
 
 /// Aborts the task when the engine returns, whichever way it returns.
-struct AbortOnDrop(tokio::task::JoinHandle<()>);
+pub(crate) struct AbortOnDrop(pub(crate) tokio::task::JoinHandle<()>);
 
 impl Drop for AbortOnDrop {
     fn drop(&mut self) {
@@ -871,27 +866,15 @@ pub async fn run(
             .await
             .map_err(|e| format!("control connect: {e}"))?,
     );
-    // What this node routes for the mesh: its subnets, plus both default routes as an exit node.
-    let mut advertised = args.advertise_routes.clone();
-    if args.advertise_exit_node {
-        advertised.extend(
-            ["0.0.0.0/0", "::/0"]
-                .iter()
-                .filter_map(|r| r.parse::<IpNet>().ok()),
-        );
-    }
     // An exit node keeps this host's own networks out of the default route it offers.
-    let exit_ifaces = args.advertise_exit_node.then(|| interfaces(&args.tun));
+    let mut exit_ifaces = args.advertise_exit_node.then(|| interfaces(&args.tun));
     let mut hostinfo = Hostinfo {
         ipn_version: format!("flowmesh-{}", env!("CARGO_PKG_VERSION")),
         os: "linux".into(),
-        hostname: args.hostname.clone(),
         machine: std::env::consts::ARCH.into(),
-        routable_ips: advertised.clone(),
-        request_tags: args.advertise_tags.clone(),
-        shields_up: args.shields_up,
         ..Default::default()
     };
+    crate::features::apply_to_hostinfo(&mut hostinfo, args, Vec::new());
     let mut policy = crate::logic::Policy {
         shields_up: args.shields_up,
         accept_routes: args.accept_routes,
@@ -1146,99 +1129,15 @@ pub async fn run(
     // The backup lives in the state directory, so /etc needs to be writable only for resolv.conf itself
     // (the systemd unit opens just that file).
     let resolv_backup = args.state_file.with_file_name("resolv.conf.backup");
-    let mut health: Vec<String> = Vec::new();
-    let dns_owner = if args.accept_dns {
-        flowmesh_netcfg::resolv::managed_elsewhere(std::path::Path::new(RESOLV))
-    } else {
-        None
-    };
-    if let Some(target) = &dns_owner {
-        let msg = format!(
-            "{RESOLV} links to {} (managed by another service), so it was left alone; MagicDNS still answers at {QUAD100}",
-            target.display()
-        );
-        log(&msg);
-        health.push(msg);
-    }
-    // Subnet router: forwarding and SNAT rules while routes are advertised, removed when the engine
-    // stops (the guard's Drop runs on every return path).
-    let _forward_rules = if advertised.is_empty() {
-        None
-    } else {
-        match flowmesh_netcfg::forward::install(
-            &args.tun,
-            args.snat_subnet_routes,
-            args.stateful_filtering,
-        ) {
-            Ok(installed) => {
-                log(format!(
-                    "subnet router: advertising {:?}; forwarding rules via {:?}, SNAT {}, stateful filtering {}",
-                    advertised,
-                    installed.backend,
-                    if args.snat_subnet_routes { "on" } else { "off" },
-                    if args.stateful_filtering { "on" } else { "off" }
-                ));
-                if let Some(w) = installed.warning {
-                    log(&w);
-                    health.push(w);
-                }
-                Some(ForwardRules(installed.backend))
-            }
-            Err(e) => {
-                let msg = format!(
-                    "subnet routes are advertised, but the forwarding rules could not be installed: {e}"
-                );
-                log(&msg);
-                health.push(msg);
-                None
-            }
-        }
-    };
-    // Using an exit node: everything but flowmesh's own (marked) packets goes through the mesh.
-    let _exit_routing = if args.exit_node.is_empty() {
-        None
-    } else {
-        let lan = if args.exit_node_allow_lan_access {
-            interfaces(&args.tun).nets
-        } else {
-            Vec::new()
-        };
-        let ipv6 = me.addresses.iter().any(|a| a.addr().is_ipv6());
-        match flowmesh_netcfg::exit_route::install(
-            &args.tun,
-            flowmesh_net::BYPASS_MARK,
-            flowmesh_net::BYPASS_MASK,
-            &lan,
-            ipv6,
-        ) {
-            Ok(warning) => {
-                log(format!(
-                    "exit node: using {}; LAN access {}",
-                    args.exit_node,
-                    if args.exit_node_allow_lan_access {
-                        format!("allowed {lan:?}")
-                    } else {
-                        "blocked".into()
-                    }
-                ));
-                if let Some(w) = warning {
-                    log(&w);
-                    health.push(w);
-                }
-                Some(ExitRouting)
-            }
-            Err(e) => {
-                let msg = format!(
-                    "exit node {}: routing could not be installed: {e}",
-                    args.exit_node
-                );
-                log(&msg);
-                health.push(msg);
-                None
-            }
-        }
-    };
-    let take_dns = args.accept_dns && dns_owner.is_none();
+    let health: Vec<String> = Vec::new();
+    // Subnet router / exit node rules and exit node routing, kept in line with the settings.
+    let mut features = crate::features::Features::default();
+    let ipv6_mesh = me.addresses.iter().any(|a| a.addr().is_ipv6());
+    features.sync_forwarding(args, None);
+    features.sync_exit_routing(args, None, ipv6_mesh);
+    // resolv.conf: taken over with --accept-dns unless another service manages it.
+    let mut dns_msg = dns_owner_message(args.accept_dns);
+    let mut dns_taken = args.accept_dns && dns_msg.is_none();
     // MagicDNS: the upstream is the host's original nameserver (if a backup was left by a crash, take it from the backup).
     let original_resolv = std::fs::read_to_string(&resolv_backup)
         .or_else(|_| std::fs::read_to_string(RESOLV))
@@ -1259,14 +1158,14 @@ pub async fn run(
         flowmesh_netcfg::resolv::takeover(std::path::Path::new(RESOLV), &resolv_backup, &content)
             .map_err(|e| format!("resolv.conf takeover: {e}"))
     };
-    if take_dns {
+    if dns_taken {
         take_over_dns(&ctx.nm)?;
         log(format!(
             "MagicDNS: resolv.conf -> {QUAD100}; upstreams {host_upstreams:?}; answer AAAA={answer_aaaa}"
         ));
     }
-    let restore_dns = || {
-        if take_dns {
+    let restore_dns = |taken: bool| {
+        if taken {
             match flowmesh_netcfg::resolv::restore(std::path::Path::new(RESOLV), &resolv_backup) {
                 Ok(_) => log("resolv.conf restored"),
                 Err(e) => log(format!("resolv.conf restore failed: {e}")),
@@ -1278,66 +1177,28 @@ pub async fn run(
         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
     }
     // Offering an exit node: the DNS proxy peers reach over the mesh (peerapi.rs).
-    let mut _peerapi_tasks: Vec<AbortOnDrop> = Vec::new();
-    let peerapi_state = if args.advertise_exit_node {
-        let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
-        let state = Arc::new(crate::peerapi::State {
-            filter: std::sync::RwLock::new(flowmesh_filter::matcher::Filter::new(rules)),
-            upstreams: host_upstreams.clone(),
-        });
-        let mut services = Vec::new();
-        let mut listeners = Vec::new();
-        for a in &me.addresses {
-            let ip = a.addr();
-            match tokio::net::TcpListener::bind((ip, 0)).await {
-                Ok(l) => {
-                    let port = l.local_addr().map(|x| x.port()).unwrap_or(0);
-                    let proto = if ip.is_ipv4() {
-                        flowmesh_proto::control::PEERAPI4
-                    } else {
-                        flowmesh_proto::control::PEERAPI6
-                    };
-                    services.push(flowmesh_proto::control::Service {
-                        proto: proto.into(),
-                        port,
-                        description: String::new(),
-                    });
-                    listeners.push(SocketAddr::new(ip, port));
-                    _peerapi_tasks.push(AbortOnDrop(tokio::spawn(crate::peerapi::serve(
-                        l,
-                        state.clone(),
-                    ))));
-                }
-                Err(e) => log(format!("peerapi: listen on {ip}: {e}")),
-            }
-        }
-        if !services.is_empty() {
-            services.push(flowmesh_proto::control::Service {
-                proto: flowmesh_proto::control::PEERAPI_DNS.into(),
-                port: 1,
-                description: String::new(),
-            });
-            dp.set_peerapi(listeners.clone());
-            hostinfo.services = services;
-            log(format!("exit node: DNS proxy for peers on {listeners:?}"));
-            report(
-                client_rx.borrow().clone(),
-                MapRequest {
-                    hostinfo: hostinfo.clone(),
-                    endpoints: endpoints.clone(),
-                    ..lite.clone()
-                },
-            );
-            stream_req_tx.send_replace(MapRequest {
+    let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
+    if features
+        .sync_peerapi(args, &me.addresses, rules, &host_upstreams, &mut dp)
+        .await
+    {
+        crate::features::apply_to_hostinfo(&mut hostinfo, args, features.services());
+        report(
+            client_rx.borrow().clone(),
+            MapRequest {
                 hostinfo: hostinfo.clone(),
                 endpoints: endpoints.clone(),
-                ..base_req.clone()
-            });
-        }
-        Some(state)
-    } else {
-        None
-    };
+                ..lite.clone()
+            },
+        );
+        stream_req_tx.send_replace(MapRequest {
+            hostinfo: hostinfo.clone(),
+            endpoints: endpoints.clone(),
+            ..base_req.clone()
+        });
+    }
+    // The settings in force; `set`/`up` change them while running (EngineCommand::Reconfigure).
+    let mut cur = args.clone();
     let quad100_dns = std::net::SocketAddrV4::new(QUAD100, 53);
     let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
     let start = Instant::now();
@@ -1388,7 +1249,7 @@ pub async fn run(
                 }
                 r = stop.changed() => {
                     if r.is_err() || *stop.borrow() {
-                        restore_dns();
+                        restore_dns(dns_taken);
                         return Ok(());
                     }
                     Vec::new()
@@ -1523,20 +1384,20 @@ pub async fn run(
                     }
                     if changed.peers || changed.dns || changed.self_node {
                         view = dns_view(&ctx.nm, answer_aaaa);
-                        if take_dns && changed.dns {
+                        if dns_taken && changed.dns {
                             take_over_dns(&ctx.nm)?;
                         }
                     }
-                    if args.accept_routes && changed.peers {
+                    if cur.accept_routes && changed.peers {
                         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                     }
                     if changed.peers || changed.filter || changed.derp || changed.self_node {
-                        exit_health = select_exit_node(&mut policy, &ctx.nm, &args.exit_node);
+                        exit_health = select_exit_node(&mut policy, &ctx.nm, &cur.exit_node);
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
             log(e);
         }
-                        dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, exit_ifaces.as_ref()));
-                        if let Some(st) = &peerapi_state
+                        dp.set_local_nets(local_nets(&ctx.nm, &cur.advertise_routes, exit_ifaces.as_ref()));
+                        if let Some(st) = features.peerapi.as_ref().map(|p| &p.state)
                             && let Ok(rules) = flowmesh_filter::compile::compile(&ctx.nm.filter_rules())
                             && let Ok(mut f) = st.filter.write()
                         {
@@ -1590,6 +1451,72 @@ pub async fn run(
                                 }
                             };
                             let _ = reply.send(v);
+                        }
+                        EngineCommand::Reconfigure { cfg: new, reply } => {
+                            if !crate::features::live_changeable(&cur, &new) {
+                                let _ = reply.send(Err("this change needs a restart".into()));
+                            } else {
+                                let old = std::mem::replace(&mut cur, *new);
+                                features.sync_forwarding(&cur, Some(&old));
+                                features.sync_exit_routing(&cur, Some(&old), ipv6_mesh);
+                                let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
+                                features
+                                    .sync_peerapi(&cur, &me.addresses, rules, &host_upstreams, &mut dp)
+                                    .await;
+                                if cur.advertise_exit_node != old.advertise_exit_node {
+                                    exit_ifaces = cur.advertise_exit_node.then(|| interfaces(&cur.tun));
+                                }
+                                if cur.accept_dns != old.accept_dns {
+                                    restore_dns(dns_taken);
+                                    dns_taken = false;
+                                    dns_msg = dns_owner_message(cur.accept_dns);
+                                    if cur.accept_dns && dns_msg.is_none() {
+                                        match take_over_dns(&ctx.nm) {
+                                            Ok(()) => {
+                                                dns_taken = true;
+                                                log(format!("MagicDNS: resolv.conf -> {QUAD100}"));
+                                            }
+                                            Err(e) => {
+                                                log(&e);
+                                                dns_msg = Some(e);
+                                            }
+                                        }
+                                    }
+                                }
+                                if cur.accept_routes != old.accept_routes {
+                                    let want = if cur.accept_routes {
+                                        subnet_routes(&ctx.nm)
+                                    } else {
+                                        Default::default()
+                                    };
+                                    sync_routes(&cur.tun, &mut installed_routes, want);
+                                }
+                                policy.shields_up = cur.shields_up;
+                                policy.accept_routes = cur.accept_routes;
+                                exit_health = select_exit_node(&mut policy, &ctx.nm, &cur.exit_node);
+                                if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
+                                    log(e);
+                                }
+                                dp.set_local_nets(local_nets(&ctx.nm, &cur.advertise_routes, exit_ifaces.as_ref()));
+                                let mut next = hostinfo.clone();
+                                crate::features::apply_to_hostinfo(&mut next, &cur, features.services());
+                                if next != hostinfo {
+                                    hostinfo = next;
+                                    report(client_rx.borrow().clone(), MapRequest {
+                                        hostinfo: hostinfo.clone(),
+                                        endpoints: endpoints.clone(),
+                                        ..lite.clone()
+                                    });
+                                    stream_req_tx.send_replace(MapRequest {
+                                        hostinfo: hostinfo.clone(),
+                                        endpoints: endpoints.clone(),
+                                        ..base_req.clone()
+                                    });
+                                }
+                                last_publish = None;
+                                log("settings changed without a restart");
+                                let _ = reply.send(Ok(()));
+                            }
                         }
                         EngineCommand::Whois { ip, reply } => {
                             let _ = reply.send(crate::command::whois(&ctx.nm, ip));
@@ -1647,6 +1574,8 @@ pub async fn run(
                         all_health.extend(control_health.clone());
                         all_health.extend(ctx.relays.health());
                         all_health.extend(exit_health.clone());
+                        all_health.extend(dns_msg.clone());
+                        all_health.extend(features.health());
                         let mut snap = snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health);
                         if let Some(key) = policy.exit_node {
                             let key = key.to_string();

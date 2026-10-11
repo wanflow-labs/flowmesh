@@ -187,6 +187,7 @@ impl<L: Launcher> Daemon<L> {
     pub async fn up(&self, req: UpRequest) -> Result<(), DaemonError> {
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_up(&req.update, req.reset)?;
+        let same_server = prefs.control_url == sh.stored.prefs.control_url;
         let mut stored = sh.stored.clone();
         if prefs.control_url != stored.prefs.control_url {
             // A different control server knows nothing about our node key.
@@ -199,6 +200,9 @@ impl<L: Launcher> Daemon<L> {
             sh.authkey = req.authkey;
         }
         sh.refused = None;
+        if same_server && self.reconfigure(&sh).await {
+            return Ok(());
+        }
         self.stop_engine(&mut sh).await;
         self.spawn_engine(&mut sh);
         Ok(())
@@ -210,6 +214,7 @@ impl<L: Launcher> Daemon<L> {
         if prefs == sh.stored.prefs {
             return Ok(());
         }
+        let same_server = prefs.control_url == sh.stored.prefs.control_url;
         let mut stored = sh.stored.clone();
         if prefs.control_url != stored.prefs.control_url {
             stored.logged_in = false;
@@ -217,11 +222,44 @@ impl<L: Launcher> Daemon<L> {
         stored.prefs = prefs;
         save(&self.opts.prefs_file(), &stored)?;
         sh.stored = stored;
-        if sh.stored.prefs.want_running {
+        if sh.stored.prefs.want_running && !(same_server && self.reconfigure(&sh).await) {
             self.stop_engine(&mut sh).await;
             self.spawn_engine(&mut sh);
         }
         Ok(())
+    }
+
+    /// Hand the current preferences to the running engine, which applies them without a restart
+    /// (as the official client does). False when there is no running, logged-in engine, or it
+    /// cannot apply the change; the caller then restarts it.
+    async fn reconfigure(&self, sh: &Shared) -> bool {
+        if sh.engine.is_none() || !sh.live || !sh.stored.logged_in {
+            return false;
+        }
+        let Some(tx) = self
+            .commands
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clone()
+        else {
+            return false;
+        };
+        let cfg = engine_config(&sh.stored.prefs, None, &self.opts);
+        let (reply, rx) = oneshot::channel();
+        if tx
+            .send(EngineCommand::Reconfigure {
+                cfg: Box::new(cfg),
+                reply,
+            })
+            .await
+            .is_err()
+        {
+            return false;
+        }
+        matches!(
+            tokio::time::timeout(RECONFIGURE_TIMEOUT, rx).await,
+            Ok(Ok(Ok(())))
+        )
     }
 
     pub async fn down(&self) -> Result<(), DaemonError> {
@@ -373,26 +411,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     fn spawn_engine(&self, sh: &mut Shared) {
-        let p = &sh.stored.prefs;
-        let cfg = EngineConfig {
-            login_server: p.control_url.clone(),
-            authkey: sh.authkey.clone(),
-            state_file: self.opts.node_file(),
-            hostname: p.hostname.clone(),
-            tun: self.opts.tun.clone(),
-            port: self.opts.port,
-            tap_dir: None,
-            accept_dns: p.accept_dns,
-            accept_routes: p.accept_routes,
-            advertise_routes: p.advertise_routes.clone(),
-            snat_subnet_routes: p.snat_subnet_routes,
-            advertise_tags: p.advertise_tags.clone(),
-            shields_up: p.shields_up,
-            advertise_exit_node: p.advertise_exit_node,
-            stateful_filtering: p.stateful_filtering,
-            exit_node: p.exit_node.clone(),
-            exit_node_allow_lan_access: p.exit_node_allow_lan_access,
-        };
+        let cfg = engine_config(&sh.stored.prefs, sh.authkey.clone(), &self.opts);
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();
         sh.live = false;
@@ -428,6 +447,32 @@ fn facts(sh: &Shared) -> Facts {
 }
 
 /// Run the engine until stopped; retry failures with backoff; stop retrying when refused.
+/// The engine configuration for these preferences.
+fn engine_config(p: &Prefs, authkey: Option<String>, opts: &Options) -> EngineConfig {
+    EngineConfig {
+        login_server: p.control_url.clone(),
+        authkey,
+        state_file: opts.node_file(),
+        hostname: p.hostname.clone(),
+        tun: opts.tun.clone(),
+        port: opts.port,
+        tap_dir: None,
+        accept_dns: p.accept_dns,
+        accept_routes: p.accept_routes,
+        advertise_routes: p.advertise_routes.clone(),
+        snat_subnet_routes: p.snat_subnet_routes,
+        advertise_tags: p.advertise_tags.clone(),
+        shields_up: p.shields_up,
+        advertise_exit_node: p.advertise_exit_node,
+        stateful_filtering: p.stateful_filtering,
+        exit_node: p.exit_node.clone(),
+        exit_node_allow_lan_access: p.exit_node_allow_lan_access,
+    }
+}
+
+/// How long `set`/`up` wait for the running engine to apply new settings before restarting it.
+const RECONFIGURE_TIMEOUT: Duration = Duration::from_secs(10);
+
 async fn supervise<L: Launcher>(
     launcher: Arc<L>,
     shared: Arc<Mutex<Shared>>,
@@ -476,8 +521,9 @@ async fn supervise<L: Launcher>(
             }
             Err(EngineError::Other(e)) => sh.errors = vec![e],
         }
-        // A registered node key no longer needs the auth key; keep it only until registration sticks.
-        cfg.authkey = sh.authkey.clone();
+        // Restart with the current preferences (they may have changed while the engine ran, see
+        // `reconfigure`); a registered node key no longer needs the auth key.
+        cfg = engine_config(&sh.stored.prefs, sh.authkey.clone(), &opts);
         drop(sh);
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}

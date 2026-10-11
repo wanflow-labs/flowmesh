@@ -21,6 +21,13 @@ pub enum EngineCommand {
         topic: crate::debug::DebugTopic,
         reply: oneshot::Sender<serde_json::Value>,
     },
+    /// Change the settings while running (`set`/`up` without a restart, as the official client
+    /// does). Answered with an error when `cfg` changes something that needs a restart (control
+    /// server, state file, TUN, port); the daemon then restarts the engine.
+    Reconfigure {
+        cfg: Box<crate::EngineConfig>,
+        reply: oneshot::Sender<Result<(), String>>,
+    },
     /// Who owns `ip` (this node or a peer), for `whois` and mesh services.
     Whois {
         ip: IpAddr,

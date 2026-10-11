@@ -15,6 +15,8 @@ use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{Hostinfo, RegisterRequest};
 
 #[cfg(target_os = "linux")]
+mod features;
+#[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
 mod tunio;

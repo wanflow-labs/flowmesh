@@ -1,0 +1,12 @@
+== flowmesh 2026-10-11T15:24:59Z
+shields-up on                      40 packets transmitted, 11 received, 72.5% packet loss, time 8123ms disco CHANGED
+shields-up off                     no ping summary                                            disco CHANGED
+accept-routes on                   40 packets transmitted, 39 received, 2.5% packet loss, time 8050ms disco CHANGED
+advertise-routes 10.97.0.0/24      40 packets transmitted, 39 received, 2.5% packet loss, time 8070ms disco CHANGED
+advertise-routes cleared           40 packets transmitted, 35 received, 12.5% packet loss, time 8095ms disco CHANGED
+hostname lvA2                      40 packets transmitted, 37 received, 7.5% packet loss, time 8081ms disco CHANGED
+accept-dns on                      40 packets transmitted, 38 received, 5% packet loss, time 8093ms disco CHANGED
+accept-dns off                     no ping summary                                            disco CHANGED
+advertise-exit-node on             40 packets transmitted, 36 received, 10% packet loss, time 8058ms disco CHANGED
+stateful-filtering on              no ping summary                                            disco CHANGED
+snat-subnet-routes off             40 packets transmitted, 36 received, 10% packet loss, time 8054ms disco CHANGED

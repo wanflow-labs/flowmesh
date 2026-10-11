@@ -33,6 +33,12 @@ struct World {
     logout_state_file: Option<PathBuf>,
     /// Control servers that never answer (the engine keeps trying, no netmap).
     unreachable: Vec<String>,
+    /// Settings applied by the running engine without a restart.
+    reconfigures: u32,
+    /// Answer Reconfigure with an error (the daemon must restart instead).
+    refuse_reconfigure: bool,
+    /// Make the running engine fail (the daemon's supervisor then restarts it).
+    crash: Arc<tokio::sync::Notify>,
 }
 
 #[derive(Clone, Default)]
@@ -42,6 +48,8 @@ struct Fake(Arc<Mutex<World>>);
 /// 100.64.0.3 never, anything else is not a peer. Whois: only 100.64.0.1 is known.
 fn answer(cmd: EngineCommand) {
     match cmd {
+        // Handled in the engine loop below (it needs the world).
+        EngineCommand::Reconfigure { .. } => {}
         EngineCommand::Debug { topic, reply } => {
             let _ = reply.send(json!({ "topic": format!("{topic:?}") }));
         }
@@ -128,10 +136,23 @@ impl Launcher for Fake {
                     relay_mode: "auto".into(),
                 });
             }
+            let crash = world.lock().unwrap().crash.clone();
             loop {
                 tokio::select! {
                     r = stop.changed() => if r.is_err() || *stop.borrow() { break },
+                    _ = crash.notified() => return Err(EngineError::Other("engine crashed".into())),
                     Some(cmd) = commands.recv() => {
+                        if let EngineCommand::Reconfigure { cfg, reply } = cmd {
+                            let mut w = world.lock().unwrap();
+                            if w.refuse_reconfigure {
+                                let _ = reply.send(Err("this change needs a restart".into()));
+                            } else {
+                                w.reconfigures += 1;
+                                w.last_cfg = Some(*cfg);
+                                let _ = reply.send(Ok(()));
+                            }
+                            continue;
+                        }
                         if let EngineCommand::Ping { timeout, .. } = &cmd {
                             world.lock().unwrap().ping_timeouts.push(*timeout);
                         }
@@ -377,7 +398,7 @@ async fn failure_is_visible_while_starting() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn set_changes_only_given_fields_and_restarts_the_engine() {
+async fn set_changes_only_given_fields_and_applies_them_live() {
     let h = start(temp_dir("set"), Fake::default()).await;
     h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
         .await
@@ -392,19 +413,22 @@ async fn set_changes_only_given_fields_and_restarts_the_engine() {
     let prefs = h.client.get("prefs").await.unwrap();
     assert_eq!(prefs["accept_routes"], true);
     assert_eq!(prefs["hostname"], "fm1");
-    h.wait_state("Running").await;
     {
         let w = h.fake.0.lock().unwrap();
-        assert_eq!(w.runs, runs + 1);
+        assert_eq!(
+            (w.runs, w.reconfigures),
+            (runs, 1),
+            "applied by the running engine"
+        );
         assert!(w.last_cfg.as_ref().unwrap().accept_routes);
     }
 
-    // No change: no restart.
+    // No change: nothing sent.
     h.client
         .post("set", &json!({ "accept_routes": true }))
         .await
         .unwrap();
-    assert_eq!(h.fake.0.lock().unwrap().runs, runs + 1);
+    assert_eq!(h.fake.0.lock().unwrap().reconfigures, 1);
 
     // While stopped, set only records the preference.
     h.client.post("down", &json!({})).await.unwrap();
@@ -412,7 +436,10 @@ async fn set_changes_only_given_fields_and_restarts_the_engine() {
         .post("set", &json!({ "hostname": "fm9" }))
         .await
         .unwrap();
-    assert_eq!(h.fake.0.lock().unwrap().runs, runs + 1);
+    {
+        let w = h.fake.0.lock().unwrap();
+        assert_eq!((w.runs, w.reconfigures), (runs, 1));
+    }
     assert_eq!(h.status().await["BackendState"], "Stopped");
 }
 
@@ -626,6 +653,95 @@ async fn advertised_routes_and_snat_reach_the_engine() {
     h.wait_state("Running").await;
     let w = h.fake.0.lock().unwrap();
     assert!(!w.last_cfg.as_ref().unwrap().snat_subnet_routes);
+}
+
+/// `set` and `up` change settings in the running engine, like the official client: no restart,
+/// the engine gets the new configuration (OBS-20261011-set-live).
+#[tokio::test(flavor = "multi_thread")]
+async fn settings_change_without_restarting_the_engine() {
+    let h = start(temp_dir("liveset"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let runs = h.fake.0.lock().unwrap().runs;
+    h.client
+        .post("set", &json!({ "shields_up": true }))
+        .await
+        .unwrap();
+    h.client
+        .post("set", &json!({ "advertise_routes": ["10.99.0.0/24"] }))
+        .await
+        .unwrap();
+    let mut flags = full_flags();
+    flags["shields_up"] = json!(true);
+    flags["advertise_routes"] = json!(["10.99.0.0/24"]);
+    flags["accept_routes"] = json!(true);
+    h.up(json!({ "update": flags })).await.unwrap();
+    let w = h.fake.0.lock().unwrap();
+    assert_eq!(w.runs, runs, "no restart");
+    assert_eq!(w.reconfigures, 3);
+    let cfg = w.last_cfg.as_ref().unwrap();
+    assert!(cfg.shields_up && cfg.accept_routes);
+    assert_eq!(
+        cfg.advertise_routes,
+        vec!["10.99.0.0/24".parse::<ipnet::IpNet>().unwrap()]
+    );
+}
+
+/// When the engine cannot apply a change live, the daemon restarts it with the new settings.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_refused_live_change_restarts_the_engine() {
+    let h = start(temp_dir("liverefused"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let runs = {
+        let mut w = h.fake.0.lock().unwrap();
+        w.refuse_reconfigure = true;
+        w.runs
+    };
+    h.client
+        .post("set", &json!({ "shields_up": true }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let w = h.fake.0.lock().unwrap();
+    assert_eq!(w.runs, runs + 1, "restarted");
+    assert!(w.last_cfg.as_ref().unwrap().shields_up);
+}
+
+/// A live change must survive the engine's next automatic restart: the supervisor restarts it
+/// with the current preferences, not the configuration it was first started with.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_restart_after_a_live_change_keeps_the_change() {
+    let h = start(temp_dir("livekeep"), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    h.client
+        .post("set", &json!({ "shields_up": true }))
+        .await
+        .unwrap();
+    let (runs, crash) = {
+        let w = h.fake.0.lock().unwrap();
+        (w.runs, w.crash.clone())
+    };
+    crash.notify_one();
+    for _ in 0..200 {
+        if h.fake.0.lock().unwrap().runs > runs {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    let w = h.fake.0.lock().unwrap();
+    assert_eq!(w.runs, runs + 1, "the supervisor restarted the engine");
+    assert!(
+        w.last_cfg.as_ref().unwrap().shields_up,
+        "with the live change, not the start-up settings"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]
