@@ -49,6 +49,13 @@ dc fm1 sh -c 'pkill -x tcpdump || true; rm -f /tmp/outbound.pcap
   sleep 1'
 
 echo "== flowmesh <-> flowmesh"
+# fmsd was just restarted: wait until fm1 sees it online before judging the path (the check
+# raced the restart once and failed with both sides fine a minute later).
+for _ in $(seq 1 30); do
+  fm1 status --json | python3 -c 'import json,sys
+sys.exit(0 if any(p["HostName"]=="fmsd" and p.get("Online") for p in json.load(sys.stdin)["Peer"].values()) else 1)' && break
+  sleep 1
+done
 dc fm1 ping -c 3 -W 3 "$fmsd_ip" >/dev/null && dc fmsd ping -c 3 -W 3 "$fm1_ip" >/dev/null \
   && row "ok   flowmesh <-> flowmesh, direct" || row "FAIL flowmesh <-> flowmesh, direct"
 dc fm1 ip route add blackhole 172.29.0.32/32
