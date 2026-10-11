@@ -275,6 +275,37 @@ pub(crate) fn live_peers(nm: &NetMap, now_unix: i64) -> impl Iterator<Item = &No
         .filter(move |n| !key_expired(n, nm.control_time.as_deref(), now_unix))
 }
 
+/// This host's interface networks and addresses (the mesh interface excluded), which an exit node
+/// keeps out of the default route it offers.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Interfaces {
+    pub nets: Vec<ipnet::IpNet>,
+    pub hosts: Vec<IpAddr>,
+}
+
+/// Destinations inbound packets may have: this node's own addresses, the subnets it advertises,
+/// and when it offers an exit node, the default routes shrunk as the official client does.
+pub(crate) fn local_nets(
+    nm: &NetMap,
+    advertised: &[ipnet::IpNet],
+    exit_node: Option<&Interfaces>,
+) -> flowmesh_dataplane::netset::LocalNets {
+    use flowmesh_dataplane::netset::shrink_default_route;
+    let own = nm
+        .self_node
+        .iter()
+        .flat_map(|n| n.addresses.iter().copied());
+    let routes = advertised.iter().copied().filter(|r| r.prefix_len() != 0);
+    let exits = exit_node.into_iter().flat_map(|ifs| {
+        ["0.0.0.0/0", "::/0"]
+            .into_iter()
+            .filter_map(|r| r.parse().ok())
+            .flat_map(|r| shrink_default_route(r, &ifs.nets, &ifs.hosts))
+            .collect::<Vec<_>>()
+    });
+    flowmesh_dataplane::netset::LocalNets::new(own.chain(routes).chain(exits))
+}
+
 pub(crate) fn apply_netmap(
     dp: &mut Dataplane,
     ps: &mut PathSock,
@@ -371,6 +402,35 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn local_nets_cover_own_addresses_routes_and_a_shrunk_exit() {
+        let nm = NetMap {
+            self_node: Some(Node {
+                addresses: vec![
+                    "100.64.0.7/32".parse().unwrap(),
+                    "fd7a:115c:a1e0::7/128".parse().unwrap(),
+                ],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let ip = |s: &str| s.parse::<IpAddr>().unwrap();
+        let plain = local_nets(&nm, &[], None);
+        assert!(plain.contains(&ip("100.64.0.7")) && plain.contains(&ip("fd7a:115c:a1e0::7")));
+        assert!(!plain.contains(&ip("100.64.0.8")) && !plain.contains(&ip("1.1.1.1")));
+        let router = local_nets(&nm, &["10.99.0.0/24".parse().unwrap()], None);
+        assert!(router.contains(&ip("10.99.0.10")) && !router.contains(&ip("10.98.0.10")));
+        let ifs = Interfaces {
+            nets: vec!["172.29.0.0/24".parse().unwrap()],
+            hosts: vec![ip("172.29.0.88")],
+        };
+        let exit = local_nets(&nm, &[], Some(&ifs));
+        assert!(exit.contains(&ip("1.1.1.1")) && exit.contains(&ip("2606:4700::1111")));
+        assert!(!exit.contains(&ip("172.29.0.10")) && !exit.contains(&ip("10.98.0.10")));
+        assert!(exit.contains(&ip("100.64.0.7")), "own addresses stay");
+    }
+
     use super::*;
 
     fn first_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {

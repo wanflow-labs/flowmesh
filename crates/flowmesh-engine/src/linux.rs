@@ -6,8 +6,8 @@
 use crate::command::{EngineCommand, PendingPing, deliver_pings, expire_pings};
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::logic::{
-    apply_netmap, dns_upstreams, dns_view, endpoints_for, looks_like_wireguard, mode_of, peer_home,
-    relay_candidates, snapshot, subnet_routes,
+    apply_netmap, dns_upstreams, dns_view, endpoints_for, local_nets, looks_like_wireguard,
+    mode_of, peer_home, relay_candidates, snapshot, subnet_routes,
 };
 use crate::relay_plan::{RelayAction, RelayPlan};
 use crate::status::EngineStatus;
@@ -994,6 +994,7 @@ pub async fn run(
     if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
         log(e);
     }
+    dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));
     ctx.peer_relay
         .set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
     ctx.ps.set_my_endpoints(endpoints.clone());
@@ -1271,6 +1272,7 @@ pub async fn run(
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
             log(e);
         }
+                        dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));
                         ctx.peer_relay.set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
                         ctx.sync_relay();
                         // Online/last-seen patches arrive constantly; log only when the peer set changes.

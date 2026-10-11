@@ -61,6 +61,9 @@ pub struct Dataplane {
     limiter: RateLimiter,
     static_secret: x25519_dalek::StaticSecret,
     static_public: x25519_dalek::PublicKey,
+    /// Destinations inbound packets may have (own addresses, routed subnets, a shrunk default route
+    /// when offering an exit node); `None` until the engine sets it.
+    local: Option<crate::netset::LocalNets>,
 }
 
 struct Peer {
@@ -87,6 +90,7 @@ impl Dataplane {
             limiter: RateLimiter::new(&static_public, HANDSHAKE_RATE_LIMIT),
             static_secret,
             static_public,
+            local: None,
         }
     }
 
@@ -179,6 +183,12 @@ impl Dataplane {
         self.by_index.get(&(index >> 8)).copied()
     }
 
+    /// The destinations this node accepts inbound packets for. Anything else is dropped, even if a
+    /// filter rule would allow it: a peer must not reach networks this node does not route.
+    pub fn set_local_nets(&mut self, local: crate::netset::LocalNets) {
+        self.local = Some(local);
+    }
+
     pub fn set_filter_rules(&mut self, rules: Vec<CompiledRule>) {
         self.filter.set_rules(rules);
     }
@@ -218,7 +228,8 @@ impl Dataplane {
                     if let Some(meta) = ippkt::parse(&pkt) {
                         // WireGuard cryptokey routing: the inner source address must be within that peer's AllowedIPs.
                         let owned = peer.allowed.iter().any(|n| n.contains(&meta.src));
-                        if owned && self.filter.check_in(&meta, now) == Verdict::Accept {
+                        let ours = self.local.as_ref().is_none_or(|l| l.contains(&meta.dst));
+                        if owned && ours && self.filter.check_in(&meta, now) == Verdict::Accept {
                             outputs.push(Output::ToTun(pkt));
                         }
                     }
@@ -558,6 +569,44 @@ mod tests {
         assert_eq!(next_type(&mut a), 4, "unchanged: session kept");
         a.set_peers(vec![cfg(8)]);
         assert_eq!(next_type(&mut a), 1, "changed: new handshake");
+    }
+
+    /// A destination outside the local nets is dropped even though the filter allows everything.
+    #[test]
+    fn inbound_destination_must_be_local() {
+        let (mut a, pa, mut b, pb) = pair();
+        b.set_filter_rules(allow_all());
+        b.set_local_nets(crate::netset::LocalNets::new(["100.64.0.2/32"
+            .parse()
+            .unwrap()]));
+        let to_b = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        let first = a.outbound(&to_b, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(tun_b, vec![to_b], "control: B's own address passes");
+        // A routes 10.9.9.9 to B (as if B were its router), but B does not route it.
+        a.set_peers(vec![PeerConfig {
+            key: pb,
+            allowed_ips: vec![
+                "100.64.0.2/32".parse().unwrap(),
+                "10.9.9.0/24".parse().unwrap(),
+            ],
+            ..Default::default()
+        }]);
+        let elsewhere = build::v4(A_IP, [10, 9, 9, 9], 1, &build::icmp(8));
+        let first = a.outbound(&elsewhere, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert!(tun_b.is_empty(), "not B's to deliver");
+        b.set_local_nets(crate::netset::LocalNets::new([
+            "100.64.0.2/32".parse().unwrap(),
+            "10.9.9.0/24".parse().unwrap(),
+        ]));
+        let first = a.outbound(&elsewhere, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(
+            tun_b,
+            vec![elsewhere],
+            "once B routes the subnet, it delivers"
+        );
     }
 
     /// WireGuard identifies the sender from the datagram, not the address: a handshake initiation by

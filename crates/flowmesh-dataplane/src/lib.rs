@@ -3,4 +3,5 @@
 //! running every packet through the filter in both directions. Pure logic: input bytes, output what to send and what to write to TUN; no IO.
 
 pub mod ippkt;
+pub mod netset;
 pub mod plane;
