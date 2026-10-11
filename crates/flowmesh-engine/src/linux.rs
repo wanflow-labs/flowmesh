@@ -1167,6 +1167,7 @@ pub async fn run(
         .collect();
     let answer_aaaa = host_has_ipv6(&args.tun);
     let mut view = dns_view(&ctx.nm, answer_aaaa);
+    view.set_local_only(!args.accept_dns);
     let take_over_dns = |nm: &NetMap| -> Result<(), String> {
         let domains = nm
             .dns
@@ -1413,6 +1414,7 @@ pub async fn run(
                     }
                     if changed.peers || changed.dns || changed.self_node {
                         view = dns_view(&ctx.nm, answer_aaaa);
+                        view.set_local_only(!cur.accept_dns);
                         if dns_taken && changed.dns {
                             take_over_dns(&ctx.nm)?;
                         }
@@ -1515,6 +1517,7 @@ pub async fn run(
                                     exit_ifaces = cur.advertise_exit_node.then(|| interfaces(&cur.tun));
                                 }
                                 if cur.accept_dns != old.accept_dns {
+                                    view.set_local_only(!cur.accept_dns);
                                     restore_dns(dns_taken);
                                     dns_taken = false;
                                     dns_msg = dns_owner_message(cur.accept_dns);

@@ -23,3 +23,5 @@ Source: `OBS-20261010-magicdns` (as seen by official 1.94.2 on ts2, with accept-
 | Nonexistent name under the mesh domain, including the domain apex itself | NXDOMAIN, no authority section | Observed |
 | `PTR` for a mesh address | that node's FQDN; an unassigned address in the zone → NXDOMAIN | Observed |
 | A bare name (`ts1`), an external domain, a name in another private domain (`headscale.lab`) | forwarded upstream (in the lab, the bare name was resolved by Docker DNS to the container IP) | Observed |
+| `PTR` for an `ExtraRecords` address | the record's name (a node's own name wins) | Observed (OBS-20261012-dns-query-official); flowmesh answered NXDOMAIN before 2026-10-12 |
+| **Without `--accept-dns`** (100.100.100.100 asked directly, e.g. by a dnsmasq rule or `dns query`) | node names, extra records and their PTRs are answered as above; **everything else is SERVFAIL** — names under the mesh domain and its apex, unknown reverse names, bare and external names; nothing is forwarded | Observed (OBS-20261012-dns-query-official/accept-dns-false, 14 cases); flowmesh forwarded and answered NXDOMAIN before 2026-10-12 |

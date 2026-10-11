@@ -35,6 +35,10 @@ pub struct DnsView {
     ptr: HashMap<IpAddr, String>,
     /// Whether to answer AAAA (see dns.md §2: only when the host has IPv6 connectivity).
     answer_aaaa: bool,
+    /// Without `--accept-dns` the official resolver answers only its own records: names it does
+    /// not have get SERVFAIL, even under the mesh domain, and nothing is forwarded
+    /// (OBS-20261012-dns-query-official/accept-dns-false).
+    local_only: bool,
 }
 
 /// One node in the netmap: its full name (`Node.Name`, ending in a dot) and addresses.
@@ -77,10 +81,18 @@ impl DnsView {
         for r in extra {
             let ok_type = matches!(r.record_type.as_str(), "" | "A" | "AAAA");
             if let (true, Ok(ip)) = (ok_type, r.value.parse::<IpAddr>()) {
-                v.hosts.entry(normalize(&r.name)).or_default().push(ip);
+                let key = normalize(&r.name);
+                // Extra records answer PTR too (observed); a node's own name wins.
+                v.ptr.entry(ip).or_insert_with(|| format!("{key}."));
+                v.hosts.entry(key).or_default().push(ip);
             }
         }
         v
+    }
+
+    /// Answer only local records (`--accept-dns` off).
+    pub fn set_local_only(&mut self, on: bool) {
+        self.local_only = on;
     }
 
     fn in_suffix(&self, name: &str) -> bool {
@@ -183,8 +195,12 @@ pub fn handle(view: &DnsView, query: &[u8]) -> Decision {
         let target = parse_ptr(&name).and_then(|ip| view.ptr.get(&ip));
         return match target.and_then(|t| Name::from_ascii(t).ok()) {
             Some(t) => respond(ResponseCode::NoError, vec![RData::PTR(PTR(t))]),
+            None if view.local_only => respond(ResponseCode::ServFail, Vec::new()),
             None => respond(ResponseCode::NXDomain, Vec::new()),
         };
+    }
+    if view.local_only {
+        return respond(ResponseCode::ServFail, Vec::new());
     }
     if view.in_suffix(&name) {
         return respond(ResponseCode::NXDomain, Vec::new());
@@ -257,6 +273,63 @@ mod tests {
             &query("ts1.mesh.lab.internal.", RecordType::AAAA),
         ));
         assert_eq!(m.answers.len(), 1);
+    }
+
+    /// OBS-20261012-dns-query-official: an extra record's address answers PTR with its name;
+    /// without --accept-dns, known names are answered and everything else is SERVFAIL, never
+    /// forwarded.
+    #[test]
+    fn extra_record_ptr_and_local_only() {
+        let code = |v: &DnsView, name: &str, t: RecordType| {
+            answer(handle(v, &query(name, t))).metadata.response_code
+        };
+        let v = view();
+        let m = answer(handle(
+            &v,
+            &query("250.0.64.100.in-addr.arpa.", RecordType::PTR),
+        ));
+        assert_eq!(
+            m.answers[0].data,
+            RData::PTR(PTR(Name::from_ascii("svc.mesh.lab.internal.").unwrap()))
+        );
+        assert_eq!(
+            code(&v, "nosuch.mesh.lab.internal.", RecordType::A),
+            ResponseCode::NXDomain
+        );
+        assert_eq!(
+            handle(&v, &query("example.com.", RecordType::A)),
+            Decision::Forward
+        );
+        let mut off = view();
+        off.set_local_only(true);
+        assert_eq!(
+            code(&off, "ts1.mesh.lab.internal.", RecordType::A),
+            ResponseCode::NoError
+        );
+        assert_eq!(
+            code(&off, "svc.mesh.lab.internal.", RecordType::A),
+            ResponseCode::NoError
+        );
+        assert_eq!(
+            code(&off, "1.0.64.100.in-addr.arpa.", RecordType::PTR),
+            ResponseCode::NoError
+        );
+        for name in [
+            "nosuch.mesh.lab.internal.",
+            "mesh.lab.internal.",
+            "example.com.",
+            "toq.",
+        ] {
+            assert_eq!(
+                code(&off, name, RecordType::A),
+                ResponseCode::ServFail,
+                "{name}"
+            );
+        }
+        assert_eq!(
+            code(&off, "9.9.64.100.in-addr.arpa.", RecordType::PTR),
+            ResponseCode::ServFail
+        );
     }
 
     #[test]

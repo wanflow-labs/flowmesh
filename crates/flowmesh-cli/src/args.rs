@@ -52,6 +52,11 @@ pub enum Command {
     DnsStatus {
         all: bool,
     },
+    /// `dns query <name> [type]`; no name prints the usage (exit 0, as official).
+    DnsQuery {
+        name: Option<String>,
+        rtype: Option<String>,
+    },
     /// `netcheck [--format=json]`
     Netcheck {
         json: bool,
@@ -131,7 +136,16 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
                 },
                 (name, _) => return Err(format!("dns status: unknown flag -{name}")),
             },
-            _ => return Err("usage: flowmesh dns status [--all]".into()),
+            // Arguments past the type are ignored, as by the official command.
+            [q, rest @ ..] if q == "query" => Command::DnsQuery {
+                name: rest.first().cloned(),
+                rtype: rest.get(1).cloned(),
+            },
+            _ => {
+                return Err(
+                    "usage: flowmesh dns status [--all]\n       flowmesh dns query <name> [type]  (type: a, aaaa, cname, mx, ns, opt, ptr, srv or txt)".into(),
+                );
+            }
         },
         "netcheck" => {
             let mut json = false;
@@ -900,6 +914,20 @@ mod tests {
             Command::DnsStatus { all: true }
         );
         assert!(p(&["dns"]).is_err());
+        assert_eq!(
+            cmd(&["dns", "query", "a", "b", "c"]),
+            Command::DnsQuery {
+                name: Some("a".into()),
+                rtype: Some("b".into())
+            }
+        );
+        assert_eq!(
+            cmd(&["dns", "query"]),
+            Command::DnsQuery {
+                name: None,
+                rtype: None
+            }
+        );
         assert_eq!(cmd(&["netcheck"]), Command::Netcheck { json: false });
         assert_eq!(
             cmd(&["netcheck", "--format=json"]),

@@ -3,6 +3,7 @@
 
 pub mod args;
 pub mod bugreport;
+pub mod dnsquery;
 pub mod exitnode;
 pub mod netcheck;
 pub mod ping;

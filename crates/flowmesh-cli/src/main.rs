@@ -3,7 +3,7 @@
 
 use flowmesh_cli::args::{self, AuthKey, Command};
 use flowmesh_cli::bugreport::{self, Section};
-use flowmesh_cli::{netcheck, ping, query, render};
+use flowmesh_cli::{dnsquery, netcheck, ping, query, render};
 use flowmesh_daemon::client::{DEFAULT_SOCKET, LocalClient};
 use serde_json::{Value, json};
 use std::process::ExitCode;
@@ -213,6 +213,26 @@ async fn run(
         Command::DnsStatus { all } => {
             let v = client.get("dns").await.map_err(e)?;
             out!("{}", query::dns_status(&v, all));
+            Ok(0)
+        }
+        Command::DnsQuery { name: None, .. } => {
+            outln!(
+                "usage: flowmesh dns query <name> [type]  (type: a, aaaa, cname, mx, ns, opt, ptr, srv or txt)\n\n\
+                 Asks flowmesh's DNS resolver (100.100.100.100) for <name>, an A record unless\n\
+                 another type is given, and shows the answer and the upstream resolvers that apply."
+            );
+            Ok(0)
+        }
+        Command::DnsQuery {
+            name: Some(name),
+            rtype,
+        } => {
+            out!("{}", dnsquery::heading(&name, rtype.as_deref()));
+            // Failures are reported on the output with exit 0, as by the official command.
+            match dns_query(client, &name, rtype.as_deref()).await {
+                Ok(text) => out!("{text}"),
+                Err(e) => outln!("failed to query DNS: {e}"),
+            }
             Ok(0)
         }
         Command::Netcheck { json } => {
@@ -489,6 +509,41 @@ fn collect_system() -> Vec<Section> {
             ),
         },
     ]
+}
+
+/// One query to 100.100.100.100 over the mesh interface, rendered with the resolvers that apply.
+async fn dns_query(
+    client: &LocalClient,
+    name: &str,
+    rtype: Option<&str>,
+) -> Result<String, String> {
+    // The official wording carries its local API's status.
+    let t =
+        dnsquery::parse_type(rtype.unwrap_or("a")).map_err(|e| format!("400 Bad Request: {e}"))?;
+    let view = client.get("dns").await.map_err(|e| e.to_string())?;
+    let mut id = [0u8; 2];
+    getrandom::fill(&mut id).map_err(|e| e.to_string())?;
+    let id = u16::from_be_bytes(id);
+    let query = dnsquery::build(name, t, id)?;
+    let sock = tokio::net::UdpSocket::bind("0.0.0.0:0")
+        .await
+        .map_err(|e| e.to_string())?;
+    sock.connect("100.100.100.100:53")
+        .await
+        .map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 65535];
+    for _ in 0..2 {
+        sock.send(&query).await.map_err(|e| e.to_string())?;
+        let deadline = tokio::time::Instant::now() + Duration::from_secs(3);
+        while let Ok(r) = tokio::time::timeout_at(deadline, sock.recv(&mut buf)).await {
+            let n = r.map_err(|e| e.to_string())?;
+            // Ignore anything that is not the answer to this query.
+            if n >= 2 && buf[..2] == id.to_be_bytes() {
+                return dnsquery::render(&buf[..n], &dnsquery::resolvers_for(&view, name));
+            }
+        }
+    }
+    Err("no answer from 100.100.100.100".into())
 }
 
 /// `$XDG_CONFIG_HOME/flowmesh/ssh_known_hosts`, else `~/.config/flowmesh/ssh_known_hosts`.
