@@ -1,0 +1,3 @@
+$ tailscale serve status --json
+{}
+[exit 0]

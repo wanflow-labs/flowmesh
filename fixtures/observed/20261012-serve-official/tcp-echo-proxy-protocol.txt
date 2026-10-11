@@ -1,0 +1,5 @@
+$ (printf 'ping-pp\n'; sleep 1) | nc 100.64.0.77 2225
+tcp-echo from ('127.0.0.1', 45188)
+PROXY TCP4 100.64.0.78 100.64.0.77 38755 7000
+ping-pp
+[exit 0]

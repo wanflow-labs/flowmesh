@@ -1,0 +1,9 @@
+$ tailscale serve --bg --http=80 3000
+Available within your tailnet:
+
+http://svs-z78mo4gt.mesh.lab.internal/
+|-- proxy http://127.0.0.1:3000
+
+Serve started and running in the background.
+To disable the proxy, run: tailscale serve --http=80 off
+[exit 0]

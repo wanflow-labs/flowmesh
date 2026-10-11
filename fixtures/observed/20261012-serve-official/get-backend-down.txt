@@ -1,0 +1,6 @@
+$ curl -sS -i http://svs-z78mo4gt.mesh.lab.internal:8082/
+HTTP/1.1 502 Bad Gateway
+Date: Sun, 11 Oct 2026 19:53:10 GMT
+Content-Length: 0
+
+[exit 0]

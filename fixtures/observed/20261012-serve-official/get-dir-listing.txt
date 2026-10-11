@@ -1,0 +1,13 @@
+$ curl -sS -i http://svs-z78mo4gt.mesh.lab.internal:8080/sub/
+HTTP/1.1 200 OK
+Content-Type: text/html; charset=utf-8
+Last-Modified: Sun, 11 Oct 2026 19:52:51 GMT
+Date: Sun, 11 Oct 2026 19:53:10 GMT
+Content-Length: 107
+
+<!doctype html>
+<meta name="viewport" content="width=device-width">
+<pre>
+<a href="a.txt">a.txt</a>
+</pre>
+[exit 0]

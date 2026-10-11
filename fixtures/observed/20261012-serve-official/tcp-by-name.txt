@@ -1,0 +1,4 @@
+$ (printf 'ping-name\n'; sleep 1) | nc svs-z78mo4gt.mesh.lab.internal 2223
+tcp-echo from ('127.0.0.1', 45194)
+ping-name
+[exit 0]

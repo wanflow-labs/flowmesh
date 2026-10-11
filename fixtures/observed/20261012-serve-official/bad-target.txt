@@ -1,0 +1,5 @@
+$ tailscale serve --bg --http=80 ftp://x
+error: failed apply web serve: must be a URL starting with one of the supported schemes: [http https https+insecure unix]
+
+try `tailscale serve --help` for usage info
+[exit 1]

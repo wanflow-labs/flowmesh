@@ -1,0 +1,18 @@
+$ tailscale serve status --json
+{
+  "TCP": {
+    "80": {
+      "HTTP": true
+    }
+  },
+  "Web": {
+    "svs-z78mo4gt.mesh.lab.internal:80": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:3000"
+        }
+      }
+    }
+  }
+}
+[exit 0]

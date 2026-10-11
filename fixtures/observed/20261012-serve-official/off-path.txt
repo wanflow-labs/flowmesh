@@ -1,0 +1,2 @@
+$ tailscale serve --http=80 --set-path=/api off
+[exit 0]

@@ -1,0 +1,3 @@
+$ tailscale serve status
+No serve config
+[exit 0]

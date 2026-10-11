@@ -1,0 +1,10 @@
+$ tailscale serve --bg --service=svc:web --http=80 3000
+This machine is configured as a service proxy for svc:web, but approval from an admin is required. Once approved, it will be available in your Tailnet as:
+
+http://web.mesh.lab.internal/
+|-- proxy http://127.0.0.1:3000
+
+Serve started and running in the background.
+To disable the proxy, run: tailscale serve --service=svc:web --http=80 off
+To remove config for the service, run: tailscale serve clear svc:web
+[exit 0]

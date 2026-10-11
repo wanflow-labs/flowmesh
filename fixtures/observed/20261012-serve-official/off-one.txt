@@ -1,0 +1,2 @@
+$ tailscale serve --http=8082 off
+[exit 0]

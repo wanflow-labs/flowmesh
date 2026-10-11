@@ -1,0 +1,4 @@
+$ (printf 'ping-tcp\n'; sleep 1) | nc 100.64.0.77 2222
+tcp-echo from ('127.0.0.1', 45172)
+ping-tcp
+[exit 0]

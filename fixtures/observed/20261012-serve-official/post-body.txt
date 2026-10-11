@@ -1,0 +1,24 @@
+$ curl -sS -i -X POST -d hello-body http://svs-z78mo4gt.mesh.lab.internal/post
+HTTP/1.1 200 OK
+Content-Length: 431
+Content-Type: text/plain
+Date: Sun, 11 Oct 2026 19:53:09 GMT
+Server: BaseHTTP/0.6 Python/3.12.15
+X-Backend: 3000
+
+backend=3000
+POST /post HTTP/1.1
+Host: svs-z78mo4gt.mesh.lab.internal
+User-Agent: curl/8.14.1
+Content-Length: 10
+Accept: */*
+Content-Type: application/x-www-form-urlencoded
+Tailscale-Headers-Info: https://tailscale.com/s/serve-headers
+Tailscale-User-Login: lab
+Tailscale-User-Name: lab
+Tailscale-User-Profile-Pic: 
+X-Forwarded-For: 100.64.0.78
+X-Forwarded-Host: svs-z78mo4gt.mesh.lab.internal
+Accept-Encoding: gzip
+body=hello-body
+[exit 0]

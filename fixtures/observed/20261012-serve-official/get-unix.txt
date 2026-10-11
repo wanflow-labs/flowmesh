@@ -1,0 +1,22 @@
+$ curl -sS -i http://svs-z78mo4gt.mesh.lab.internal:8081/u
+HTTP/1.1 200 OK
+Content-Length: 349
+Content-Type: text/plain
+Date: Sun, 11 Oct 2026 19:53:10 GMT
+Server: BaseHTTP/0.6 Python/3.12.15
+X-Backend: unix:/tmp/echo.sock
+
+backend=unix:/tmp/echo.sock
+GET /u HTTP/1.1
+Host: localhost
+User-Agent: curl/8.14.1
+Accept: */*
+Tailscale-Headers-Info: https://tailscale.com/s/serve-headers
+Tailscale-User-Login: lab
+Tailscale-User-Name: lab
+Tailscale-User-Profile-Pic: 
+X-Forwarded-For: 100.64.0.78
+X-Forwarded-Host: svs-z78mo4gt.mesh.lab.internal:8081
+Accept-Encoding: gzip
+body=
+[exit 0]

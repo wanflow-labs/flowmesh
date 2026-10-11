@@ -1,0 +1,8 @@
+$ tailscale serve status
+http://svs-z78mo4gt (tailnet only)
+http://svs-z78mo4gt.mesh.lab.internal (tailnet only)
+|-- /     proxy http://127.0.0.1:3000
+|-- /api  proxy http://127.0.0.1:4000
+|-- /text text  "hello-text"
+
+[exit 0]

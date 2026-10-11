@@ -1,0 +1,11 @@
+$ tailscale serve --bg --tcp=2223 7000
+Available within your tailnet:
+
+|-- tcp://svs-z78mo4gt.mesh.lab.internal:2223 (TLS over TCP)
+|-- tcp://100.64.0.77:2223
+|-- tcp://[fd7a:115c:a1e0::4d]:2223
+|--> tcp://127.0.0.1:7000
+
+Serve started and running in the background.
+To disable the proxy, run: tailscale serve --tcp=2223 off
+[exit 0]

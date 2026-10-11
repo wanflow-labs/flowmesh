@@ -1,0 +1,16 @@
+$ tailscale serve --http=9090 3000   (foreground, stopped after 4 s)
+before: 000
+before: refused
+No serve config
+during: 200
+--- output:
+Available within your tailnet:
+
+http://svs-z78mo4gt.mesh.lab.internal:9090/
+|-- proxy http://127.0.0.1:3000
+
+Press Ctrl+C to exit.
+--- status after:
+No serve config
+after: 000
+after: refused

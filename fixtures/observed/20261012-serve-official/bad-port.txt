@@ -1,0 +1,5 @@
+$ tailscale serve --bg --http=70000 3000
+error: port number 70000 is too high for https flag
+
+try `tailscale serve --help` for usage info
+[exit 1]

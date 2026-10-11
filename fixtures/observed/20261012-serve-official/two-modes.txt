@@ -1,0 +1,5 @@
+$ tailscale serve --bg --http=80 --tcp=81 3000
+error: cannot serve multiple types for a single mount point
+
+try `tailscale serve --help` for usage info
+[exit 1]

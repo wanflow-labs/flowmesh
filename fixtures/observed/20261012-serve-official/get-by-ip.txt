@@ -1,0 +1,9 @@
+$ curl -sS -i http://100.64.0.77/
+HTTP/1.1 404 Not Found
+Content-Type: text/plain; charset=utf-8
+X-Content-Type-Options: nosniff
+Date: Sun, 11 Oct 2026 19:53:09 GMT
+Content-Length: 19
+
+404 page not found
+[exit 0]

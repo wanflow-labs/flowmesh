@@ -1,0 +1,19 @@
+2026/10/11 19:52:42 linkChange: in state NoState; PAC or proxyConfig changed; updating routes
+2026/10/11 19:52:42 ipnext: active extensions: conn25, portlist, posture, clientupdate, relayserver, taildrop
+2026/10/11 19:52:53 control: control server key from https://hs-tls.lab: ts2021=[VQ/xv], legacy=
+2026/10/11 19:52:58 localapi: [POST] /localapi/v0/serve-config
+2026/10/11 19:52:58 localapi: [POST] /localapi/v0/serve-config
+2026/10/11 19:52:58 serve: creating a new proxy handler for http://127.0.0.1:3000
+2026/10/11 19:53:09 localapi: [POST] /localapi/v0/serve-config
+2026/10/11 19:53:09 serve: creating a new proxy handler for http://127.0.0.1:4000
+2026/10/11 19:53:09 localapi: [POST] /localapi/v0/serve-config
+2026/10/11 19:53:10 serve: creating a new proxy handler for unix:/tmp/echo.sock
+2026/10/11 19:53:10 serve: creating a new proxy handler for http://127.0.0.1:3999
+2026/10/11 19:53:10 http: proxy error: dial tcp 127.0.0.1:3999: connect: connection refused
+2026/10/11 19:53:14 serve: closing idle connections to http://127.0.0.1:3999
+2026/10/11 19:53:14 serve: closing idle connections to http://127.0.0.1:4000
+2026/10/11 19:53:14 serve: closing idle connections to http://127.0.0.1:3000
+2026/10/11 19:53:14 serve: closing idle connections to unix:/tmp/echo.sock
+2026/10/11 19:53:15 serve: creating a new proxy handler for http://127.0.0.1:3000
+2026/10/11 19:53:19 serve: closing idle connections to http://127.0.0.1:3000
+2026/10/11 19:53:19 [RATELIMIT] format("serve: closing idle connections to %s")

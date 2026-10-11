@@ -1,0 +1,2 @@
+$ tailscale serve reset
+[exit 0]

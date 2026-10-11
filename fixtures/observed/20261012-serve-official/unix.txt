@@ -1,0 +1,9 @@
+$ tailscale serve --bg --http=8081 unix:/tmp/echo.sock
+Available within your tailnet:
+
+http://svs-z78mo4gt.mesh.lab.internal:8081/
+|-- proxy unix:/tmp/echo.sock
+
+Serve started and running in the background.
+To disable the proxy, run: tailscale serve --http=8081 off
+[exit 0]

@@ -1,0 +1,68 @@
+$ tailscale serve status --json
+{
+  "TCP": {
+    "2222": {
+      "TCPForward": "localhost:7000"
+    },
+    "2223": {
+      "TCPForward": "127.0.0.1:7000"
+    },
+    "2224": {
+      "TCPForward": "127.0.0.1:7000",
+      "TerminateTLS": "svs-z78mo4gt.mesh.lab.internal"
+    },
+    "2225": {
+      "TCPForward": "localhost:7000",
+      "ProxyProtocol": 1
+    },
+    "80": {
+      "HTTP": true
+    },
+    "8080": {
+      "HTTP": true
+    },
+    "8081": {
+      "HTTP": true
+    },
+    "8082": {
+      "HTTP": true
+    }
+  },
+  "Web": {
+    "svs-z78mo4gt.mesh.lab.internal:80": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:3000"
+        },
+        "/api": {
+          "Proxy": "http://127.0.0.1:4000"
+        },
+        "/text": {
+          "Text": "hello-text"
+        }
+      }
+    },
+    "svs-z78mo4gt.mesh.lab.internal:8080": {
+      "Handlers": {
+        "/": {
+          "Path": "/tmp/site"
+        }
+      }
+    },
+    "svs-z78mo4gt.mesh.lab.internal:8081": {
+      "Handlers": {
+        "/": {
+          "Proxy": "unix:/tmp/echo.sock"
+        }
+      }
+    },
+    "svs-z78mo4gt.mesh.lab.internal:8082": {
+      "Handlers": {
+        "/": {
+          "Proxy": "http://127.0.0.1:3999"
+        }
+      }
+    }
+  }
+}
+[exit 0]
