@@ -1238,6 +1238,67 @@ pub async fn run(
     if args.accept_routes {
         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
     }
+    // Offering an exit node: the DNS proxy peers reach over the mesh (peerapi.rs).
+    let mut _peerapi_tasks: Vec<AbortOnDrop> = Vec::new();
+    let peerapi_state = if args.advertise_exit_node {
+        let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
+        let state = Arc::new(crate::peerapi::State {
+            filter: std::sync::RwLock::new(flowmesh_filter::matcher::Filter::new(rules)),
+            upstreams: host_upstreams.clone(),
+        });
+        let mut services = Vec::new();
+        let mut listeners = Vec::new();
+        for a in &me.addresses {
+            let ip = a.addr();
+            match tokio::net::TcpListener::bind((ip, 0)).await {
+                Ok(l) => {
+                    let port = l.local_addr().map(|x| x.port()).unwrap_or(0);
+                    let proto = if ip.is_ipv4() {
+                        flowmesh_proto::control::PEERAPI4
+                    } else {
+                        flowmesh_proto::control::PEERAPI6
+                    };
+                    services.push(flowmesh_proto::control::Service {
+                        proto: proto.into(),
+                        port,
+                        description: String::new(),
+                    });
+                    listeners.push(SocketAddr::new(ip, port));
+                    _peerapi_tasks.push(AbortOnDrop(tokio::spawn(crate::peerapi::serve(
+                        l,
+                        state.clone(),
+                    ))));
+                }
+                Err(e) => log(format!("peerapi: listen on {ip}: {e}")),
+            }
+        }
+        if !services.is_empty() {
+            services.push(flowmesh_proto::control::Service {
+                proto: flowmesh_proto::control::PEERAPI_DNS.into(),
+                port: 1,
+                description: String::new(),
+            });
+            dp.set_peerapi(listeners.clone());
+            hostinfo.services = services;
+            log(format!("exit node: DNS proxy for peers on {listeners:?}"));
+            report(
+                client_rx.borrow().clone(),
+                MapRequest {
+                    hostinfo: hostinfo.clone(),
+                    endpoints: endpoints.clone(),
+                    ..lite.clone()
+                },
+            );
+            stream_req_tx.send_replace(MapRequest {
+                hostinfo: hostinfo.clone(),
+                endpoints: endpoints.clone(),
+                ..base_req.clone()
+            });
+        }
+        Some(state)
+    } else {
+        None
+    };
     let quad100_dns = std::net::SocketAddrV4::new(QUAD100, 53);
     let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
     let start = Instant::now();
@@ -1428,6 +1489,12 @@ pub async fn run(
             log(e);
         }
                         dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, exit_ifaces.as_ref()));
+                        if let Some(st) = &peerapi_state
+                            && let Ok(rules) = flowmesh_filter::compile::compile(&ctx.nm.filter_rules())
+                            && let Ok(mut f) = st.filter.write()
+                        {
+                            f.set_rules(rules);
+                        }
                         ctx.peer_relay.set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
                         ctx.sync_relay();
                         // Online/last-seen patches arrive constantly; log only when the peer set changes.

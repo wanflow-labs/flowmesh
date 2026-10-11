@@ -24,7 +24,12 @@ flowmesh-pathsock = { version = "0.1.0", path = "../flowmesh-pathsock" }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
 flowmesh-stun = { version = "0.1.0", path = "../flowmesh-stun" }
+base64 = "0.23.1"
+bytes = "1.12.1"
 getrandom = "0.3"
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
 ipnet = "2.12.2"
 serde = "1.0.229"
 serde_json = "1.0.151"

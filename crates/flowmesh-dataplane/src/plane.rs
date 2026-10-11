@@ -64,6 +64,9 @@ pub struct Dataplane {
     /// Destinations inbound packets may have (own addresses, routed subnets, a shrunk default route
     /// when offering an exit node); `None` until the engine sets it.
     local: Option<crate::netset::LocalNets>,
+    /// This node's peerapi listeners: TCP to them skips the filter (the service authorizes itself,
+    /// as the official client's peerapi does).
+    peerapi: std::collections::HashSet<std::net::SocketAddr>,
 }
 
 struct Peer {
@@ -91,6 +94,7 @@ impl Dataplane {
             static_secret,
             static_public,
             local: None,
+            peerapi: Default::default(),
         }
     }
 
@@ -189,6 +193,11 @@ impl Dataplane {
         self.local = Some(local);
     }
 
+    /// The peerapi listeners (address and port); inbound TCP to them is not checked by the filter.
+    pub fn set_peerapi(&mut self, listeners: Vec<std::net::SocketAddr>) {
+        self.peerapi = listeners.into_iter().collect();
+    }
+
     pub fn set_filter_rules(&mut self, rules: Vec<CompiledRule>) {
         self.filter.set_rules(rules);
     }
@@ -229,7 +238,14 @@ impl Dataplane {
                         // WireGuard cryptokey routing: the inner source address must be within that peer's AllowedIPs.
                         let owned = peer.allowed.iter().any(|n| n.contains(&meta.src));
                         let ours = self.local.as_ref().is_none_or(|l| l.contains(&meta.dst));
-                        if owned && ours && self.filter.check_in(&meta, now) == Verdict::Accept {
+                        let peerapi = meta.proto == flowmesh_filter::packet::IpProto::Tcp
+                            && self
+                                .peerapi
+                                .contains(&std::net::SocketAddr::new(meta.dst, meta.dst_port));
+                        if owned
+                            && ours
+                            && (peerapi || self.filter.check_in(&meta, now) == Verdict::Accept)
+                        {
                             outputs.push(Output::ToTun(pkt));
                         }
                     }
@@ -607,6 +623,22 @@ mod tests {
             vec![elsewhere],
             "once B routes the subnet, it delivers"
         );
+    }
+
+    /// TCP to a peerapi listener passes without a filter rule; other ports of the same address do not.
+    #[test]
+    fn peerapi_listener_skips_the_filter() {
+        let (mut a, pa, mut b, pb) = pair();
+        // No rules at B: new TCP connections are refused, except to its peerapi port.
+        b.set_peerapi(vec!["100.64.0.2:4321".parse().unwrap()]);
+        let to_api = build::v4(A_IP, B_IP, 6, &build::tcp(40000, 4321, 0x02));
+        let first = a.outbound(&to_api, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(tun_b, vec![to_api]);
+        let to_ssh = build::v4(A_IP, B_IP, 6, &build::tcp(40000, 22, 0x02));
+        let first = a.outbound(&to_ssh, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert!(tun_b.is_empty(), "any other port still needs a rule");
     }
 
     /// WireGuard identifies the sender from the datagram, not the address: a handshake initiation by

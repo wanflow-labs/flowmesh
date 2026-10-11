@@ -22,6 +22,28 @@ pub struct ServerKeyResponse {
     pub public_key: MachinePublic,
 }
 
+/// One entry of `Hostinfo.Services`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Service {
+    #[serde(rename = "Proto")]
+    pub proto: String,
+    #[serde(rename = "Port")]
+    pub port: u16,
+    #[serde(
+        rename = "Description",
+        default,
+        skip_serializing_if = "String::is_empty"
+    )]
+    pub description: String,
+}
+
+/// Service protocol names in `Hostinfo.Services` (tailcfg.ServiceProto).
+pub const PEERAPI4: &str = "peerapi4";
+pub const PEERAPI6: &str = "peerapi6";
+/// The exit node DNS proxy over peerapi; its Port is a version number (1).
+pub const PEERAPI_DNS: &str = "peerapi-dns-proxy";
+
 /// 节点自报的主机信息。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -42,6 +64,10 @@ pub struct Hostinfo {
     pub request_tags: Vec<String>,
     #[serde(rename = "ShieldsUp", skip_serializing_if = "std::ops::Not::not")]
     pub shields_up: bool,
+    /// Services the node offers to peers; flowmesh lists its peerapi ports and the exit node DNS
+    /// proxy (Proto `peerapi4`, `peerapi6`, `peerapi-dns-proxy`).
+    #[serde(rename = "Services", skip_serializing_if = "Vec::is_empty")]
+    pub services: Vec<Service>,
     #[serde(rename = "NetInfo", skip_serializing_if = "Option::is_none")]
     pub net_info: Option<NetInfo>,
 }

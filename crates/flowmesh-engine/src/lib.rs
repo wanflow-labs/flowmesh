@@ -5,6 +5,7 @@ pub mod command;
 pub mod control_loop;
 pub mod debug;
 mod logic;
+mod peerapi;
 pub mod relay_plan;
 pub mod status;
 mod udpio;

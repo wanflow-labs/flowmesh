@@ -8,7 +8,7 @@
 #   tsE 172.29.0.91  official client offering an exit node
 #   fmU 172.29.0.97  flowmeshd using fmE, then tsE
 # Checks: srv reached through fmE and sees fmE (SNAT); fmE's own LAN and private ranges refused; no
-# TCP checksum errors at the user; with --stateful-filtering a connection from srv into the mesh is
+# TCP checksum errors at the user; the user's MagicDNS resolves through fmE's DNS proxy (peerapi); with --stateful-filtering a connection from srv into the mesh is
 # refused, without it it gets through. flowmesh as a user: through fmE and through tsE, its own
 # control/DERP traffic stays off the tunnel (still Running, peers reachable), LAN blocked unless
 # --exit-node-allow-lan-access, ExitNodeStatus in status --json, --shields-up refuses inbound pings.
@@ -88,6 +88,13 @@ for _ in $(seq 1 15); do got=$(reach 198.51.100.10 8080); [ -n "$got" ] && break
 expect "internet through fmE, seen as" 172.29.0.96 "$got"
 expect "fmE's LAN (172.29.0.95) refused" "" "$(docker exec tsU sh -c 'nc -w 3 -z 172.29.0.95 22 && echo open' 2>/dev/null || true)"
 expect "TCP checksum errors at tsU" 0 "$(( $(csum) - c0 ))"
+# Official clients send DNS through the exit node's peerapi DNS proxy (OBS-20261011-exit-node-official).
+docker exec tsU tailscale set --accept-dns=true
+resolved() { docker exec tsU sh -c "nslookup -timeout=3 $1 100.100.100.100 2>&1" | grep -c '^Name:' || true; }
+got=0
+for _ in $(seq 1 10); do got=$(resolved example.com); [ "$got" -gt 0 ] && break; sleep 1; done
+expect "tsU MagicDNS through the flowmesh exit node resolves example.com" 1 "$([ "$got" -gt 0 ] && echo 1 || echo 0)"
+docker exec tsU tailscale set --accept-dns=false
 echo "== stateful filtering on fmE"
 expect "srv -> tsU ping without it" ok "$(docker exec srv ping -c 2 -W 2 "$tsu_ip" >/dev/null 2>&1 && echo ok || echo blocked)"
 fm set --stateful-filtering

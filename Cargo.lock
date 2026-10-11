@@ -582,6 +582,8 @@ dependencies = [
 name = "flowmesh-engine"
 version = "0.1.0"
 dependencies = [
+ "base64 0.23.1",
+ "bytes",
  "flowmesh-control",
  "flowmesh-dataplane",
  "flowmesh-derp",
@@ -597,6 +599,9 @@ dependencies = [
  "flowmesh-udprelay",
  "getrandom 0.3.4",
  "hickory-proto",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "ipnet",
  "nix 0.31.3",
  "serde",
