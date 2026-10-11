@@ -33,6 +33,10 @@ pub struct EngineConfig {
     pub tap_dir: Option<std::path::PathBuf>,
     pub accept_dns: bool,
     pub accept_routes: bool,
+    /// Subnets this node routes for (`--advertise-routes`), sent as Hostinfo.RoutableIPs.
+    pub advertise_routes: Vec<ipnet::IpNet>,
+    /// Masquerade traffic forwarded from the mesh into those subnets (`--snat-subnet-routes`).
+    pub snat_subnet_routes: bool,
 }
 
 /// Why the engine stopped with an error.

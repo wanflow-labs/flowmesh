@@ -4,6 +4,7 @@
 //! (never `--x false`); other flags take `--x value` or `--x=value`.
 
 use flowmesh_daemon::prefs::PrefsUpdate;
+use ipnet::IpNet;
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -177,6 +178,31 @@ fn plain(rest: &[String], c: Command) -> Result<Command, String> {
 }
 
 /// `--name=value` / `-name` → (name, inline value).
+/// One `--advertise-routes` entry, checked the way the official client checks it (same messages); a
+/// bare address is a single-host route. A default route would make this node an exit node, which
+/// flowmesh does not offer yet.
+fn parse_route(r: &str) -> Result<IpNet, String> {
+    let net = match r.parse::<IpNet>() {
+        Ok(n) => n,
+        Err(_) => r
+            .parse::<std::net::IpAddr>()
+            .map(IpNet::from)
+            .map_err(|_| format!("{r:?} is not a valid IP address or CIDR prefix"))?,
+    };
+    if net.trunc() != net {
+        return Err(format!(
+            "{r} has non-address bits set; expected {}",
+            net.trunc()
+        ));
+    }
+    if net.prefix_len() == 0 {
+        return Err(format!(
+            "{r} would make this node an exit node, which flowmesh does not support yet"
+        ));
+    }
+    Ok(net)
+}
+
 fn split_flag(a: &str) -> Result<(&str, Option<&str>), String> {
     let body = a
         .strip_prefix("--")
@@ -238,11 +264,12 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
                     Vec::new()
                 } else {
                     v.split(',')
-                        .map(|r| r.trim().parse().map_err(|_| format!("invalid route {r:?}")))
+                        .map(|r| parse_route(r.trim()))
                         .collect::<Result<_, _>>()?
                 };
                 update.advertise_routes = Some(routes);
             }
+            "snat-subnet-routes" => update.snat_subnet_routes = Some(bool_value(name, inline)?),
             "auth-key" | "authkey" if is_up => {
                 let v = take_value(name, inline, rest, &mut i)?;
                 authkey = Some(match v.strip_prefix("file:") {
@@ -362,6 +389,47 @@ mod tests {
                 timeout: None
             }
         );
+    }
+
+    /// The official client's messages for bad routes (observed against tailscaled 1.94.2).
+    #[test]
+    fn advertise_routes_are_checked_like_the_official_client() {
+        assert_eq!(
+            p(&["up", "--advertise-routes=10.0.0.1/24"]).unwrap_err(),
+            "10.0.0.1/24 has non-address bits set; expected 10.0.0.0/24"
+        );
+        assert_eq!(
+            p(&["up", "--advertise-routes=10.0.0.0/24,fd00::1/64"]).unwrap_err(),
+            "fd00::1/64 has non-address bits set; expected fd00::/64"
+        );
+        assert_eq!(
+            p(&["up", "--advertise-routes=banana"]).unwrap_err(),
+            "\"banana\" is not a valid IP address or CIDR prefix"
+        );
+        assert!(
+            p(&["up", "--advertise-routes=0.0.0.0/0"])
+                .unwrap_err()
+                .contains("exit node")
+        );
+        let Command::Up { update, .. } = cmd(&["up", "--advertise-routes=192.168.1.10"]) else {
+            panic!()
+        };
+        assert_eq!(
+            update.advertise_routes,
+            Some(vec!["192.168.1.10/32".parse().unwrap()])
+        );
+    }
+
+    #[test]
+    fn snat_subnet_routes_flag() {
+        let Command::Up { update, .. } = cmd(&["up", "--snat-subnet-routes=false"]) else {
+            panic!()
+        };
+        assert_eq!(update.snat_subnet_routes, Some(false));
+        let Command::Set(update) = cmd(&["set", "--snat-subnet-routes"]) else {
+            panic!()
+        };
+        assert_eq!(update.snat_subnet_routes, Some(true));
     }
 
     #[test]

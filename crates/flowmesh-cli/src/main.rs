@@ -194,6 +194,7 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             Ok(0)
         }
         Command::Set(update) => {
+            warn_forwarding(&update);
             let body = serde_json::to_value(update).map_err(|e| e.to_string())?;
             client.post("set", &body).await.map_err(e)?;
             Ok(0)
@@ -214,10 +215,30 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                         .to_string(),
                 ),
             };
+            warn_forwarding(&update);
             let body = json!({ "update": update, "reset": reset, "authkey": authkey });
             client.post("up", &body).await.map_err(e)?;
             wait_running(client, timeout).await
         }
+    }
+}
+
+/// When the command advertises routes, warn if the kernel does not forward (the daemon never changes
+/// sysctls, like the official client).
+fn warn_forwarding(update: &flowmesh_daemon::prefs::PrefsUpdate) {
+    if update
+        .advertise_routes
+        .as_ref()
+        .is_none_or(|r| r.is_empty())
+    {
+        return;
+    }
+    let read = |path: &str| std::fs::read_to_string(path).ok().map(|v| v.trim() != "0");
+    if let Some(w) = render::forwarding_warning(
+        read("/proc/sys/net/ipv4/ip_forward"),
+        read("/proc/sys/net/ipv6/conf/all/forwarding"),
+    ) {
+        eprintln!("{w}");
     }
 }
 

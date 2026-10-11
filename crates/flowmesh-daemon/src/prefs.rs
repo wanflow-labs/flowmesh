@@ -17,6 +17,9 @@ pub struct Prefs {
     /// Default false, same as the official client on Linux.
     pub accept_routes: bool,
     pub advertise_routes: Vec<IpNet>,
+    /// Masquerade traffic forwarded from the mesh into advertised subnets. Default true, same as the
+    /// official client (`--snat-subnet-routes`).
+    pub snat_subnet_routes: bool,
     pub want_running: bool,
 }
 
@@ -28,6 +31,7 @@ impl Default for Prefs {
             accept_dns: true,
             accept_routes: false,
             advertise_routes: Vec::new(),
+            snat_subnet_routes: true,
             want_running: false,
         }
     }
@@ -42,6 +46,7 @@ pub struct PrefsUpdate {
     pub accept_dns: Option<bool>,
     pub accept_routes: Option<bool>,
     pub advertise_routes: Option<Vec<IpNet>>,
+    pub snat_subnet_routes: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -82,6 +87,9 @@ impl Prefs {
                 .map(ToString::to_string)
                 .collect();
             out.push(("--advertise-routes", joined.join(",")));
+        }
+        if self.snat_subnet_routes != d.snat_subnet_routes {
+            out.push(("--snat-subnet-routes", self.snat_subnet_routes.to_string()));
         }
         out
     }
@@ -137,6 +145,9 @@ impl Prefs {
         if let Some(v) = &update.advertise_routes {
             p.advertise_routes.clone_from(v);
         }
+        if let Some(v) = update.snat_subnet_routes {
+            p.snat_subnet_routes = v;
+        }
         p
     }
 }
@@ -150,6 +161,7 @@ impl PrefsUpdate {
             "--accept-dns" => self.accept_dns.is_some(),
             "--accept-routes" => self.accept_routes.is_some(),
             "--advertise-routes" => self.advertise_routes.is_some(),
+            "--snat-subnet-routes" => self.snat_subnet_routes.is_some(),
             _ => false,
         }
     }
@@ -306,6 +318,7 @@ mod tests {
                 "10.0.0.0/24".parse().unwrap(),
                 "10.1.0.0/24".parse().unwrap(),
             ],
+            snat_subnet_routes: false,
             want_running: true,
         };
         assert_eq!(
@@ -316,6 +329,7 @@ mod tests {
                 ("--accept-dns", "false".to_string()),
                 ("--accept-routes", "true".to_string()),
                 ("--advertise-routes", "10.0.0.0/24,10.1.0.0/24".to_string()),
+                ("--snat-subnet-routes", "false".to_string()),
             ]
         );
         assert!(Prefs::default().non_default_flags().is_empty());

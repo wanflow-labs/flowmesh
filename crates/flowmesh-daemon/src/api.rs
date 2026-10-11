@@ -91,7 +91,7 @@ fn error(code: StatusCode, msg: impl std::fmt::Display) -> Response<Full<Bytes>>
 
 fn daemon_error(e: &DaemonError) -> Response<Full<Bytes>> {
     let code = match e {
-        DaemonError::Prefs(_) | DaemonError::Unsupported(_) => StatusCode::BAD_REQUEST,
+        DaemonError::Prefs(_) => StatusCode::BAD_REQUEST,
         DaemonError::Persist(_) => StatusCode::INTERNAL_SERVER_ERROR,
         DaemonError::Logout(_) => StatusCode::BAD_GATEWAY,
         DaemonError::NotRunning => StatusCode::SERVICE_UNAVAILABLE,

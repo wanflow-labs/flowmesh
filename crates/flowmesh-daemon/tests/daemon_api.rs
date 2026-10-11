@@ -602,28 +602,30 @@ async fn request_body_limit() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn unimplemented_advertise_routes_is_refused_not_ignored() {
+async fn advertised_routes_and_snat_reach_the_engine() {
     let h = start(temp_dir("advroutes"), Fake::default()).await;
     let mut flags = full_flags();
     flags["advertise_routes"] = json!(["10.99.0.0/24"]);
-    let (code, msg) = api_error(h.up(json!({ "update": flags, "authkey": GOOD_KEY })).await);
-    assert_eq!(
-        (code, msg.as_str()),
-        (400, "--advertise-routes is not supported yet")
-    );
-    let (code, _) = api_error(
-        h.client
-            .post("set", &json!({ "advertise_routes": ["10.99.0.0/24"] }))
-            .await,
-    );
-    assert_eq!(code, 400);
-    // Clearing (the default) is fine.
-    let mut flags = full_flags();
-    flags["advertise_routes"] = json!([]);
     h.up(json!({ "update": flags, "authkey": GOOD_KEY }))
         .await
         .unwrap();
     h.wait_state("Running").await;
+    {
+        let w = h.fake.0.lock().unwrap();
+        let cfg = w.last_cfg.as_ref().unwrap();
+        assert_eq!(
+            cfg.advertise_routes,
+            vec!["10.99.0.0/24".parse::<ipnet::IpNet>().unwrap()]
+        );
+        assert!(cfg.snat_subnet_routes, "SNAT is on by default");
+    }
+    h.client
+        .post("set", &json!({ "snat_subnet_routes": false }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    let w = h.fake.0.lock().unwrap();
+    assert!(!w.last_cfg.as_ref().unwrap().snat_subnet_routes);
 }
 
 #[tokio::test(flavor = "multi_thread")]

@@ -17,4 +17,5 @@
 | OBS-20261010-peer-relay-datapath | 观测 | 中继端口抓包：Geneve 头、握手时序、数据路径 |
 | OBS-20261010-peer-relay-handshake | 观测 | 以探针为客户端尝试与中继服务器握手（尚无回复） |
 | OBS-20261010-peer-relay-behavior | 观测 | 中继失效与恢复、闲置、与 prefer/strict 模式的配合 |
+| OBS-20261011-subnet-router-official | 观测 | 官方客户端作子网路由器（`lab/scripts/subnet_router_observe.sh`）：转发开关下的 `up` 警告、netfilter 规则（ts-forward / ts-postrouting，fwmark 0x40000）、NoSNAT 默认 false；健康信息为空 |
 | PUB-6 | 公开标准 | RFC 8926 Geneve — https://www.rfc-editor.org/rfc/rfc8926 |

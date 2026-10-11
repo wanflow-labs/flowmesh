@@ -76,25 +76,10 @@ pub enum DaemonError {
     Prefs(#[from] PrefsError),
     #[error("persist preferences: {0}")]
     Persist(String),
-    /// Accepted by the preference model for forward compatibility, but the engine does not do it yet:
-    /// refusing is better than silently ignoring it.
-    #[error("{0} is not supported yet")]
-    Unsupported(&'static str),
     #[error("logout failed: {0}")]
     Logout(String),
     #[error("flowmesh is not running")]
     NotRunning,
-}
-
-fn check_supported(update: &PrefsUpdate) -> Result<(), DaemonError> {
-    if update
-        .advertise_routes
-        .as_ref()
-        .is_some_and(|r| !r.is_empty())
-    {
-        return Err(DaemonError::Unsupported("--advertise-routes"));
-    }
-    Ok(())
 }
 
 /// Body of `up`.
@@ -200,7 +185,6 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn up(&self, req: UpRequest) -> Result<(), DaemonError> {
-        check_supported(&req.update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_up(&req.update, req.reset)?;
         let mut stored = sh.stored.clone();
@@ -221,7 +205,6 @@ impl<L: Launcher> Daemon<L> {
     }
 
     pub async fn set(&self, update: PrefsUpdate) -> Result<(), DaemonError> {
-        check_supported(&update)?;
         let mut sh = self.shared.lock().await;
         let prefs = sh.stored.prefs.apply_set(&update);
         if prefs == sh.stored.prefs {
@@ -401,6 +384,8 @@ impl<L: Launcher> Daemon<L> {
             tap_dir: None,
             accept_dns: p.accept_dns,
             accept_routes: p.accept_routes,
+            advertise_routes: p.advertise_routes.clone(),
+            snat_subnet_routes: p.snat_subnet_routes,
         };
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();

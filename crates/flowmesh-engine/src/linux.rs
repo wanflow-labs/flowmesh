@@ -40,6 +40,16 @@ const HOME_HEALTH_GRACE: Duration = Duration::from_secs(5);
 const MTU: u16 = 1280;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
+/// Removes the subnet-router netfilter rules when dropped.
+struct ForwardRules(flowmesh_netcfg::forward::Backend);
+
+impl Drop for ForwardRules {
+    fn drop(&mut self) {
+        flowmesh_netcfg::forward::remove(self.0);
+        log("subnet router: forwarding rules removed");
+    }
+}
+
 pub(crate) fn log(msg: impl std::fmt::Display) {
     eprintln!("flowmesh: {msg}");
 }
@@ -754,6 +764,7 @@ pub async fn run(
         os: "linux".into(),
         hostname: args.hostname.clone(),
         machine: std::env::consts::ARCH.into(),
+        routable_ips: args.advertise_routes.clone(),
         ..Default::default()
     };
     let register_req = |node_key: NodePublic, old_node_key: NodePublic| RegisterRequest {
@@ -1004,6 +1015,35 @@ pub async fn run(
         log(&msg);
         health.push(msg);
     }
+    // Subnet router: forwarding and SNAT rules while routes are advertised, removed when the engine
+    // stops (the guard's Drop runs on every return path).
+    let _forward_rules = if args.advertise_routes.is_empty() {
+        None
+    } else {
+        match flowmesh_netcfg::forward::install(&args.tun, args.snat_subnet_routes) {
+            Ok(installed) => {
+                log(format!(
+                    "subnet router: advertising {:?}; forwarding rules via {:?}, SNAT {}",
+                    args.advertise_routes,
+                    installed.backend,
+                    if args.snat_subnet_routes { "on" } else { "off" }
+                ));
+                if let Some(w) = installed.warning {
+                    log(&w);
+                    health.push(w);
+                }
+                Some(ForwardRules(installed.backend))
+            }
+            Err(e) => {
+                let msg = format!(
+                    "subnet routes are advertised, but the forwarding rules could not be installed: {e}"
+                );
+                log(&msg);
+                health.push(msg);
+                None
+            }
+        }
+    };
     let take_dns = args.accept_dns && dns_owner.is_none();
     // MagicDNS: the upstream is the host's original nameserver (if a backup was left by a crash, take it from the backup).
     let original_resolv = std::fs::read_to_string(&resolv_backup)

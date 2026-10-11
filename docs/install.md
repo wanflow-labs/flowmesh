@@ -51,6 +51,7 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 - `--auth-key` 可以直接写密钥，也可以写 `file:<路径>` 从文件读取（避免密钥出现在 shell 历史和进程列表里）。密钥只用于注册，不会写入磁盘。
 - `up` 会一直等到网络进入 Running（退出码 0）；控制服务器拒绝时退出码为 1，并打印登录地址（如果服务器给了）。可以用 `--timeout=30s` 限制等待时间。
 - 其他常用参数：`--hostname=<名称>`、`--accept-dns=false`（不接管系统 DNS）、`--accept-routes`（接受其他节点通告的子网路由）。
+- 作为子网路由器：`--advertise-routes=192.168.1.0/24`（多个用逗号分隔），控制服务器上批准该路由后，其他节点加 `--accept-routes` 即可访问该网段。需要内核开启转发（`sysctl -w net.ipv4.ip_forward=1`，IPv6 为 `net.ipv6.conf.all.forwarding=1`；flowmesh 不会替你改，未开启时 `up` 会给出警告）。默认对进入该网段的流量做地址伪装（SNAT），网段内主机看到的来源是路由器；`--snat-subnet-routes=false` 可关闭，此时网段内主机需要有回到 `100.64.0.0/10` 的路由。转发规则写入系统的 `iptables`（没有时用 `nft`），`down` 或退出时自动撤除。
 
 常用命令：
 
@@ -97,5 +98,5 @@ sudo rm -r /var/lib/flowmesh
 
 ## 7. 暂不支持
 
-- `--advertise-routes`（作为子网路由器通告网段）：会被明确拒绝，计划在后续版本实现。
+- 出口节点（`--advertise-routes=0.0.0.0/0,::/0` 或 `--advertise-exit-node`）：会被明确拒绝，计划在后续版本实现。
 - 内核 WireGuard 后端（当前为用户态实现）：v2。

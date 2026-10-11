@@ -149,8 +149,43 @@ fn table(rows: &[[String; 4]]) -> String {
     out
 }
 
+/// The warning `up`/`set` print when routes are advertised but the kernel will not forward them
+/// (the official client's wording: IPv4 off is reported alone; IPv6 is reported when only it is
+/// off). `None` for a value that could not be read.
+pub fn forwarding_warning(ipv4: Option<bool>, ipv6: Option<bool>) -> Option<&'static str> {
+    match (ipv4, ipv6) {
+        (Some(false), _) => {
+            Some("Warning: IP forwarding is disabled, subnet routing/exit nodes will not work.")
+        }
+        (_, Some(false)) => Some(
+            "Warning: IPv6 forwarding is disabled.\nSubnet routes and exit nodes may not work correctly.",
+        ),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn forwarding_warning_follows_the_official_client() {
+        assert_eq!(
+            forwarding_warning(Some(false), Some(false)),
+            Some("Warning: IP forwarding is disabled, subnet routing/exit nodes will not work.")
+        );
+        assert!(
+            forwarding_warning(Some(true), Some(false))
+                .unwrap()
+                .starts_with("Warning: IPv6 forwarding is disabled.")
+        );
+        assert_eq!(forwarding_warning(Some(true), Some(true)), None);
+        assert_eq!(
+            forwarding_warning(None, None),
+            None,
+            "unreadable: no claim either way"
+        );
+    }
+
     use super::*;
     use serde_json::json;
 
