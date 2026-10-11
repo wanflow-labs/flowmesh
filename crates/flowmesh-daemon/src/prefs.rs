@@ -24,6 +24,10 @@ pub struct Prefs {
     pub advertise_tags: Vec<String>,
     /// Refuse all inbound connections (`--shields-up`). Default false.
     pub shields_up: bool,
+    /// Offer to be an exit node (`--advertise-exit-node`): advertises 0.0.0.0/0 and ::/0.
+    pub advertise_exit_node: bool,
+    /// Only replies may be forwarded into the mesh (`--stateful-filtering`). Default false.
+    pub stateful_filtering: bool,
     pub want_running: bool,
 }
 
@@ -38,6 +42,8 @@ impl Default for Prefs {
             snat_subnet_routes: true,
             advertise_tags: Vec::new(),
             shields_up: false,
+            advertise_exit_node: false,
+            stateful_filtering: false,
             want_running: false,
         }
     }
@@ -55,6 +61,8 @@ pub struct PrefsUpdate {
     pub snat_subnet_routes: Option<bool>,
     pub advertise_tags: Option<Vec<String>>,
     pub shields_up: Option<bool>,
+    pub advertise_exit_node: Option<bool>,
+    pub stateful_filtering: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -104,6 +112,15 @@ impl Prefs {
         }
         if self.shields_up != d.shields_up {
             out.push(("--shields-up", self.shields_up.to_string()));
+        }
+        if self.advertise_exit_node != d.advertise_exit_node {
+            out.push((
+                "--advertise-exit-node",
+                self.advertise_exit_node.to_string(),
+            ));
+        }
+        if self.stateful_filtering != d.stateful_filtering {
+            out.push(("--stateful-filtering", self.stateful_filtering.to_string()));
         }
         out
     }
@@ -168,6 +185,12 @@ impl Prefs {
         if let Some(v) = update.shields_up {
             p.shields_up = v;
         }
+        if let Some(v) = update.advertise_exit_node {
+            p.advertise_exit_node = v;
+        }
+        if let Some(v) = update.stateful_filtering {
+            p.stateful_filtering = v;
+        }
         p
     }
 }
@@ -184,6 +207,8 @@ impl PrefsUpdate {
             "--snat-subnet-routes" => self.snat_subnet_routes.is_some(),
             "--advertise-tags" => self.advertise_tags.is_some(),
             "--shields-up" => self.shields_up.is_some(),
+            "--advertise-exit-node" => self.advertise_exit_node.is_some(),
+            "--stateful-filtering" => self.stateful_filtering.is_some(),
             _ => false,
         }
     }
@@ -343,6 +368,8 @@ mod tests {
             snat_subnet_routes: false,
             advertise_tags: Vec::new(),
             shields_up: false,
+            advertise_exit_node: false,
+            stateful_filtering: false,
             want_running: true,
         };
         assert_eq!(

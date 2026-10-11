@@ -226,11 +226,11 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
 /// When the command advertises routes, warn if the kernel does not forward (the daemon never changes
 /// sysctls, like the official client).
 fn warn_forwarding(update: &flowmesh_daemon::prefs::PrefsUpdate) {
-    if update
+    let routes = update
         .advertise_routes
         .as_ref()
-        .is_none_or(|r| r.is_empty())
-    {
+        .is_some_and(|r| !r.is_empty());
+    if !routes && update.advertise_exit_node != Some(true) {
         return;
     }
     let read = |path: &str| std::fs::read_to_string(path).ok().map(|v| v.trim() != "0");

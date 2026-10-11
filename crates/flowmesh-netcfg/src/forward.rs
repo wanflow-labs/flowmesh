@@ -39,12 +39,31 @@ fn ipt(prog: &'static str, args: &[&str]) -> Cmd {
 
 /// The iptables/ip6tables commands that install the rules, in order. Creating a chain that already
 /// exists fails harmlessly (the next command flushes it), so the list can run again after a crash.
-pub fn iptables_install(tun: &str, snat: bool) -> Vec<Cmd> {
+pub fn iptables_install(tun: &str, snat: bool, stateful: bool) -> Vec<Cmd> {
     let mut out = Vec::new();
     for (prog, mesh) in [("iptables", MESH_V4), ("ip6tables", MESH_V6)] {
         out.push(ipt(prog, &["-N", FORWARD_CHAIN]));
         out.push(ipt(prog, &["-F", FORWARD_CHAIN]));
         out.push(ipt(prog, &["-A", FORWARD_CHAIN, "-i", tun, "-j", "ACCEPT"]));
+        if stateful {
+            // --stateful-filtering: from the routed networks into the mesh, only replies.
+            out.push(ipt(
+                prog,
+                &[
+                    "-A",
+                    FORWARD_CHAIN,
+                    "-o",
+                    tun,
+                    "-m",
+                    "conntrack",
+                    "!",
+                    "--ctstate",
+                    "RELATED,ESTABLISHED",
+                    "-j",
+                    "DROP",
+                ],
+            ));
+        }
         out.push(ipt(prog, &["-A", FORWARD_CHAIN, "-o", tun, "-j", "ACCEPT"]));
         out.push(ipt(prog, &["-I", "FORWARD", "1", "-j", FORWARD_CHAIN]));
         out.push(ipt(prog, &["-t", "nat", "-N", NAT_CHAIN]));
@@ -94,9 +113,14 @@ pub fn iptables_remove() -> Vec<Cmd> {
 }
 
 /// An nft script that replaces the `inet flowmesh` table in one transaction.
-pub fn nft_install(tun: &str, snat: bool) -> String {
+pub fn nft_install(tun: &str, snat: bool, stateful: bool) -> String {
     let masquerade = if snat {
         format!("\t\tiifname \"{tun}\" oifname != \"{tun}\" masquerade\n")
+    } else {
+        String::new()
+    };
+    let stateful = if stateful {
+        format!("\t\toifname \"{tun}\" ct state != {{ established, related }} drop\n")
     } else {
         String::new()
     };
@@ -107,6 +131,7 @@ pub fn nft_install(tun: &str, snat: bool) -> String {
          \tchain forward {{\n\
          \t\ttype filter hook forward priority filter; policy accept;\n\
          \t\tiifname \"{tun}\" accept\n\
+         {stateful}\
          \t\toifname \"{tun}\" accept\n\
          \t}}\n\
          \tchain postrouting {{\n\
@@ -150,10 +175,10 @@ pub struct Installed {
 
 /// Install the rules with whichever tool the host has. A host without IPv6 netfilter still routes
 /// IPv4 (the IPv6 failure becomes a warning); an IPv4 failure is an error.
-pub fn install(tun: &str, snat: bool) -> Result<Installed, String> {
+pub fn install(tun: &str, snat: bool, stateful: bool) -> Result<Installed, String> {
     if have("iptables") {
         let mut warning = None;
-        for cmd in iptables_install(tun, snat) {
+        for cmd in iptables_install(tun, snat, stateful) {
             if cmd.0 == "ip6tables" && warning.is_some() {
                 continue;
             }
@@ -183,7 +208,7 @@ pub fn install(tun: &str, snat: bool) -> Result<Installed, String> {
         if let Some(mut stdin) = child.stdin.take() {
             use std::io::Write;
             stdin
-                .write_all(nft_install(tun, snat).as_bytes())
+                .write_all(nft_install(tun, snat, stateful).as_bytes())
                 .map_err(|e| format!("nft: {e}"))?;
         }
         let out = child.wait_with_output().map_err(|e| format!("nft: {e}"))?;
@@ -245,7 +270,7 @@ mod tests {
 
     #[test]
     fn iptables_rules_accept_forwarding_and_masquerade_mesh_sources() {
-        let l = lines(&iptables_install("flowmesh0", true));
+        let l = lines(&iptables_install("flowmesh0", true, false));
         assert!(l.contains(&"iptables -w -A fm-forward -i flowmesh0 -j ACCEPT".to_string()));
         assert!(l.contains(&"iptables -w -A fm-forward -o flowmesh0 -j ACCEPT".to_string()));
         assert!(l.contains(&"iptables -w -I FORWARD 1 -j fm-forward".to_string()));
@@ -275,10 +300,31 @@ mod tests {
 
     #[test]
     fn snat_off_keeps_forwarding_but_no_masquerade() {
-        let l = lines(&iptables_install("flowmesh0", false));
+        let l = lines(&iptables_install("flowmesh0", false, false));
         assert!(l.iter().all(|x| !x.contains("MASQUERADE")));
         assert!(l.contains(&"iptables -w -A fm-forward -i flowmesh0 -j ACCEPT".to_string()));
-        assert!(!nft_install("flowmesh0", false).contains("masquerade"));
+        assert!(!nft_install("flowmesh0", false, false).contains("masquerade"));
+    }
+
+    /// Stateful filtering: new connections from the routed networks into the mesh are dropped,
+    /// before the accept rule (the official client's conntrack rule, OBS-20261011-exit-node-official).
+    #[test]
+    fn stateful_filtering_drops_new_connections_into_the_mesh() {
+        let l = lines(&iptables_install("flowmesh0", true, true));
+        let drop = "iptables -w -A fm-forward -o flowmesh0 -m conntrack ! --ctstate RELATED,ESTABLISHED -j DROP";
+        let accept = "iptables -w -A fm-forward -o flowmesh0 -j ACCEPT";
+        let (d, a) = (
+            l.iter().position(|x| x == drop).unwrap(),
+            l.iter().position(|x| x == accept).unwrap(),
+        );
+        assert!(d < a, "the drop must come before the accept");
+        assert!(!lines(&iptables_install("flowmesh0", true, false)).contains(&drop.to_string()));
+        let n = nft_install("flowmesh0", true, true);
+        let (d, a) = (
+            n.find("ct state != { established, related } drop").unwrap(),
+            n.find("oifname \"flowmesh0\" accept").unwrap(),
+        );
+        assert!(d < a);
     }
 
     #[test]
@@ -296,7 +342,7 @@ mod tests {
 
     #[test]
     fn nft_script_replaces_the_table_atomically() {
-        let s = nft_install("flowmesh0", true);
+        let s = nft_install("flowmesh0", true, false);
         assert!(s.starts_with("add table inet flowmesh\ndelete table inet flowmesh\n"));
         assert!(s.contains("iifname \"flowmesh0\" accept"));
         assert!(s.contains("oifname \"flowmesh0\" accept"));

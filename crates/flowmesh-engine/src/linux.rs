@@ -26,6 +26,7 @@ use flowmesh_proto::control::{
 use flowmesh_proto::derp::{DerpMap, DerpNode};
 use flowmesh_proto::key::{DiscoPrivate, DiscoPublic, NodePrivate, NodePublic};
 use flowmesh_udprelay::{RelayAction as PeerRelayAction, RelayClient};
+use ipnet::IpNet;
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -75,6 +76,39 @@ fn ip(args: &[&str]) -> Result<(), String> {
     } else {
         Err(format!("ip {} failed: {status}", args.join(" ")))
     }
+}
+
+/// This host's interface networks and addresses, both families, without the mesh interface and
+/// loopback (`ip -o addr`), for the exit node's shrunk default route.
+fn interfaces(tun: &str) -> crate::logic::Interfaces {
+    let Ok(out) = std::process::Command::new("ip")
+        .args(["-o", "addr", "show"])
+        .output()
+    else {
+        return Default::default();
+    };
+    let mut ifs = crate::logic::Interfaces::default();
+    for line in String::from_utf8_lossy(&out.stdout).lines() {
+        let mut w = line.split_whitespace();
+        let (Some(_), Some(dev)) = (w.next(), w.next()) else {
+            continue;
+        };
+        if dev == tun || dev == "lo" {
+            continue;
+        }
+        if !matches!(w.next(), Some("inet" | "inet6")) {
+            continue;
+        }
+        let Some(net) = w.next().and_then(|c| c.parse::<IpNet>().ok()) else {
+            continue;
+        };
+        if net.addr().is_loopback() || net.prefix_len() == net.max_prefix_len() {
+            continue;
+        }
+        ifs.hosts.push(net.addr());
+        ifs.nets.push(net.trunc());
+    }
+    ifs
 }
 
 /// Local IPv4 addresses (global scope, excluding the TUN itself) as endpoint candidates.
@@ -759,12 +793,23 @@ pub async fn run(
             .await
             .map_err(|e| format!("control connect: {e}"))?,
     );
+    // What this node routes for the mesh: its subnets, plus both default routes as an exit node.
+    let mut advertised = args.advertise_routes.clone();
+    if args.advertise_exit_node {
+        advertised.extend(
+            ["0.0.0.0/0", "::/0"]
+                .iter()
+                .filter_map(|r| r.parse::<IpNet>().ok()),
+        );
+    }
+    // An exit node keeps this host's own networks out of the default route it offers.
+    let exit_ifaces = args.advertise_exit_node.then(|| interfaces(&args.tun));
     let mut hostinfo = Hostinfo {
         ipn_version: format!("flowmesh-{}", env!("CARGO_PKG_VERSION")),
         os: "linux".into(),
         hostname: args.hostname.clone(),
         machine: std::env::consts::ARCH.into(),
-        routable_ips: args.advertise_routes.clone(),
+        routable_ips: advertised.clone(),
         request_tags: args.advertise_tags.clone(),
         shields_up: args.shields_up,
         ..Default::default()
@@ -1005,7 +1050,11 @@ pub async fn run(
     ) {
         log(e);
     }
-    dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));
+    dp.set_local_nets(local_nets(
+        &ctx.nm,
+        &args.advertise_routes,
+        exit_ifaces.as_ref(),
+    ));
     ctx.peer_relay
         .set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
     ctx.ps.set_my_endpoints(endpoints.clone());
@@ -1029,16 +1078,21 @@ pub async fn run(
     }
     // Subnet router: forwarding and SNAT rules while routes are advertised, removed when the engine
     // stops (the guard's Drop runs on every return path).
-    let _forward_rules = if args.advertise_routes.is_empty() {
+    let _forward_rules = if advertised.is_empty() {
         None
     } else {
-        match flowmesh_netcfg::forward::install(&args.tun, args.snat_subnet_routes) {
+        match flowmesh_netcfg::forward::install(
+            &args.tun,
+            args.snat_subnet_routes,
+            args.stateful_filtering,
+        ) {
             Ok(installed) => {
                 log(format!(
-                    "subnet router: advertising {:?}; forwarding rules via {:?}, SNAT {}",
-                    args.advertise_routes,
+                    "subnet router: advertising {:?}; forwarding rules via {:?}, SNAT {}, stateful filtering {}",
+                    advertised,
                     installed.backend,
-                    if args.snat_subnet_routes { "on" } else { "off" }
+                    if args.snat_subnet_routes { "on" } else { "off" },
+                    if args.stateful_filtering { "on" } else { "off" }
                 ));
                 if let Some(w) = installed.warning {
                     log(&w);
@@ -1283,7 +1337,7 @@ pub async fn run(
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
             log(e);
         }
-                        dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));
+                        dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, exit_ifaces.as_ref()));
                         ctx.peer_relay.set_candidates(relay_candidates(&ctx.nm, crate::logic::unix_now()));
                         ctx.sync_relay();
                         // Online/last-seen patches arrive constantly; log only when the peer set changes.

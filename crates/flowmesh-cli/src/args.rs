@@ -195,12 +195,31 @@ fn parse_route(r: &str) -> Result<IpNet, String> {
             net.trunc()
         ));
     }
-    if net.prefix_len() == 0 {
-        return Err(format!(
-            "{r} would make this node an exit node, which flowmesh does not support yet"
-        ));
-    }
     Ok(net)
+}
+
+/// The default routes in `--advertise-routes` mean an exit node, as in the official client: both
+/// must be given (same messages), and they become `--advertise-exit-node`.
+fn split_exit_routes(routes: Vec<IpNet>, update: &mut PrefsUpdate) -> Result<Vec<IpNet>, String> {
+    let v4 = routes
+        .iter()
+        .any(|r| matches!(r, IpNet::V4(_)) && r.prefix_len() == 0);
+    let v6 = routes
+        .iter()
+        .any(|r| matches!(r, IpNet::V6(_)) && r.prefix_len() == 0);
+    match (v4, v6) {
+        (true, false) => Err(
+            "0.0.0.0/0 advertised without its IPv6 counterpart, please also advertise ::/0".into(),
+        ),
+        (false, true) => Err(
+            "::/0 advertised without its IPv4 counterpart, please also advertise 0.0.0.0/0".into(),
+        ),
+        (true, true) => {
+            update.advertise_exit_node.get_or_insert(true);
+            Ok(routes.into_iter().filter(|r| r.prefix_len() != 0).collect())
+        }
+        (false, false) => Ok(routes),
+    }
 }
 
 /// One `--advertise-tags` entry, checked like the official client (same messages): `tag:` and a
@@ -289,10 +308,12 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
                         .map(|r| parse_route(r.trim()))
                         .collect::<Result<_, _>>()?
                 };
-                update.advertise_routes = Some(routes);
+                update.advertise_routes = Some(split_exit_routes(routes, &mut update)?);
             }
             "snat-subnet-routes" => update.snat_subnet_routes = Some(bool_value(name, inline)?),
             "shields-up" => update.shields_up = Some(bool_value(name, inline)?),
+            "advertise-exit-node" => update.advertise_exit_node = Some(bool_value(name, inline)?),
+            "stateful-filtering" => update.stateful_filtering = Some(bool_value(name, inline)?),
             "advertise-tags" => {
                 let v = take_value(name, inline, rest, &mut i)?;
                 let tags = if v.is_empty() {
@@ -440,10 +461,35 @@ mod tests {
             p(&["up", "--advertise-routes=banana"]).unwrap_err(),
             "\"banana\" is not a valid IP address or CIDR prefix"
         );
-        assert!(
-            p(&["up", "--advertise-routes=0.0.0.0/0"])
-                .unwrap_err()
-                .contains("exit node")
+        assert_eq!(
+            p(&["up", "--advertise-routes=0.0.0.0/0"]).unwrap_err(),
+            "0.0.0.0/0 advertised without its IPv6 counterpart, please also advertise ::/0"
+        );
+        assert_eq!(
+            p(&["up", "--advertise-routes=::/0"]).unwrap_err(),
+            "::/0 advertised without its IPv4 counterpart, please also advertise 0.0.0.0/0"
+        );
+        let Command::Up { update, .. } =
+            cmd(&["up", "--advertise-routes=0.0.0.0/0,::/0,10.0.0.0/24"])
+        else {
+            panic!()
+        };
+        assert_eq!(
+            update.advertise_exit_node,
+            Some(true),
+            "both default routes = exit node"
+        );
+        assert_eq!(
+            update.advertise_routes,
+            Some(vec!["10.0.0.0/24".parse().unwrap()])
+        );
+        let Command::Set(update) = cmd(&["set", "--advertise-exit-node", "--stateful-filtering"])
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (update.advertise_exit_node, update.stateful_filtering),
+            (Some(true), Some(true))
         );
         let Command::Up { update, .. } = cmd(&["up", "--advertise-routes=192.168.1.10"]) else {
             panic!()

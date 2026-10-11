@@ -41,6 +41,10 @@ pub struct EngineConfig {
     pub advertise_tags: Vec<String>,
     /// Refuse all inbound connections (`--shields-up`).
     pub shields_up: bool,
+    /// Offer to be an exit node (`--advertise-exit-node`).
+    pub advertise_exit_node: bool,
+    /// Drop new connections forwarded into the mesh (`--stateful-filtering`).
+    pub stateful_filtering: bool,
 }
 
 /// Why the engine stopped with an error.

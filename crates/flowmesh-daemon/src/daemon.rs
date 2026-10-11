@@ -388,6 +388,8 @@ impl<L: Launcher> Daemon<L> {
             snat_subnet_routes: p.snat_subnet_routes,
             advertise_tags: p.advertise_tags.clone(),
             shields_up: p.shields_up,
+            advertise_exit_node: p.advertise_exit_node,
+            stateful_filtering: p.stateful_filtering,
         };
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();
