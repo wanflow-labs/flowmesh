@@ -316,6 +316,7 @@ mod tests {
                 id: 1,
                 login_name: "lab".into(),
                 display_name: "lab".into(),
+                ..Default::default()
             },
         );
         nm.packet_filters.insert(

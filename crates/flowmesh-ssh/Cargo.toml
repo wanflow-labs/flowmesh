@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
+flowmesh-net = { version = "0.1.0", path = "../flowmesh-net" }
 russh = { version = "0.63.1", default-features = false, features = ["ring"] }
 rand = "0.10"
 bytes = "1.12.1"

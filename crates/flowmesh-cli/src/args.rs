@@ -75,6 +75,10 @@ pub enum Command {
         host: String,
         port: u16,
     },
+    /// `serve …`
+    Serve(crate::serve::ServeArgs),
+    /// `serve …` that cannot be done.
+    ServeError(String),
 }
 
 /// `--auth-key` value; `file:<path>` reads the key from a file (official syntax).
@@ -90,7 +94,7 @@ pub struct Invocation {
     pub command: Command,
 }
 
-pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ip|ping|ssh|nc|whois|exit-node|netcheck|dns|metrics|debug|bugreport|version> [flags]";
+pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ip|ping|ssh|nc|serve|whois|exit-node|netcheck|dns|metrics|debug|bugreport|version> [flags]";
 
 /// Parse the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Invocation, String> {
@@ -167,6 +171,11 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
             }
             Command::Netcheck { json }
         }
+        // Errors are reported like the official command's (exit 1), not as usage errors.
+        "serve" => match crate::serve::parse(rest) {
+            Ok(a) => Command::Serve(a),
+            Err(e) => Command::ServeError(e),
+        },
         "ssh" => match rest {
             [target, args @ ..] if !target.starts_with('-') => Command::Ssh {
                 target: target.clone(),

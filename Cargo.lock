@@ -866,6 +866,7 @@ version = "0.1.0"
 dependencies = [
  "flowmesh-daemon",
  "flowmesh-proto",
+ "flowmesh-serve",
  "flowmesh-stun",
  "getrandom 0.3.4",
  "hickory-proto",
@@ -905,6 +906,7 @@ dependencies = [
  "flowmesh-engine",
  "flowmesh-meshsvc",
  "flowmesh-proto",
+ "flowmesh-serve",
  "flowmesh-ssh",
  "flowmesh-state",
  "http-body-util",
@@ -989,6 +991,7 @@ dependencies = [
  "flowmesh-netcfg",
  "flowmesh-pathsock",
  "flowmesh-proto",
+ "flowmesh-serve",
  "flowmesh-ssh",
  "flowmesh-state",
  "flowmesh-stun",
@@ -1091,10 +1094,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "flowmesh-serve"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+ "futures-util",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
+ "rustls",
+ "rustls-native-certs",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-rustls",
+]
+
+[[package]]
 name = "flowmesh-ssh"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "flowmesh-net",
  "flowmesh-proto",
  "getrandom 0.3.4",
  "nix 0.31.3",

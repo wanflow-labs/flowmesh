@@ -1033,6 +1033,57 @@ async fn ssh_setting_follows_the_build() {
     }
 }
 
+/// `serve`: the background configuration is stored (and survives a restart of the daemon),
+/// foreground ones live while renewed, HTTPS is refused, and only root/operator may change it.
+#[tokio::test(flavor = "multi_thread")]
+async fn serve_configuration() {
+    use http_body_util::Full;
+    use hyper::body::Bytes;
+    let dir = temp_dir("serve");
+    let h = start(dir.clone(), Fake::default()).await;
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    assert_eq!(h.client.get("serve").await.unwrap(), json!({}));
+    let bg = json!({
+        "TCP": { "80": { "HTTP": true } },
+        "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Proxy": "http://127.0.0.1:3000" } } } }
+    });
+    h.client.post("serve", &bg).await.unwrap();
+    assert_eq!(h.client.get("serve").await.unwrap(), bg);
+    // HTTPS needs certificates the control server does not issue.
+    let (code, msg) = api_error(
+        h.client
+            .post("serve", &json!({ "TCP": { "443": { "HTTPS": true } } }))
+            .await,
+    );
+    assert_eq!(code, 400);
+    assert!(msg.contains("certificates"), "{msg}");
+    // A foreground configuration is not part of the stored one, and goes when stopped.
+    let fg =
+        json!({ "id": "cli-1", "config": { "TCP": { "2222": { "TCPForward": "127.0.0.1:22" } } } });
+    h.client.post("serve-foreground", &fg).await.unwrap();
+    assert_eq!(h.client.get("serve").await.unwrap(), bg);
+    h.client
+        .post("serve-foreground-stop", &json!({ "id": "cli-1" }))
+        .await
+        .unwrap();
+    // Not root, not the operator: refused.
+    let req = hyper::Request::post("/localapi/v0/serve")
+        .body(Full::new(Bytes::from("{}")))
+        .unwrap();
+    assert_eq!(api::handle(&h.daemon, req, false).await.status(), 403);
+    let req = hyper::Request::get("/localapi/v0/serve")
+        .body(Full::new(Bytes::new()))
+        .unwrap();
+    assert_eq!(api::handle(&h.daemon, req, false).await.status(), 200);
+    // Persisted with the preferences.
+    let stored: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(dir.join("prefs.json")).unwrap()).unwrap();
+    assert_eq!(stored["serve"], bg);
+}
+
 #[test]
 fn operator_change_rule() {
     assert!(!api::changes_operator("alice", Some("alice"), false));

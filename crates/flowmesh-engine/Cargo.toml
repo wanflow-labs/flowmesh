@@ -28,6 +28,7 @@ flowmesh-netcfg = { version = "0.1.0", path = "../flowmesh-netcfg" }
 flowmesh-pathsock = { version = "0.1.0", path = "../flowmesh-pathsock" }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 flowmesh-ssh = { version = "0.1.0", path = "../flowmesh-ssh", optional = true }
+flowmesh-serve = { version = "0.1.0", path = "../flowmesh-serve" }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
 flowmesh-stun = { version = "0.1.0", path = "../flowmesh-stun" }
 base64 = "0.23.1"

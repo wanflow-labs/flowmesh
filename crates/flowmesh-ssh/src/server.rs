@@ -11,7 +11,7 @@ use russh::server::{Auth, ChannelOpenHandle, Handle, Msg, Session};
 use russh::{Channel, ChannelId, ChannelOpenFailure, MethodKind, MethodSet, Sig};
 use std::collections::HashMap;
 use std::net::{IpAddr, SocketAddr};
-use std::os::fd::{AsRawFd, OwnedFd};
+use std::os::fd::OwnedFd;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -802,28 +802,5 @@ async fn serve_agent(listener: tokio::net::UnixListener, handle: Handle) {
 /// `dev`. That does not keep local processes out (the kernel delivers their connections to the
 /// mesh address too, as seen in the lab); the admission check in `serve` does.
 pub fn listen(addr: SocketAddr, dev: &str) -> std::io::Result<TcpListener> {
-    use nix::sys::socket::{AddressFamily, SockFlag, SockType, setsockopt, sockopt};
-    let family = if addr.is_ipv4() {
-        AddressFamily::Inet
-    } else {
-        AddressFamily::Inet6
-    };
-    let fd = nix::sys::socket::socket(
-        family,
-        SockType::Stream,
-        SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
-        None,
-    )?;
-    setsockopt(&fd, sockopt::BindToDevice, &std::ffi::OsString::from(dev))?;
-    setsockopt(&fd, sockopt::ReuseAddr, &true)?;
-    if addr.is_ipv6() {
-        setsockopt(&fd, sockopt::Ipv6V6Only, &true)?;
-    }
-    let sa = nix::sys::socket::SockaddrStorage::from(addr);
-    nix::sys::socket::bind(fd.as_raw_fd(), &sa)?;
-    nix::sys::socket::listen(
-        &fd,
-        nix::sys::socket::Backlog::new(128).map_err(std::io::Error::from)?,
-    )?;
-    TcpListener::from_std(std::net::TcpListener::from(fd))
+    flowmesh_net::listen_on_device(addr, dev)
 }

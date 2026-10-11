@@ -9,3 +9,4 @@ pub mod netcheck;
 pub mod ping;
 pub mod query;
 pub mod render;
+pub mod serve;

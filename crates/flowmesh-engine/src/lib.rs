@@ -20,6 +20,8 @@ mod features;
 #[cfg(target_os = "linux")]
 mod linux;
 #[cfg(target_os = "linux")]
+mod served;
+#[cfg(target_os = "linux")]
 mod sshd;
 #[cfg(target_os = "linux")]
 mod tunio;
@@ -60,6 +62,8 @@ pub struct EngineConfig {
     /// The program that runs SSH sessions as the user (`<it> be-child ssh …`); None: this
     /// program.
     pub ssh_helper: Option<std::path::PathBuf>,
+    /// What `flowmesh serve` serves (background and foreground configurations together).
+    pub serve: flowmesh_serve::config::ServeConfig,
 }
 
 /// Why the engine stopped with an error.

@@ -44,6 +44,41 @@ pub async fn tcp_connect(host: &str, port: u16) -> io::Result<TcpStream> {
         .unwrap_or_else(|| io::Error::new(io::ErrorKind::NotFound, format!("{host}: no address"))))
 }
 
+/// A listener on `addr` bound to interface `dev` (SO_BINDTODEVICE), for servers on the mesh
+/// addresses (SSH, serve). Binding to the interface does not keep local processes out; those
+/// servers check where each connection came from themselves.
+#[cfg(target_os = "linux")]
+pub fn listen_on_device(
+    addr: std::net::SocketAddr,
+    dev: &str,
+) -> io::Result<tokio::net::TcpListener> {
+    use nix::sys::socket::{AddressFamily, SockFlag, SockType, setsockopt, sockopt};
+    use std::os::fd::AsRawFd;
+    let family = if addr.is_ipv4() {
+        AddressFamily::Inet
+    } else {
+        AddressFamily::Inet6
+    };
+    let fd = nix::sys::socket::socket(
+        family,
+        SockType::Stream,
+        SockFlag::SOCK_CLOEXEC | SockFlag::SOCK_NONBLOCK,
+        None,
+    )?;
+    setsockopt(&fd, sockopt::BindToDevice, &std::ffi::OsString::from(dev))?;
+    setsockopt(&fd, sockopt::ReuseAddr, &true)?;
+    if addr.is_ipv6() {
+        setsockopt(&fd, sockopt::Ipv6V6Only, &true)?;
+    }
+    let sa = nix::sys::socket::SockaddrStorage::from(addr);
+    nix::sys::socket::bind(fd.as_raw_fd(), &sa)?;
+    nix::sys::socket::listen(
+        &fd,
+        nix::sys::socket::Backlog::new(128).map_err(std::io::Error::from)?,
+    )?;
+    tokio::net::TcpListener::from_std(std::net::TcpListener::from(fd))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

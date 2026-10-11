@@ -123,6 +123,8 @@ pub struct UserProfile {
     pub login_name: String,
     #[serde(rename = "DisplayName")]
     pub display_name: String,
+    #[serde(rename = "ProfilePicURL", skip_serializing_if = "String::is_empty")]
+    pub profile_pic_url: String,
 }
 
 /// 注册响应中的登录身份。用户名在这里，而不在 `User` 中（OBS-20261010-flowmesh-probe）。

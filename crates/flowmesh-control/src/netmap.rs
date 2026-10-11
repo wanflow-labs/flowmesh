@@ -324,6 +324,7 @@ mod tests {
             id,
             login_name: name.into(),
             display_name: name.into(),
+            ..Default::default()
         };
         let mut nm = NetMap::default();
         nm.apply(&MapResponse {

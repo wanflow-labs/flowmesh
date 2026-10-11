@@ -63,6 +63,11 @@ pub(crate) struct Features {
     pub peerapi: Option<PeerApi>,
     ssh: Option<crate::sshd::SshServer>,
     ssh_msg: Option<String>,
+    /// The SSH server's listener port (it is reached as port 22).
+    ssh_port: Option<u16>,
+    served: crate::served::Served,
+    /// Connections the dataplane delivered to the SSH and serve listeners.
+    admissions: flowmesh_dataplane::plane::Admissions,
 }
 
 impl Features {
@@ -71,7 +76,43 @@ impl Features {
             .iter()
             .chain(self.exit_msg.iter())
             .chain(self.ssh_msg.iter())
+            .chain(self.served.msg.iter())
             .cloned()
+    }
+
+    /// The dataplane's port map: 22 to the SSH server, serve ports to their listeners.
+    fn apply_redirects(&self, own: &[IpNet], dp: &mut flowmesh_dataplane::plane::Dataplane) {
+        let mut ports = self.served.redirects();
+        if let Some(p) = self.ssh_port {
+            ports.push((flowmesh_dataplane::plane::SSH_PORT, p));
+        }
+        dp.set_redirects(Some(flowmesh_dataplane::plane::Redirects {
+            own: own.iter().map(IpNet::addr).collect(),
+            ports,
+            admissions: self.admissions.clone(),
+        }));
+    }
+
+    /// `flowmesh serve`: listeners follow the configuration. Returns whether anything changed
+    /// that the dataplane must know.
+    pub fn sync_serve(
+        &mut self,
+        cfg: &EngineConfig,
+        own: &[IpNet],
+        nm: &flowmesh_control::netmap::NetMap,
+        dp: &mut flowmesh_dataplane::plane::Dataplane,
+    ) {
+        let taken: Vec<u16> = self
+            .ssh_port
+            .map(|_| flowmesh_dataplane::plane::SSH_PORT)
+            .into_iter()
+            .collect();
+        if self
+            .served
+            .sync(&cfg.serve, own, nm, &cfg.tun, &self.admissions, &taken)
+        {
+            self.apply_redirects(own, dp);
+        }
     }
 
     /// The SSH server runs while `--ssh` is on. Returns whether Hostinfo changed.
@@ -87,17 +128,15 @@ impl Features {
             (false, true) => {
                 self.ssh = None; // Drop stops the listeners; running sessions end with them.
                 self.ssh_msg = None;
-                dp.set_ssh_redirect(None);
+                self.ssh_port = None;
+                self.apply_redirects(own, dp);
                 log("ssh: server stopped");
                 true
             }
-            (true, false) => match crate::sshd::start(cfg, own, nm) {
-                Ok((server, port, admissions)) => {
-                    dp.set_ssh_redirect(Some((
-                        port,
-                        own.iter().map(IpNet::addr).collect(),
-                        admissions,
-                    )));
+            (true, false) => match crate::sshd::start(cfg, own, nm, &self.admissions) {
+                Ok((server, port)) => {
+                    self.ssh_port = Some(port);
+                    self.apply_redirects(own, dp);
                     log(format!(
                         "ssh: server on port 22 of {:?} (listening on port {port}, mesh interface only)",
                         own.iter().map(IpNet::addr).collect::<Vec<_>>()
@@ -117,11 +156,12 @@ impl Features {
         }
     }
 
-    /// Bring the SSH server's view of the netmap up to date.
-    pub fn update_ssh_view(&self, nm: &flowmesh_control::netmap::NetMap) {
+    /// Bring the SSH and serve listeners' view of the netmap up to date.
+    pub fn update_views(&self, nm: &flowmesh_control::netmap::NetMap) {
         if let Some(s) = &self.ssh {
             s.update(nm);
         }
+        self.served.update(nm);
     }
 
     pub fn ssh_host_keys(&self) -> Vec<String> {

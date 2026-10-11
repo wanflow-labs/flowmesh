@@ -19,6 +19,7 @@ ssh = ["dep:flowmesh-ssh", "flowmesh-engine/ssh"]
 bytes = "1.12.1"
 flowmesh-engine = { version = "0.1.0", path = "../flowmesh-engine", default-features = false }
 flowmesh-meshsvc = { version = "0.1.0", path = "../flowmesh-meshsvc" }
+flowmesh-serve = { version = "0.1.0", path = "../flowmesh-serve" }
 flowmesh-ssh = { version = "0.1.0", path = "../flowmesh-ssh", optional = true }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
 http-body-util = "0.1.5"

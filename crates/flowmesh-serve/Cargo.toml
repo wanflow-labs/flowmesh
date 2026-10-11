@@ -1,0 +1,27 @@
+[package]
+name = "flowmesh-serve"
+description = "flowmesh serve: local servers, files and text shared with the mesh"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.151"
+bytes = "1.12.1"
+futures-util = { version = "0.3", default-features = false, features = ["std"] }
+http-body-util = "0.1.5"
+hyper = { version = "1.12.0", features = ["server", "client", "http1"] }
+hyper-util = { version = "0.1.21", features = ["tokio"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-native-certs = "0.8.4"
+tokio = { version = "1.53.2", features = ["net", "rt", "fs", "io-util", "time", "macros", "sync"] }
+tokio-rustls = { version = "0.26.6", default-features = false, features = ["ring"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["net", "rt-multi-thread", "macros", "io-util", "time"] }

@@ -114,6 +114,7 @@ To not require root, use 'sudo flowmesh set --operator=$USER' once.
 ```
 
 - `--ssh` (`up`/`set`): run the SSH server; `flowmesh ssh` and `flowmesh nc` are the client side. See docs/protocol/ssh.md.
+- `serve [--bg] [--http=<port> | --tcp=<port>] [--set-path=…] [--proxy-protocol=1|2] <target> | off`, `serve status [--json]`, `serve reset`, `serve --help`: see docs/protocol/serve.md.
 
 ## 7. Lab notes
 

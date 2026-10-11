@@ -14,7 +14,7 @@ workspace = true
 tokio = { version = "1.53.2", features = ["net"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-nix = { version = "0.31.3", default-features = false, features = ["socket"] }
+nix = { version = "0.31.3", default-features = false, features = ["socket", "net"] }
 
 [dev-dependencies]
 tokio = { version = "1.53.2", features = ["macros", "rt", "net"] }

@@ -131,11 +131,22 @@ mod linux {
         eprintln!("flowmeshd: listening on {}", args.socket.display());
         let (stop_tx, stop_rx) = watch::channel(false);
         let server = tokio::spawn(api::serve(daemon.clone(), listener, uid, stop_rx));
+        // Foreground `serve` configurations whose CLI stopped renewing them.
+        let expiry = {
+            let d = daemon.clone();
+            tokio::spawn(async move {
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+                    d.expire_serve().await;
+                }
+            })
+        };
         tokio::select! {
             _ = term.recv() => {}
             _ = int.recv() => {}
         }
         let _ = stop_tx.send(true);
+        expiry.abort();
         let _ = server.await;
         // Restores resolv.conf and routes; preferences stay, so the next start reconnects.
         daemon.shutdown().await;

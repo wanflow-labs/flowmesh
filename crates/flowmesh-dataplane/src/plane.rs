@@ -46,13 +46,33 @@ pub struct PeerConfig {
 /// The port SSH clients connect to.
 pub const SSH_PORT: u16 = 22;
 
-/// A TCP packet from one of `own` with source port `port`.
-fn is_tcp_from(pkt: &[u8], own: &[IpAddr], port: u16) -> bool {
-    ippkt::parse(pkt).is_some_and(|m| {
-        m.proto == flowmesh_filter::packet::IpProto::Tcp
-            && m.src_port == port
-            && own.contains(&m.src)
-    })
+/// TCP ports of this node's addresses delivered to local listeners on other ports: the SSH
+/// server (22) and `flowmesh serve` ports. Peers only ever see the outer port.
+#[derive(Debug, Clone, Default)]
+pub struct Redirects {
+    pub own: Vec<IpAddr>,
+    /// (outer port, listener port).
+    pub ports: Vec<(u16, u16)>,
+    pub admissions: Admissions,
+}
+
+#[derive(Debug, Clone)]
+struct Redirect {
+    own: Vec<IpAddr>,
+    inner: HashMap<u16, u16>,
+    outer: HashMap<u16, u16>,
+    admissions: Admissions,
+}
+
+impl Redirect {
+    /// The outer port for a reply from one of our listeners, if `pkt` is one.
+    fn reply_port(&self, pkt: &[u8]) -> Option<u16> {
+        let m = ippkt::parse(pkt)?;
+        if m.proto != flowmesh_filter::packet::IpProto::Tcp || !self.own.contains(&m.src) {
+            return None;
+        }
+        self.outer.get(&m.src_port).copied()
+    }
 }
 
 /// Packets dropped, by direction and reason (the official metric labels).
@@ -94,16 +114,9 @@ pub struct Dataplane {
     /// This node's peerapi listeners: TCP to them skips the filter (the service authorizes itself,
     /// as the official client's peerapi does).
     peerapi: std::collections::HashSet<std::net::SocketAddr>,
-    /// The SSH server: TCP port 22 of this node's addresses is delivered to this port (where the
-    /// server listens, on the mesh interface only), and its replies leave as port 22.
-    ssh: Option<SshRedirect>,
-}
-
-#[derive(Debug, Clone)]
-struct SshRedirect {
-    port: u16,
-    own: Vec<IpAddr>,
-    admissions: Admissions,
+    /// Ports delivered to local listeners (SSH server, serve), and their replies sent back from
+    /// the outer port.
+    redirect: Option<Redirect>,
 }
 
 /// Connections the dataplane let through to the SSH server: the source address of each SYN it
@@ -172,7 +185,7 @@ impl Dataplane {
             static_public,
             local: None,
             peerapi: Default::default(),
-            ssh: None,
+            redirect: None,
         }
     }
 
@@ -280,27 +293,28 @@ impl Dataplane {
         self.filter.set_rules(rules);
     }
 
-    /// Deliver TCP port 22 of `own` to `port` (the SSH server), recording each SYN in
-    /// `admissions`; or stop (`None`).
-    pub fn set_ssh_redirect(&mut self, r: Option<(u16, Vec<IpAddr>, Admissions)>) {
-        self.ssh = r.map(|(port, own, admissions)| SshRedirect {
-            port,
-            own,
-            admissions,
+    /// Deliver TCP ports of `own` to local listeners, recording each SYN in `admissions`; or
+    /// stop (`None`, or no ports).
+    pub fn set_redirects(&mut self, r: Option<Redirects>) {
+        self.redirect = r.filter(|r| !r.ports.is_empty()).map(|r| Redirect {
+            inner: r.ports.iter().copied().collect(),
+            outer: r.ports.iter().map(|(o, i)| (*i, *o)).collect(),
+            own: r.own,
+            admissions: r.admissions,
         });
     }
 
     pub fn outbound(&mut self, pkt: &[u8], now: Duration) -> Vec<Output> {
-        // The SSH server's replies go out from port 22, the port the peer connected to.
+        // A local listener's replies go out from the port the peer connected to.
         let rewritten;
-        let pkt = match &self.ssh {
-            Some(r) if is_tcp_from(pkt, &r.own, r.port) => {
+        let pkt = match self.redirect.as_ref().and_then(|r| r.reply_port(pkt)) {
+            Some(outer) => {
                 let mut p = pkt.to_vec();
-                ippkt::set_tcp_port(&mut p, false, SSH_PORT);
+                ippkt::set_tcp_port(&mut p, false, outer);
                 rewritten = p;
                 rewritten.as_slice()
             }
-            _ => pkt,
+            None => pkt,
         };
         let Some(meta) = ippkt::parse(pkt) else {
             self.drops.outbound_error += 1;
@@ -360,19 +374,21 @@ impl Dataplane {
                         && self
                             .peerapi
                             .contains(&std::net::SocketAddr::new(meta.dst, meta.dst_port));
-                    let ssh = self.ssh.as_ref().filter(|r| {
+                    let redirect = self.redirect.as_ref().filter(|r| {
                         meta.proto == flowmesh_filter::packet::IpProto::Tcp
                             && r.own.contains(&meta.dst)
                     });
                     if !owned || !ours {
                         self.drops.inbound_error += 1;
-                    } else if ssh.is_some_and(|r| meta.dst_port == r.port) {
-                        // The server's own port is reachable only through port 22.
+                    } else if redirect.is_some_and(|r| r.outer.contains_key(&meta.dst_port)) {
+                        // A listener's own port is reachable only through its outer port.
                         self.drops.inbound_acl += 1;
                     } else if peerapi || self.filter.check_in(&meta, now) == Verdict::Accept {
                         let mut pkt = pkt;
-                        if let Some(r) = ssh.filter(|_| meta.dst_port == SSH_PORT) {
-                            ippkt::set_tcp_port(&mut pkt, true, r.port);
+                        if let Some((r, inner)) =
+                            redirect.and_then(|r| Some((r, *r.inner.get(&meta.dst_port)?)))
+                        {
+                            ippkt::set_tcp_port(&mut pkt, true, inner);
                             // SYN without ACK: a new connection.
                             if meta.tcp_flags & 0x12 == 0x02 {
                                 r.admissions
@@ -541,7 +557,11 @@ mod tests {
         b.set_filter_rules(allow_all());
         a.set_filter_rules(allow_all());
         let admissions = Admissions::default();
-        b.set_ssh_redirect(Some((41234, vec![IpAddr::from(B_IP)], admissions.clone())));
+        b.set_redirects(Some(Redirects {
+            own: vec![IpAddr::from(B_IP)],
+            ports: vec![(22, 41234), (80, 41300)],
+            admissions: admissions.clone(),
+        }));
         let syn = build::v4(A_IP, B_IP, 6, &build::tcp(50000, 22, 0x02));
         let first = a.outbound(&syn, Duration::ZERO);
         let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
@@ -566,7 +586,12 @@ mod tests {
         let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
         assert!(tun_b.is_empty());
         // Off: port 22 reaches the host as it is.
-        b.set_ssh_redirect(None);
+        // A second outer port maps to its own listener.
+        let syn = build::v4(A_IP, B_IP, 6, &build::tcp(50003, 80, 0x02));
+        let first = a.outbound(&syn, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(ippkt::parse(&tun_b[0]).unwrap().dst_port, 41300);
+        b.set_redirects(None);
         let syn = build::v4(A_IP, B_IP, 6, &build::tcp(50002, 22, 0x02));
         let first = a.outbound(&syn, Duration::ZERO);
         let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);

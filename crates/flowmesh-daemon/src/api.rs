@@ -133,6 +133,7 @@ fn daemon_error(e: &DaemonError) -> Response<Full<Bytes>> {
         DaemonError::Persist(_) => StatusCode::INTERNAL_SERVER_ERROR,
         DaemonError::Logout(_) => StatusCode::BAD_GATEWAY,
         DaemonError::NotRunning => StatusCode::SERVICE_UNAVAILABLE,
+        DaemonError::Serve(_) => StatusCode::BAD_REQUEST,
     };
     error(code, e)
 }
@@ -298,6 +299,50 @@ where
                 .await
             {
                 Ok(r) => reply(StatusCode::OK, &ping_json(req.ip, &r)),
+                Err(e) => daemon_error(&e),
+            }
+        }
+        // The background serve configuration: open to read like status, root/operator to change.
+        (&Method::GET, "serve") => match serde_json::to_value(d.serve_config().await) {
+            Ok(v) => reply(StatusCode::OK, &v),
+            Err(e) => error(StatusCode::INTERNAL_SERVER_ERROR, e),
+        },
+        (&Method::POST, "serve" | "serve-foreground" | "serve-foreground-stop") if !privileged => {
+            error(
+                StatusCode::FORBIDDEN,
+                "access denied: changing flowmesh requires root or the operator",
+            )
+        }
+        (&Method::POST, "serve") => {
+            let cfg: flowmesh_serve::config::ServeConfig = match parse(&body) {
+                Ok(c) => c,
+                Err(e) => return error(StatusCode::BAD_REQUEST, e),
+            };
+            match d.set_serve(cfg).await {
+                Ok(()) => reply(StatusCode::OK, &json!({})),
+                Err(e) => daemon_error(&e),
+            }
+        }
+        (&Method::POST, "serve-foreground" | "serve-foreground-stop") => {
+            #[derive(serde::Deserialize, Default)]
+            #[serde(default)]
+            struct Fg {
+                id: String,
+                config: flowmesh_serve::config::ServeConfig,
+            }
+            let fg: Fg = match parse(&body) {
+                Ok(f) => f,
+                Err(e) => return error(StatusCode::BAD_REQUEST, e),
+            };
+            if fg.id.is_empty() {
+                return error(StatusCode::BAD_REQUEST, "missing id");
+            }
+            if name == "serve-foreground-stop" {
+                d.serve_foreground_stop(&fg.id).await;
+                return reply(StatusCode::OK, &json!({}));
+            }
+            match d.serve_foreground(fg.id, fg.config).await {
+                Ok(()) => reply(StatusCode::OK, &json!({})),
                 Err(e) => daemon_error(&e),
             }
         }

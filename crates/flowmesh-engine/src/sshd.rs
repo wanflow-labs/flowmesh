@@ -58,7 +58,8 @@ mod imp {
         cfg: &EngineConfig,
         own: &[IpNet],
         nm: &flowmesh_control::netmap::NetMap,
-    ) -> Result<(SshServer, u16, flowmesh_dataplane::plane::Admissions), String> {
+        admissions: &flowmesh_dataplane::plane::Admissions,
+    ) -> Result<(SshServer, u16), String> {
         let dir = cfg
             .state_file
             .parent()
@@ -71,7 +72,6 @@ mod imp {
             None => std::env::current_exe().map_err(|e| format!("own program path: {e}"))?,
         };
         let view = Arc::new(std::sync::RwLock::new(ssh_view(nm)));
-        let admissions = flowmesh_dataplane::plane::Admissions::default();
         let admitted = admissions.clone();
         let shared = Arc::new(flowmesh_ssh::server::Shared {
             config: Arc::new(flowmesh_ssh::server::config(keys)),
@@ -106,7 +106,6 @@ mod imp {
                 _tasks: tasks,
             },
             port,
-            admissions,
         ))
     }
 
@@ -148,7 +147,8 @@ mod imp {
         _cfg: &EngineConfig,
         _own: &[IpNet],
         _nm: &flowmesh_control::netmap::NetMap,
-    ) -> Result<(SshServer, u16, flowmesh_dataplane::plane::Admissions), String> {
+        _admissions: &flowmesh_dataplane::plane::Admissions,
+    ) -> Result<(SshServer, u16), String> {
         Err("this flowmeshd was built without SSH support".into())
     }
 }

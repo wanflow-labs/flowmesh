@@ -1203,6 +1203,8 @@ pub async fn run(
         .await;
     // The SSH server (`--ssh`).
     let ssh_changed = features.sync_ssh(args, &me.addresses, &ctx.nm, &mut dp);
+    // `flowmesh serve`.
+    features.sync_serve(args, &me.addresses, &ctx.nm, &mut dp);
     if peerapi_changed || ssh_changed {
         crate::features::apply_to_hostinfo(&mut hostinfo, args, &features);
         report(
@@ -1409,8 +1411,8 @@ pub async fn run(
                     if changed.self_node {
                         check_key(&ctx.nm, m.control_time.as_deref())?;
                     }
-                    if changed.peers || m.ssh_policy.is_some() {
-                        features.update_ssh_view(&ctx.nm);
+                    if changed.peers || changed.self_node || m.ssh_policy.is_some() {
+                        features.update_views(&ctx.nm);
                     }
                     if changed.peers || changed.dns || changed.self_node {
                         view = dns_view(&ctx.nm, answer_aaaa);
@@ -1513,6 +1515,7 @@ pub async fn run(
                                     .sync_peerapi(&cur, &me.addresses, rules, &host_upstreams, &mut dp)
                                     .await;
                                 features.sync_ssh(&cur, &me.addresses, &ctx.nm, &mut dp);
+                                features.sync_serve(&cur, &me.addresses, &ctx.nm, &mut dp);
                                 if cur.advertise_exit_node != old.advertise_exit_node {
                                     exit_ifaces = cur.advertise_exit_node.then(|| interfaces(&cur.tun));
                                 }

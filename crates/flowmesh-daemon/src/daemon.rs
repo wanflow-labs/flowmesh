@@ -8,6 +8,7 @@ use crate::status_json;
 use flowmesh_engine::command::{EngineCommand, PingError, PingReply, WhoisReply};
 use flowmesh_engine::status::EngineStatus;
 use flowmesh_engine::{EngineConfig, EngineError};
+use flowmesh_serve::config::ServeConfig;
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::path::{Path, PathBuf};
@@ -68,7 +69,13 @@ impl Options {
 pub struct Stored {
     pub prefs: Prefs,
     pub logged_in: bool,
+    /// `flowmesh serve --bg` (official field names; `serve status --json` prints it).
+    pub serve: ServeConfig,
 }
+
+/// How long a foreground `serve` stays after its last renewal (the CLI renews every few seconds
+/// and removes it when interrupted; this bounds a CLI that died).
+pub const SERVE_LEASE: Duration = Duration::from_secs(15);
 
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonError {
@@ -80,6 +87,8 @@ pub enum DaemonError {
     Logout(String),
     #[error("flowmesh is not running")]
     NotRunning,
+    #[error("{0}")]
+    Serve(String),
 }
 
 /// Body of `up`.
@@ -108,6 +117,17 @@ struct Shared {
     /// Last snapshot; kept after `down` (official behavior), cleared by `logout`.
     snap: EngineStatus,
     engine: Option<Engine>,
+    /// Foreground `serve` configurations by the id the CLI chose, with when each expires.
+    foreground: std::collections::BTreeMap<String, (ServeConfig, tokio::time::Instant)>,
+}
+
+impl Shared {
+    /// What is served now: the background configuration and every live foreground one.
+    fn serve(&self) -> ServeConfig {
+        self.foreground
+            .values()
+            .fold(self.stored.serve.clone(), |c, (f, _)| c.merged(f))
+    }
 }
 
 /// Sender into the current engine run. Kept outside `Shared` (and behind a lock never held across an
@@ -128,6 +148,18 @@ pub struct Daemon<L: Launcher> {
 }
 
 /// Where an unparsable prefs file is moved, so it can be inspected.
+/// What flowmesh cannot serve: HTTPS needs certificates from the control server.
+fn check_serve(cfg: &ServeConfig) -> Result<(), DaemonError> {
+    for (port, h) in &cfg.tcp {
+        if h.https || !h.terminate_tls.is_empty() {
+            return Err(DaemonError::Serve(format!(
+                "port {port}: HTTPS needs certificates from the control server, which it does not issue"
+            )));
+        }
+    }
+    Ok(())
+}
+
 /// Settings this build cannot honor are refused, not stored to be silently ignored.
 fn refuse_missing_features(update: &PrefsUpdate) -> Result<(), DaemonError> {
     if update.run_ssh == Some(true) && !cfg!(feature = "ssh") {
@@ -254,7 +286,7 @@ impl<L: Launcher> Daemon<L> {
         else {
             return false;
         };
-        let cfg = engine_config(&sh.stored.prefs, None, &self.opts);
+        let cfg = engine_config(sh, None, &self.opts);
         let (reply, rx) = oneshot::channel();
         if tx
             .send(EngineCommand::Reconfigure {
@@ -270,6 +302,66 @@ impl<L: Launcher> Daemon<L> {
             tokio::time::timeout(RECONFIGURE_TIMEOUT, rx).await,
             Ok(Ok(Ok(())))
         )
+    }
+
+    /// The background `serve` configuration.
+    pub async fn serve_config(&self) -> ServeConfig {
+        self.shared.lock().await.stored.serve.clone()
+    }
+
+    /// Replace the background `serve` configuration.
+    pub async fn set_serve(&self, cfg: ServeConfig) -> Result<(), DaemonError> {
+        check_serve(&cfg)?;
+        let mut sh = self.shared.lock().await;
+        if sh.stored.serve == cfg {
+            return Ok(());
+        }
+        let mut stored = sh.stored.clone();
+        stored.serve = cfg;
+        save(&self.opts.prefs_file(), &stored)?;
+        sh.stored = stored;
+        self.serve_changed(&mut sh).await;
+        Ok(())
+    }
+
+    /// Add or renew the foreground `serve` configuration `id` for another [`SERVE_LEASE`].
+    pub async fn serve_foreground(&self, id: String, cfg: ServeConfig) -> Result<(), DaemonError> {
+        check_serve(&cfg)?;
+        let mut sh = self.shared.lock().await;
+        let until = tokio::time::Instant::now() + SERVE_LEASE;
+        let changed = sh.foreground.get(&id).is_none_or(|(c, _)| *c != cfg);
+        sh.foreground.insert(id, (cfg, until));
+        if changed {
+            self.serve_changed(&mut sh).await;
+        }
+        Ok(())
+    }
+
+    /// Remove the foreground `serve` configuration `id` (its CLI was interrupted).
+    pub async fn serve_foreground_stop(&self, id: &str) {
+        let mut sh = self.shared.lock().await;
+        if sh.foreground.remove(id).is_some() {
+            self.serve_changed(&mut sh).await;
+        }
+    }
+
+    /// Drop foreground `serve` configurations whose CLI stopped renewing them.
+    pub async fn expire_serve(&self) {
+        let mut sh = self.shared.lock().await;
+        let now = tokio::time::Instant::now();
+        let before = sh.foreground.len();
+        sh.foreground.retain(|_, (_, until)| *until > now);
+        if sh.foreground.len() != before {
+            self.serve_changed(&mut sh).await;
+        }
+    }
+
+    /// Give the running engine the new serve configuration (no restart unless it cannot apply it).
+    async fn serve_changed(&self, sh: &mut Shared) {
+        if sh.stored.prefs.want_running && sh.engine.is_some() && !self.reconfigure(sh).await {
+            self.stop_engine(sh).await;
+            self.spawn_engine(sh);
+        }
     }
 
     pub async fn down(&self) -> Result<(), DaemonError> {
@@ -421,7 +513,7 @@ impl<L: Launcher> Daemon<L> {
     }
 
     fn spawn_engine(&self, sh: &mut Shared) {
-        let cfg = engine_config(&sh.stored.prefs, sh.authkey.clone(), &self.opts);
+        let cfg = engine_config(sh, sh.authkey.clone(), &self.opts);
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();
         sh.live = false;
@@ -458,7 +550,8 @@ fn facts(sh: &Shared) -> Facts {
 
 /// Run the engine until stopped; retry failures with backoff; stop retrying when refused.
 /// The engine configuration for these preferences.
-fn engine_config(p: &Prefs, authkey: Option<String>, opts: &Options) -> EngineConfig {
+fn engine_config(sh: &Shared, authkey: Option<String>, opts: &Options) -> EngineConfig {
+    let p = &sh.stored.prefs;
     EngineConfig {
         login_server: p.control_url.clone(),
         authkey,
@@ -479,6 +572,7 @@ fn engine_config(p: &Prefs, authkey: Option<String>, opts: &Options) -> EngineCo
         exit_node_allow_lan_access: p.exit_node_allow_lan_access,
         run_ssh: p.run_ssh,
         ssh_helper: None,
+        serve: sh.serve(),
     }
 }
 
@@ -535,7 +629,7 @@ async fn supervise<L: Launcher>(
         }
         // Restart with the current preferences (they may have changed while the engine ran, see
         // `reconfigure`); a registered node key no longer needs the auth key.
-        cfg = engine_config(&sh.stored.prefs, sh.authkey.clone(), &opts);
+        cfg = engine_config(&sh, sh.authkey.clone(), &opts);
         drop(sh);
         tokio::select! {
             _ = tokio::time::sleep(delay) => {}

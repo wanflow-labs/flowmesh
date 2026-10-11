@@ -345,6 +345,17 @@ async fn run(
             // wait for, and ssh keeps our stdin open until we exit.
             std::process::exit(0)
         }
+        Command::ServeError(e) => {
+            eprintln!("error: {e}\n\ntry `flowmesh serve --help` for usage info");
+            Ok(1)
+        }
+        Command::Serve(args) => match serve_command(client, args).await {
+            Ok(code) => Ok(code),
+            Err(e) => {
+                eprintln!("error: {e}\n\ntry `flowmesh serve --help` for usage info");
+                Ok(1)
+            }
+        },
         Command::Version => {
             outln!("{}", env!("CARGO_PKG_VERSION"));
             Ok(0)
@@ -544,6 +555,109 @@ async fn dns_query(
         }
     }
     Err("no answer from 100.100.100.100".into())
+}
+
+/// This node's DNS name (no trailing dot) and mesh addresses, from status.
+async fn self_names(client: &LocalClient) -> Result<(String, Vec<std::net::IpAddr>), String> {
+    let s = client.get("status").await.map_err(|e| e.to_string())?;
+    let name = s["Self"]["DNSName"]
+        .as_str()
+        .unwrap_or_default()
+        .trim_end_matches('.')
+        .to_string();
+    if name.is_empty() {
+        return Err("flowmesh is not running".into());
+    }
+    let ips = s["TailscaleIPs"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|a| a.as_str()?.parse().ok())
+        .collect();
+    Ok((name, ips))
+}
+
+async fn serve_command(
+    client: &LocalClient,
+    args: flowmesh_cli::serve::ServeArgs,
+) -> Result<u8, String> {
+    use flowmesh_cli::serve::ServeArgs;
+    use flowmesh_serve::config::{self, ServeConfig};
+    let e = |e: flowmesh_daemon::client::ClientError| e.to_string();
+    let load = || async {
+        let v = client.get("serve").await.map_err(e)?;
+        serde_json::from_value::<ServeConfig>(v).map_err(|e| e.to_string())
+    };
+    match args {
+        ServeArgs::Help => {
+            outln!("{}", flowmesh_cli::serve::HELP);
+            Ok(0)
+        }
+        ServeArgs::Status { json } => {
+            let cfg = load().await?;
+            if json {
+                outln!("{}", config::status_json(&cfg));
+            } else {
+                let (name, ips) = self_names(client).await.unwrap_or_default();
+                out!("{}", config::status(&cfg, &name, &ips));
+            }
+            Ok(0)
+        }
+        ServeArgs::Reset => {
+            client.post("serve", &json!({})).await.map_err(e)?;
+            Ok(0)
+        }
+        ServeArgs::Apply { bg, mode, change } => {
+            let (name, ips) = self_names(client).await?;
+            let off = matches!(
+                change,
+                config::Change::WebOff { .. } | config::Change::TcpOff { .. }
+            );
+            if bg || off {
+                let mut cfg = load().await?;
+                config::apply(&mut cfg, &name, change)?;
+                let body = serde_json::to_value(&cfg).map_err(|e| e.to_string())?;
+                client.post("serve", &body).await.map_err(e)?;
+                if !off {
+                    out!(
+                        "{}{}",
+                        config::available(&cfg, &name, &ips, mode.port()),
+                        config::background_footer(&mode.flag())
+                    );
+                }
+                return Ok(0);
+            }
+            // Foreground: served while this command runs (renewed every few seconds), gone
+            // when it is interrupted.
+            let mut cfg = ServeConfig::default();
+            config::apply(&mut cfg, &name, change)?;
+            let mut idb = [0u8; 8];
+            getrandom::fill(&mut idb).map_err(|e| e.to_string())?;
+            let id: String = idb.iter().map(|b| format!("{b:02x}")).collect();
+            let body = json!({ "id": id, "config": cfg });
+            client.post("serve-foreground", &body).await.map_err(e)?;
+            out!(
+                "{}Press Ctrl+C to exit.\n",
+                config::available(&cfg, &name, &ips, mode.port())
+            );
+            use tokio::signal::unix::{SignalKind, signal};
+            let mut int = signal(SignalKind::interrupt()).map_err(|e| e.to_string())?;
+            let mut term = signal(SignalKind::terminate()).map_err(|e| e.to_string())?;
+            loop {
+                tokio::select! {
+                    _ = int.recv() => break,
+                    _ = term.recv() => break,
+                    () = tokio::time::sleep(Duration::from_secs(5)) => {
+                        client.post("serve-foreground", &body).await.map_err(e)?;
+                    }
+                }
+            }
+            let _ = client
+                .post("serve-foreground-stop", &json!({ "id": id }))
+                .await;
+            Ok(0)
+        }
+    }
 }
 
 /// `$XDG_CONFIG_HOME/flowmesh/ssh_known_hosts`, else `~/.config/flowmesh/ssh_known_hosts`.

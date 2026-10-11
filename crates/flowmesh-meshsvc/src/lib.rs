@@ -285,6 +285,7 @@ mod tests {
             id: 9,
             login_name: "alice".into(),
             display_name: "Alice".into(),
+            ..Default::default()
         };
         let c = Caller::new(
             "100.64.0.3:5000".parse().unwrap(),
