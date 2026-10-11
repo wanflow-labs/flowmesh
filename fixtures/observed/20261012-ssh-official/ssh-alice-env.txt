@@ -1,0 +1,13 @@
+$ tailscale ssh alice@tss-eorvv4tu 'id; pwd; echo SHELL=$SHELL; env | sort'
+uid=1000(alice) gid=1000(alice) groups=1000(alice)
+/home/alice
+SHELL=/bin/sh
+HOME=/home/alice
+PATH=/usr/local/bin:/usr/bin:/bin
+PWD=/home/alice
+SHELL=/bin/sh
+SHLVL=1
+SSH_CLIENT=100.64.0.52 52678 22
+SSH_CONNECTION=100.64.0.52 52678 100.64.0.51 22
+USER=alice
+[exit 0]

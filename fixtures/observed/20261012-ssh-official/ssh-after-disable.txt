@@ -1,0 +1,5 @@
+$ tailscale ssh root@tss-eorvv4tu id
+Dial("100.64.0.51", 22): unexpected HTTP response: 502 Bad Gateway, dial failure: dial tcp 100.64.0.51:22: connect: connection refused
+
+Connection closed by UNKNOWN port 65535
+[exit 255]

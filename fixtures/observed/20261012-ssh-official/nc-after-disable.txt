@@ -1,0 +1,5 @@
+$ timeout 5 tailscale nc tss-eorvv4tu 22 </dev/null | head -c 64; echo
+Dial("tss-eorvv4tu", 22): unexpected HTTP response: 502 Bad Gateway, dial failure: dial tcp 100.64.0.51:22: connect: connection refused
+
+
+[exit 0]

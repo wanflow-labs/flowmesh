@@ -1,0 +1,2 @@
+$ tailscale ssh root@tss-eorvv4tu 'exit 3'
+[exit 3]

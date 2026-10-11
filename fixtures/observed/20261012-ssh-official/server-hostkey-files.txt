@@ -1,0 +1,11 @@
+/tmp:
+total 12
+drwxrwxrwt    1 root     root          4096 Oct 11 17:25 .
+drwxr-xr-x    1 root     root          4096 Oct 11 17:25 ..
+drwx------    4 root     root          4096 Oct 11 17:25 ts
+
+/var/lib/tailscale:
+total 12
+drwx------    2 root     root          4096 Oct 11 17:25 .
+drwxr-xr-x    1 root     root          4096 Oct 11 17:25 ..
+-rw-------    1 root     root           209 Oct 11 17:25 tailscaled.log.conf

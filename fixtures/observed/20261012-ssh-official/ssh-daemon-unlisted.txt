@@ -1,0 +1,4 @@
+$ tailscale ssh daemon@tss-eorvv4tu id
+tailscale: tailnet policy does not permit you to SSH as user "daemon"
+Connection closed by UNKNOWN port 65535
+[exit 255]

@@ -1,0 +1,34 @@
+{
+  "acls": [
+    {
+      "action": "accept",
+      "dst": [
+        "*:*"
+      ],
+      "src": [
+        "*"
+      ]
+    }
+  ],
+  "ssh": [
+    {
+      "action": "accept",
+      "dst": [
+        "tag:relay-enabled"
+      ],
+      "src": [
+        "tag:relay-enabled"
+      ],
+      "users": [
+        "root",
+        "alice",
+        "autogroup:nonroot"
+      ]
+    }
+  ],
+  "tagOwners": {
+    "tag:relay-enabled": [
+      "lab@"
+    ]
+  }
+}

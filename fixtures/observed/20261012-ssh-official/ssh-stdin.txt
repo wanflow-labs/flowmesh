@@ -1,0 +1,3 @@
+$ echo hello-from-stdin | tailscale ssh root@tss-eorvv4tu cat
+hello-from-stdin
+[exit 0]

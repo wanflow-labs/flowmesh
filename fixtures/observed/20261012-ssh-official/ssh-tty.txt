@@ -1,0 +1,6 @@
+$ tailscale ssh root@tss-eorvv4tu -tt 'tty; echo TERM=$TERM; stty size'
+/dev/pts/0
+TERM=
+stty: standard input
+Connection to 100.64.0.51 closed.
+[exit 0]

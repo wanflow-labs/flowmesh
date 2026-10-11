@@ -1,0 +1,60 @@
+2026/10/11 17:25:33 audit: SSH login: user=root uid=0 from=100.64.0.52 ts_user=lab node=tsc-0zcrwvsz.mesh.lab.internal.
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-235ff96540): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=id]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-235ff96540): Session complete
+2026/10/11 17:25:33 ssh-conn-20261011T172533-2e40b3c596: handling conn: 100.64.0.52:52678->alice@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-2e40b3c596: starting session: sess-20261011T172533-7d056d5596
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7d056d5596): handling new SSH connection from lab (100.64.0.52) to ssh-user "alice"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7d056d5596): access granted to lab as ssh-user "alice"
+2026/10/11 17:25:33 audit: SSH login: user=alice uid=1000 from=100.64.0.52 ts_user=lab node=tsc-0zcrwvsz.mesh.lab.internal.
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7d056d5596): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=1000 --gid=1000 --groups=1000 --local-user=alice --home-dir=/home/alice --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=id; pwd; echo SHELL=$SHELL; env | sort]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7d056d5596): Session complete
+2026/10/11 17:25:33 ssh-conn-20261011T172533-c89e37a2d1: handling conn: 100.64.0.52:52682->carol@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-c6a03f77a4: handling conn: 100.64.0.52:52688->daemon@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-6e6429b8fe: handling conn: 100.64.0.52:52704->nosuchuser@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-11869bc013: handling conn: 100.64.0.52:52706->root@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-11869bc013: starting session: sess-20261011T172533-e307408707
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-e307408707): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-e307408707): access granted to lab as ssh-user "root"
+2026/10/11 17:25:33 audit: SSH login: user=root uid=0 from=100.64.0.52 ts_user=lab node=tsc-0zcrwvsz.mesh.lab.internal.
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-e307408707): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=exit 3]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-e307408707): Wait: code=3
+2026/10/11 17:25:33 ssh-conn-20261011T172533-f57eb3f0cb: handling conn: 100.64.0.52:52714->root@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-f57eb3f0cb: starting session: sess-20261011T172533-89a8beee21
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-89a8beee21): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-89a8beee21): access granted to lab as ssh-user "root"
+2026/10/11 17:25:33 audit: SSH login: user=root uid=0 from=100.64.0.52 ts_user=lab node=tsc-0zcrwvsz.mesh.lab.internal.
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-89a8beee21): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=cat]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-89a8beee21): Session complete
+2026/10/11 17:25:33 ssh-conn-20261011T172533-2777731427: handling conn: 100.64.0.52:52716->root@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-2777731427: starting session: sess-20261011T172533-939fc1ca5a
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-939fc1ca5a): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-939fc1ca5a): access granted to lab as ssh-user "root"
+2026/10/11 17:25:33 audit: SSH login: user=root uid=0 from=100.64.0.52 ts_user=lab node=tsc-0zcrwvsz.mesh.lab.internal.
+2026/10/11 17:25:33 [RATELIMIT] format("audit: SSH login: user=%s uid=%s from=%s ts_user=%s node=%s")
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-939fc1ca5a): starting pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=true --tty-name=pts/0 --cmd=tty; echo TERM=$TERM; stty size]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-939fc1ca5a): Session complete
+2026/10/11 17:25:33 ssh-conn-20261011T172533-c1ccbb017b: handling conn: 100.64.0.52:52720->root@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-c1ccbb017b: starting session: sess-20261011T172533-7818205d48
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7818205d48): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7818205d48): access granted to lab as ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7818205d48): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=hostname]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-7818205d48): Session complete
+2026/10/11 17:25:33 ssh-conn-20261011T172533-0e438a86be: handling conn: 100.64.0.52:52734->root@100.64.0.51:22
+2026/10/11 17:25:33 ssh-conn-20261011T172533-0e438a86be: starting session: sess-20261011T172533-1ac8605c3a
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-1ac8605c3a): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-1ac8605c3a): access granted to lab as ssh-user "root"
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-1ac8605c3a): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=true]
+2026/10/11 17:25:33 ssh-session(sess-20261011T172533-1ac8605c3a): Session complete
+2026/10/11 17:25:34 ssh-conn-20261011T172534-64743a5ed3: handling conn: 100.64.0.52:52750->root@100.64.0.51:22
+2026/10/11 17:25:34 ssh-conn-20261011T172534-64743a5ed3: starting session: sess-20261011T172534-23e08d879e
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-23e08d879e): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-23e08d879e): access granted to lab as ssh-user "root"
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-23e08d879e): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --cmd=id]
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-23e08d879e): Session complete
+2026/10/11 17:25:34 ssh-conn-20261011T172534-d4ab6656d9: handling conn: 100.64.0.52:52752->root@100.64.0.51:22
+2026/10/11 17:25:34 ssh-conn-20261011T172534-d4ab6656d9: starting session: sess-20261011T172534-edbee0a7b4
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-edbee0a7b4): handling new SSH connection from lab (100.64.0.52) to ssh-user "root"
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-edbee0a7b4): access granted to lab as ssh-user "root"
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-edbee0a7b4): starting non-pty command: [/usr/local/bin/tailscaled be-child ssh --login-shell=/bin/sh --uid=0 --gid=0 --groups=0,1,2,3,4,6,10,11,20,26,27 --local-user=root --home-dir=/root --remote-user=tag:relay-enabled --remote-ip=100.64.0.52 --has-tty=false --tty-name= --sftp --cmd=/usr/local/bin/tailscaled be-child sftp]
+2026/10/11 17:25:34 ssh-session(sess-20261011T172534-edbee0a7b4): Session complete
+2026/10/11 17:25:35 ssh-conn-20261011T172535-1e9075235b: handling conn: 100.64.0.52:52766->root@100.64.0.51:22

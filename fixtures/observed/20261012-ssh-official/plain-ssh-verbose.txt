@@ -1,0 +1,10 @@
+$ ssh -v -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o BatchMode=yes root@100.64.0.51 id 2>&1 | grep -Ei 'remote software|authentications that can continue|authenticated|server host key|kex:' ; echo done
+debug1: Remote protocol version 2.0, remote software version Tailscale
+debug1: kex: algorithm: mlkem768x25519-sha256
+debug1: kex: host key algorithm: ssh-ed25519
+debug1: kex: server->client cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+debug1: kex: client->server cipher: chacha20-poly1305@openssh.com MAC: <implicit> compression: none
+debug1: Server host key: ssh-ed25519 SHA256:6FzJq3x+llMVapfrEUkXDE6kEPmpkjUsml4m4b7m2q8
+Authenticated to 100.64.0.51 ([100.64.0.51]:22) using "none".
+done
+[exit 0]

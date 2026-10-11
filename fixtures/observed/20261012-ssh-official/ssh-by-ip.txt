@@ -1,0 +1,3 @@
+$ tailscale ssh root@100.64.0.51 hostname
+tsS
+[exit 0]

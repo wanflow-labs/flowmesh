@@ -1,0 +1,6 @@
+$ echo ls / | sftp -b - -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null root@100.64.0.51
+Warning: Permanently added '100.64.0.51' (ED25519) to the list of known hosts.
+sftp> ls /
+/bin    /c      /dev    /etc    /home   /lib    /media  /mnt    /opt    /proc   
+/root   /run    /sbin   /srv    /sys    /tmp    /usr    /var    
+[exit 0]
