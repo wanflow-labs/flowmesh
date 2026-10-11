@@ -1,0 +1,2 @@
+Warning: UDP GRO forwarding is suboptimally configured on eth0, UDP forwarding throughput capability will increase with a configuration change.
+See https://tailscale.com/s/ethtool-config-udp-gro

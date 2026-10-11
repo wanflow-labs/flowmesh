@@ -18,4 +18,5 @@
 | OBS-20261010-peer-relay-handshake | 观测 | 以探针为客户端尝试与中继服务器握手（尚无回复） |
 | OBS-20261010-peer-relay-behavior | 观测 | 中继失效与恢复、闲置、与 prefer/strict 模式的配合 |
 | OBS-20261011-subnet-router-official | 观测 | 官方客户端作子网路由器（`lab/scripts/subnet_router_observe.sh`）：转发开关下的 `up` 警告、netfilter 规则（ts-forward / ts-postrouting，fwmark 0x40000）、NoSNAT 默认 false；健康信息为空 |
+| OBS-20261011-exit-node-official | 观测 | 官方客户端的出口节点（提供与使用）、`--exit-node-allow-lan-access`、`--shields-up`、`--stateful-filtering`、`--advertise-tags`（`lab/scripts/exit_node_observe.sh`，经 `lab/scripts/tls_proxy.sh` 的 https 地址避开"强制 TLS"）：策略路由（规则 5210/5230/5250/5270、表 52、fwmark 0x80000/0xff0000）、允许局域网时表 52 里 `throw` 本地网段、出口节点不转发到私网/本地网段（回 TSMP reject）、有状态过滤的 conntrack 规则、标签格式校验 |
 | PUB-6 | 公开标准 | RFC 8926 Geneve — https://www.rfc-editor.org/rfc/rfc8926 |
