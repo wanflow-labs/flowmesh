@@ -1,0 +1,19 @@
+$ ls -l /var/run/tailscale/tailscaled.sock
+srw-rw-rw-    1 root     root             0 Oct 11 16:35 /var/run/tailscale/tailscaled.sock
+$ (as nobody) tailscale status
+100.64.0.41  toa                         lab  linux  -                           
+100.64.0.4   fm-a                        lab  linux  -                           
+100.64.0.8   fm-pkg-debian12-40lwocwu    lab  linux  offline, last seen 1d ago   
+[exit 0]
+$ (as nobody) tailscale set --shields-up
+Access denied: checkprefs access denied
+
+Use 'sudo tailscale set --shields-up'.
+To not require root, use 'sudo tailscale set --operator=$USER' once.
+[exit 1]
+$ (as daemon, not the operator) tailscale set --shields-up
+Access denied: checkprefs access denied
+
+Use 'sudo tailscale set --shields-up=false'.
+To not require root, use 'sudo tailscale set --operator=$USER' once.
+[exit 1]

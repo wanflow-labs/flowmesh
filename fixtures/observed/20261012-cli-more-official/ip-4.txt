@@ -1,0 +1,3 @@
+$ tailscale ip -4
+100.64.0.41
+[exit 0]

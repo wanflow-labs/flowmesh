@@ -1,0 +1,56 @@
+$ tailscale dns status --all
+
+=== 'Use Tailscale DNS' status ===
+
+Tailscale DNS: disabled.
+
+(Run 'tailscale set --accept-dns=true' to start sending DNS queries to the Tailscale DNS resolver)
+
+=== MagicDNS configuration ===
+
+This is the DNS configuration provided by the coordination server to this device.
+
+MagicDNS: enabled tailnet-wide (suffix = mesh.lab.internal)
+
+Other devices in your tailnet can reach this device at toa.mesh.lab.internal.
+
+Resolvers (in preference order):
+  (no resolvers configured, system default will be used: see 'System DNS configuration' below)
+
+Split DNS Routes:
+
+Fallback Resolvers:
+  0: &{223.5.5.5 [] false}
+
+Search Domains:
+  - mesh.lab.internal
+
+Nameservers IP Addresses:
+  (none were provided)
+
+Certificate Domains:
+  (no certificate domains are configured)
+
+Additional DNS Records:
+  - [A] svc.mesh.lab.internal                              -> 100.64.0.250
+
+Filtered suffixes when forwarding DNS queries as an exit node:
+  (no suffixes are filtered)
+
+=== System DNS configuration ===
+
+This is the DNS configuration that Tailscale believes your operating system is using.
+Tailscale may use this configuration if 'Override Local DNS' is disabled in the admin console,
+or if no resolvers are provided by the coordination server.
+
+Nameservers:
+  - 127.0.0.11
+
+Search domains:
+  (no search domains found)
+
+Match domains:
+  (no match domains found)
+
+[this is a preliminary version of this command; the output format may change in the future]
+[exit 0]

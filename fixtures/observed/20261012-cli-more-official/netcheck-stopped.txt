@@ -1,0 +1,44 @@
+$ tailscale netcheck
+2026/10/11 16:35:52 No DERP map from tailscaled; using default.
+2026/10/11 16:35:52 attempting to fetch a DERPMap from https://controlplane.tailscale.com
+2026/10/11 16:35:53 portmap: monitor: gateway and self IP changed: gw=172.29.0.1 self=172.29.0.111
+
+Report:
+	* Time: 2026-10-11T16:35:54.335618721Z
+	* UDP: true
+	* IPv4: yes, 198.51.100.1:9348
+	* IPv6: no, but OS has support
+	* MappingVariesByDestIP: false
+	* PortMapping: 
+	* CaptivePortal: false
+	* Nearest DERP: Tokyo
+	* DERP latency:
+		- tok: 57.8ms  (Tokyo)
+		- hkg: 80.9ms  (Hong Kong)
+		- sin: 95.1ms  (Singapore)
+		- blr: 119.6ms (Bengaluru)
+		- lax: 180.5ms (Los Angeles)
+		- sfo: 200.7ms (San Francisco)
+		- dfw: 208.4ms (Dallas)
+		- ord: 215.2ms (Chicago)
+		- hel: 215.6ms (Helsinki)
+		- nue: 216.4ms (Nuremberg)
+		- nyc: 220ms   (New York City)
+		- sea: 220.8ms (Seattle)
+		- den: 226.8ms (Denver)
+		- mia: 228.8ms (Miami)
+		- lhr: 242.2ms (London)
+		- tor: 244ms   (Toronto)
+		- hnl: 245.4ms (Honolulu)
+		- mad: 255.8ms (Madrid)
+		- par: 256.2ms (Paris)
+		- iad: 264.5ms (Ashburn)
+		- waw: 279ms   (Warsaw)
+		- fra: 291.5ms (Frankfurt)
+		- ams: 295.5ms (Amsterdam)
+		- syd: 302.4ms (Sydney)
+		- dbi: 339.6ms (Dubai)
+		- nai: 348.4ms (Nairobi)
+		- jnb: 354.6ms (Johannesburg)
+		- sao: 391.4ms (São Paulo)
+[exit 0]

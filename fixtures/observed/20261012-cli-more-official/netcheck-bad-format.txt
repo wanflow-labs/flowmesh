@@ -1,0 +1,4 @@
+$ tailscale netcheck --format=xml
+2026/10/11 16:36:02 portmap: monitor: gateway and self IP changed: gw=172.29.0.1 self=172.29.0.111
+unknown output format "xml"
+[exit 1]

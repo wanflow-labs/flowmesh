@@ -1,0 +1,3 @@
+$ tailscale ip a b
+too many arguments, expected at most one peer
+[exit 1]

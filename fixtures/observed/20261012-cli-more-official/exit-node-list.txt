@@ -1,0 +1,8 @@
+$ tailscale exit-node list
+
+ IP              HOSTNAME                  COUNTRY     CITY      STATUS     
+ 100.64.0.42     toe.mesh.lab.internal     -           -         -          
+
+# To view the complete list of exit nodes for a country, use `tailscale exit-node list --filter=` followed by the country name.
+# To use an exit node, use `tailscale set --exit-node=` followed by the hostname or IP.
+[exit 0]

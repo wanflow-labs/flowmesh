@@ -1,0 +1,48 @@
+$ tailscale debug prefs
+{
+	"ControlURL": "https://hs-tls.lab",
+	"RouteAll": false,
+	"ExitNodeID": "",
+	"ExitNodeIP": "",
+	"InternalExitNodePrior": "",
+	"ExitNodeAllowLANAccess": false,
+	"CorpDNS": false,
+	"RunSSH": false,
+	"RunWebClient": false,
+	"WantRunning": true,
+	"LoggedOut": false,
+	"ShieldsUp": false,
+	"AdvertiseTags": null,
+	"Hostname": "toA",
+	"NotepadURLs": false,
+	"AdvertiseRoutes": null,
+	"AdvertiseServices": null,
+	"Sync": null,
+	"NoSNAT": false,
+	"NoStatefulFiltering": true,
+	"NetfilterMode": 2,
+	"OperatorUser": "nobody",
+	"AutoUpdate": {
+		"Check": true,
+		"Apply": null
+	},
+	"AppConnector": {
+		"Advertise": false
+	},
+	"PostureChecking": false,
+	"NetfilterKind": "",
+	"DriveShares": null,
+	"AllowSingleHosts": true,
+	"Config": {
+		"PrivateNodeKey": "<redacted>",
+		"OldPrivateNodeKey": "<redacted>",
+		"UserProfile": {
+			"ID": 1,
+			"LoginName": "lab",
+			"DisplayName": "lab"
+		},
+		"NetworkLockKey": "<redacted>",
+		"NodeID": "209"
+	}
+}
+[exit 0]

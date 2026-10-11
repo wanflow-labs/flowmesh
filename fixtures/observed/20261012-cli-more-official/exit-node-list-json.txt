@@ -1,0 +1,11 @@
+$ tailscale exit-node list --json
+flag provided but not defined: -json
+Show exit nodes
+
+USAGE
+  tailscale exit-node list [flags]
+
+FLAGS
+  --filter value
+    	filter exit nodes by country
+[exit 2]

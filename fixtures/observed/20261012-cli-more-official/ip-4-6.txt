@@ -1,0 +1,3 @@
+$ tailscale ip -4 -6
+tailscale ip -1, -4, and -6 are mutually exclusive
+[exit 1]

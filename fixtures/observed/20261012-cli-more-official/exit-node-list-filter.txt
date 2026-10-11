@@ -1,0 +1,3 @@
+$ tailscale exit-node list --filter=nowhere
+no exit nodes found for "nowhere"
+[exit 1]

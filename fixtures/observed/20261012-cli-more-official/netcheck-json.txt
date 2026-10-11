@@ -1,0 +1,35 @@
+$ tailscale netcheck --format=json
+# Warning: this JSON format is not yet considered a stable interface
+2026/10/11 16:36:01 portmap: monitor: gateway and self IP changed: gw=172.29.0.1 self=172.29.0.111
+{
+	"Now": "2026-10-11T16:36:02.101115002Z",
+	"UDP": true,
+	"IPv6": false,
+	"IPv4": true,
+	"IPv6CanSend": false,
+	"IPv4CanSend": true,
+	"OSHasIPv6": true,
+	"ICMPv4": false,
+	"MappingVariesByDestIP": false,
+	"UPnP": false,
+	"PMP": false,
+	"PCP": false,
+	"PreferredDERP": 1000,
+	"RegionLatency": {
+		"1000": 274208,
+		"1001": 365334
+	},
+	"RegionV4Latency": {
+		"1000": 274208,
+		"1001": 365334
+	},
+	"RegionV6Latency": {},
+	"GlobalV4Counters": {
+		"172.29.0.111:51570": 2
+	},
+	"GlobalV6Counters": null,
+	"GlobalV4": "172.29.0.111:51570",
+	"GlobalV6": "",
+	"CaptivePortal": null
+}
+[exit 0]

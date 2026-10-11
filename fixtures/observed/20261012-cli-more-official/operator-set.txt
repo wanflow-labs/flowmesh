@@ -1,0 +1,2 @@
+$ tailscale set --operator=nobody
+[exit 0]

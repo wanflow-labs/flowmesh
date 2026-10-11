@@ -1,0 +1,10 @@
+$ tailscale exit-node --help
+Show machines on your tailnet configured as exit nodes
+
+USAGE
+  tailscale exit-node [flags]
+
+SUBCOMMANDS
+  list     Show exit nodes
+  suggest  Suggest the best available exit node
+[exit 0]

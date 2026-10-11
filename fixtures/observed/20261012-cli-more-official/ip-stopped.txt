@@ -1,0 +1,3 @@
+$ tailscale ip
+no current Tailscale IPs; state: NeedsLogin
+[exit 1]

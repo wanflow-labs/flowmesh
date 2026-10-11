@@ -1,0 +1,15 @@
+$ tailscale netcheck
+2026/10/11 16:36:01 portmap: monitor: gateway and self IP changed: gw=172.29.0.1 self=172.29.0.111
+
+Report:
+	* Time: 2026-10-11T16:36:01.76332421Z
+	* UDP: true
+	* IPv4: yes, 172.29.0.111:53142
+	* IPv6: no, but OS has support
+	* MappingVariesByDestIP: false
+	* PortMapping: 
+	* Nearest DERP: Lab Relay 2
+	* DERP latency:
+		- wanflow-relay-1001: 100µs   (Lab Relay 2)
+		- wanflow-relay-1000: 300µs   (Lab Relay)
+[exit 0]
