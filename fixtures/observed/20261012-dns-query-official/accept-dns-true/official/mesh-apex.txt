@@ -1,0 +1,9 @@
+$ dns query mesh.lab.internal
+DNS query for "mesh.lab.internal" (A) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeNameError
+
+No answers were returned.
+[exit 0]

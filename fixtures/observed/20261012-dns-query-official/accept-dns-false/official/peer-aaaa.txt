@@ -1,0 +1,12 @@
+$ dns query toq.mesh.lab.internal aaaa
+DNS query for "toq.mesh.lab.internal" (aaaa) using internal resolver:
+
+Multiple resolvers available:
+
+Response code: RCodeSuccess
+
+  (no answers found)
+Name  TTL  Class  Type  Body
+----  ---  -----  ----  ----
+
+[exit 0]

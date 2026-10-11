@@ -1,0 +1,12 @@
+$ dns query toq
+DNS query for "toq" (A) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeSuccess
+
+Name  TTL  Class      Type   Body
+----  ---  -----      ----   ----
+toq.  600  ClassINET  TypeA  172.29.0.151
+
+[exit 0]

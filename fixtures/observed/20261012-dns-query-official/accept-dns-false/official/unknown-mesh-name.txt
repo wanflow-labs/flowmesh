@@ -1,0 +1,9 @@
+$ dns query nosuch.mesh.lab.internal
+DNS query for "nosuch.mesh.lab.internal" (A) using internal resolver:
+
+Multiple resolvers available:
+
+Response code: RCodeServerFailure
+
+No answers were returned.
+[exit 0]

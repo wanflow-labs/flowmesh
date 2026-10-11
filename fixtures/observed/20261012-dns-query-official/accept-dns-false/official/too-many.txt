@@ -1,0 +1,5 @@
+$ dns query a b c
+DNS query for "a" (b) using internal resolver:
+
+failed to query DNS: 400 Bad Request: unknown DNS message type: B
+[exit 0]

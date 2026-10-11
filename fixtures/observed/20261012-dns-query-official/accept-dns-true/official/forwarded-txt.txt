@@ -1,0 +1,13 @@
+$ dns query example.com txt
+DNS query for "example.com" (txt) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeSuccess
+
+Name          TTL  Class      Type     Body
+----          ---  -----      ----     ----
+example.com.  377  ClassINET  TypeTXT  ["_k2n1y4vw3qtb4skdx9e7dxt97qrmmq9"]
+example.com.  377  ClassINET  TypeTXT  ["v=spf1 -all"]
+
+[exit 0]

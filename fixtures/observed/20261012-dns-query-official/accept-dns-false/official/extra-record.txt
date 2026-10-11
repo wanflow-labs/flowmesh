@@ -1,0 +1,12 @@
+$ dns query svc.mesh.lab.internal
+DNS query for "svc.mesh.lab.internal" (A) using internal resolver:
+
+Multiple resolvers available:
+
+Response code: RCodeSuccess
+
+Name                    TTL  Class      Type   Body
+----                    ---  -----      ----   ----
+svc.mesh.lab.internal.  600  ClassINET  TypeA  100.64.0.250
+
+[exit 0]

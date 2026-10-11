@@ -1,0 +1,15 @@
+$ dns query
+Perform a DNS query
+
+USAGE
+  tailscale dns query <name> [a|aaaa|cname|mx|ns|opt|ptr|srv|txt]
+
+The 'tailscale dns query' subcommand performs a DNS query for the specified name
+using the internal DNS forwarder (100.100.100.100).
+
+By default, the DNS query will request an A record. Another DNS record type can
+be specified as the second parameter.
+
+The output also provides information about the resolver(s) used to resolve the
+query.
+[exit 0]

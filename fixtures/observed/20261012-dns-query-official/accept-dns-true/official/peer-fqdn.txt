@@ -1,0 +1,12 @@
+$ dns query toq.mesh.lab.internal
+DNS query for "toq.mesh.lab.internal" (A) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeSuccess
+
+Name                    TTL  Class      Type   Body
+----                    ---  -----      ----   ----
+toq.mesh.lab.internal.  600  ClassINET  TypeA  100.64.0.37
+
+[exit 0]

@@ -1,0 +1,9 @@
+$ dns query example.com mx
+DNS query for "example.com" (mx) using internal resolver:
+
+Multiple resolvers available:
+
+Response code: RCodeServerFailure
+
+No answers were returned.
+[exit 0]

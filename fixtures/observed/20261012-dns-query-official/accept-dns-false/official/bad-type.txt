@@ -1,0 +1,5 @@
+$ dns query example.com bogus
+DNS query for "example.com" (bogus) using internal resolver:
+
+failed to query DNS: 400 Bad Request: unknown DNS message type: BOGUS
+[exit 0]

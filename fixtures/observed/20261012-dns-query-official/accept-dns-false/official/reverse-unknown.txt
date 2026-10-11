@@ -1,0 +1,12 @@
+$ dns query 250.0.64.100.in-addr.arpa ptr
+DNS query for "250.0.64.100.in-addr.arpa" (ptr) using internal resolver:
+
+Multiple resolvers available:
+
+Response code: RCodeSuccess
+
+Name                        TTL  Class      Type     Body
+----                        ---  -----      ----     ----
+250.0.64.100.in-addr.arpa.  600  ClassINET  TypePTR  svc.mesh.lab.internal.
+
+[exit 0]

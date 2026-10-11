@@ -1,0 +1,13 @@
+$ dns query example.com
+DNS query for "example.com" (A) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeSuccess
+
+Name          TTL  Class      Type   Body
+----          ---  -----      ----   ----
+example.com.  380  ClassINET  TypeA  104.20.23.154
+example.com.  380  ClassINET  TypeA  172.66.147.243
+
+[exit 0]

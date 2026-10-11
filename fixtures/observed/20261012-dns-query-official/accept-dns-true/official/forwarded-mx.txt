@@ -1,0 +1,12 @@
+$ dns query example.com mx
+DNS query for "example.com" (mx) using internal resolver:
+
+Forwarding to resolver: 127.0.0.11
+
+Response code: RCodeSuccess
+
+Name          TTL  Class      Type    Body
+----          ---  -----      ----    ----
+example.com.  320  ClassINET  TypeMX  . (Priority=0)
+
+[exit 0]
