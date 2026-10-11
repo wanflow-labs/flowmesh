@@ -3,6 +3,7 @@
 
 use crate::Error;
 use crate::conn::NoiseStream;
+use crate::dial::dial;
 use crate::early::{Early, take_early};
 use crate::mapstream::decode_frame;
 use crate::upgrade;
@@ -20,18 +21,19 @@ use hyper::body::Incoming;
 use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
 
 /// 等待服务端前置载荷的时间上限；超时则认为服务端不发送前置载荷。
 const EARLY_WAIT: Duration = Duration::from_secs(3);
 /// 升级响应头的长度上限。
 const MAX_UPGRADE_HEAD: usize = 16 * 1024;
 
-/// 控制服务器地址。v1 只支持 `http://`（任何端口都走明文，偏差清单 #2）。
+/// 控制服务器地址。`http://` 在任何端口都走明文（偏差清单 #2，Noise 照样加密）；`https://` 先建 TLS。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerUrl {
     pub host: String,
     pub port: u16,
+    /// `https://`: TLS to the server (default port 443) before the key fetch and the upgrade.
+    pub tls: bool,
     /// 用于 Host 头和请求 URI 的 authority，保持用户给定的写法。
     pub authority: String,
 }
@@ -41,21 +43,22 @@ impl ServerUrl {
         let uri: http::Uri = s
             .parse()
             .map_err(|e| Error::Protocol(format!("bad control URL {s:?}: {e}")))?;
-        match uri.scheme_str() {
-            Some("http") => {}
-            Some("https") => {
-                return Err(Error::Unsupported(
-                    "https control URLs are not supported yet".into(),
-                ));
+        let tls = match uri.scheme_str() {
+            Some("http") => false,
+            Some("https") => true,
+            _ => {
+                return Err(Error::Protocol(format!(
+                    "control URL must be http:// or https://: {s}"
+                )));
             }
-            _ => return Err(Error::Protocol(format!("control URL must be http://: {s}"))),
-        }
+        };
         let authority = uri
             .authority()
             .ok_or_else(|| Error::Protocol(format!("control URL has no host: {s}")))?;
         Ok(Self {
             host: authority.host().trim_matches(['[', ']']).to_string(),
-            port: authority.port_u16().unwrap_or(80),
+            port: authority.port_u16().unwrap_or(if tls { 443 } else { 80 }),
+            tls,
             authority: authority.as_str().to_string(),
         })
     }
@@ -100,8 +103,8 @@ impl MapStream {
 }
 
 async fn fetch_server_key(url: &ServerUrl) -> Result<MachinePublic, Error> {
-    let tcp = TcpStream::connect((url.host.as_str(), url.port)).await?;
-    let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(tcp)).await?;
+    let io = dial(url).await?;
+    let (mut sender, conn) = hyper::client::conn::http1::handshake(TokioIo::new(io)).await?;
     let conn_task = tokio::spawn(conn);
     let req = http::Request::get(format!("/key?v={CAPABILITY_VERSION}"))
         .header(http::header::HOST, &url.authority)
@@ -129,7 +132,7 @@ async fn upgrade_and_handshake(
     machine: &MachinePrivate,
     server_key: &MachinePublic,
 ) -> Result<NoiseStream, Error> {
-    let mut tcp = TcpStream::connect((url.host.as_str(), url.port)).await?;
+    let mut tcp = dial(url).await?;
     let (initiator, msg) = Initiator::new(machine, server_key, CAPABILITY_VERSION)?;
     let b64 = base64::engine::general_purpose::STANDARD.encode(&msg);
     tcp.write_all(upgrade::build_request(&url.authority, &b64).as_bytes())
@@ -271,10 +274,17 @@ mod tests {
         );
         let u = ServerUrl::parse("http://[fd00::1]:8080").unwrap();
         assert_eq!((u.host.as_str(), u.port), ("fd00::1", 8080));
-        assert!(matches!(
-            ServerUrl::parse("https://x"),
-            Err(Error::Unsupported(_))
-        ));
+        assert!(!u.tls, "http:// is plain on any port");
+        let u = ServerUrl::parse("https://mesh.example.com").unwrap();
+        assert_eq!(
+            (u.host.as_str(), u.port, u.tls, u.authority.as_str()),
+            ("mesh.example.com", 443, true, "mesh.example.com")
+        );
+        let u = ServerUrl::parse("https://mesh.example.com:8443/").unwrap();
+        assert_eq!(
+            (u.port, u.tls, u.authority.as_str()),
+            (8443, true, "mesh.example.com:8443")
+        );
         assert!(matches!(
             ServerUrl::parse("ftp://x"),
             Err(Error::Protocol(_))

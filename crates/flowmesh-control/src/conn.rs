@@ -1,19 +1,19 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 把"TCP + Noise 记录层"适配成 `AsyncRead`/`AsyncWrite`，供 HTTP/2 使用。
+//! 把"TCP（或 TLS）+ Noise 记录层"适配成 `AsyncRead`/`AsyncWrite`，供 HTTP/2 使用。
 //! 协议逻辑都在 sans-IO 的 flowmesh-noise 里，这里只搬运字节。
 
+use crate::dial::BoxIo;
 use flowmesh_noise::frame::FrameDecoder;
 use flowmesh_noise::transport::Transport;
 use std::io;
 use std::pin::Pin;
 use std::task::{Context, Poll, ready};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, ReadBuf};
-use tokio::net::TcpStream;
 
 const READ_CHUNK: usize = 16 * 1024;
 
 pub struct NoiseStream {
-    tcp: TcpStream,
+    tcp: BoxIo,
     transport: Transport,
     decoder: FrameDecoder,
     /// 已解密、尚未被上层读走的明文。
@@ -29,7 +29,7 @@ fn io_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 
 impl NoiseStream {
     /// `decoder` 中可能已有握手时多读到的记录帧。
-    pub fn new(tcp: TcpStream, transport: Transport, decoder: FrameDecoder) -> io::Result<Self> {
+    pub fn new(tcp: BoxIo, transport: Transport, decoder: FrameDecoder) -> io::Result<Self> {
         let mut s = Self {
             tcp,
             transport,

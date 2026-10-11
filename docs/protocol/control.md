@@ -20,6 +20,7 @@
 | 服务端回 `101 Switching Protocols`，之后同一连接上双向传输二进制帧 | 已观测 | 同上 |
 | 官方客户端只在 80 端口上使用明文；flowmesh 对 `http://` 的任何端口都使用明文（偏差清单 #2），实测 18080 端口可以正常工作 | 已观测 / 已互通 | OBS-20261010-official-http-control；OBS-20261010-flowmesh-probe |
 | 官方客户端一旦 Noise 连接失败（例如服务端重启），会转入"强制 443 TLS"模式，此后无法再用明文 80 端口重连，只能重启客户端。flowmesh 不继承这一行为 | 已观测 | lab 日志 2026-10-09T23:21:45Z（见 lab/README.md） |
+| `https://` 地址：先在 TCP 上做 TLS（默认 443），`/key` 与升级请求在 TLS 内以 HTTP/1.1 发出，升级之后 Noise 记录层包在 TLS 之上；官方客户端与 flowmesh 经同一 TLS 终结器（socat，自签 CA）都能入网并互通，不信任的证书被拒（flowmesh 报 `invalid peer certificate: UnknownIssuer`） | 已互通 | `lab/scripts/https_control.sh` |
 
 ## 3. 帧格式
 
