@@ -48,7 +48,7 @@ pub struct WebServer {
 }
 
 /// One mount: exactly one of the three is set.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Handler {
     /// `http://…`, `https://…`, `https+insecure://…` or `unix:/path`.
@@ -350,6 +350,70 @@ pub fn apply(cfg: &mut ServeConfig, name: &str, change: Change) -> Result<(), St
         }
     }
     Ok(())
+}
+
+/// Check every handler as the CLI checks what it builds: a configuration can reach the daemon
+/// over the local API without the CLI. Proxy and forward targets must be on this machine.
+pub fn validate(cfg: &ServeConfig) -> Result<(), String> {
+    for (port, t) in &cfg.tcp {
+        port.parse::<u16>()
+            .ok()
+            .filter(|p| *p != 0)
+            .ok_or_else(|| format!("invalid port {port:?}"))?;
+        if !t.tcp_forward.is_empty() {
+            tcp_target(&t.tcp_forward)?;
+            if t.http {
+                return Err(format!("port {port}: both HTTP and TCP forwarding"));
+            }
+        }
+        if t.proxy_protocol > 2 {
+            return Err(format!(
+                "port {port}: PROXY protocol version {}",
+                t.proxy_protocol
+            ));
+        }
+    }
+    for (key, w) in &cfg.web {
+        let port = key_port(key).ok_or_else(|| format!("invalid web key {key:?}"))?;
+        if !cfg.tcp.get(&port.to_string()).is_some_and(|t| t.http) {
+            return Err(format!("{key}: port {port} is not an HTTP port"));
+        }
+        for (m, h) in &w.handlers {
+            if !m.starts_with('/') {
+                return Err(format!("{key}: invalid mount {m:?}"));
+            }
+            let set = [!h.proxy.is_empty(), !h.text.is_empty(), !h.path.is_empty()];
+            if set.iter().filter(|x| **x).count() != 1 {
+                return Err(format!(
+                    "{key}{m}: a handler needs exactly one of Proxy, Text, Path"
+                ));
+            }
+            if !h.proxy.is_empty() {
+                web_handler(&h.proxy)?;
+            }
+            if !h.path.is_empty() && !h.path.starts_with('/') {
+                return Err(format!("{key}{m}: path must be absolute"));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Handlers the daemon serves with its own rights: files, directories and Unix sockets (by port
+/// and mount). Only root may add or change them; anyone allowed to change settings may keep them.
+pub fn privileged_handlers(
+    cfg: &ServeConfig,
+) -> std::collections::BTreeSet<(u16, String, Handler)> {
+    cfg.web
+        .iter()
+        .filter_map(|(k, w)| Some((key_port(k)?, w)))
+        .flat_map(|(port, w)| {
+            w.handlers
+                .iter()
+                .filter(|(_, h)| !h.path.is_empty() || h.proxy.starts_with("unix:"))
+                .map(move |(m, h)| (port, m.clone(), h.clone()))
+        })
+        .collect()
 }
 
 /// `kind target` of a handler as listed: `proxy http://…`, `text  "…"`, `path  /dir`.
@@ -662,6 +726,30 @@ mod tests {
             tcp_blocks_sorted(&status(&c, &NAME, &ips())),
             tcp_blocks_sorted(&fixture("status-after-off.txt"))
         );
+    }
+
+    /// A configuration sent straight to the daemon is held to the CLI's rules.
+    #[test]
+    fn validation() {
+        let ok: ServeConfig = serde_json::from_value(serde_json::json!({
+            "TCP": {"80": {"HTTP": true}, "2222": {"TCPForward": "localhost:22"}},
+            "Web": {"n.mesh:80": {"Handlers": {"/": {"Proxy": "http://127.0.0.1:3000"}, "/f": {"Path": "/srv"}, "/u": {"Proxy": "unix:/run/s.sock"}}}}
+        }))
+        .unwrap();
+        validate(&ok).unwrap();
+        assert_eq!(privileged_handlers(&ok).len(), 2);
+        let bad = |v: serde_json::Value| validate(&serde_json::from_value(v).unwrap()).unwrap_err();
+        assert!(bad(serde_json::json!({"TCP": {"80": {"HTTP": true}}, "Web": {"n:80": {"Handlers": {"/": {"Proxy": "http://10.0.0.5:80"}}}}})).contains("this machine"));
+        assert!(
+            bad(serde_json::json!({"TCP": {"22": {"TCPForward": "192.168.1.1:22"}}}))
+                .contains("this machine")
+        );
+        assert!(bad(serde_json::json!({"TCP": {"80": {"HTTP": true}}, "Web": {"n:80": {"Handlers": {"/": {"Path": "etc"}}}}})).contains("absolute"));
+        assert!(
+            bad(serde_json::json!({"Web": {"n:81": {"Handlers": {"/": {"Text": "x"}}}}}))
+                .contains("not an HTTP port")
+        );
+        assert!(bad(serde_json::json!({"TCP": {"80": {"HTTP": true}}, "Web": {"n:80": {"Handlers": {"/": {"Text": "x", "Path": "/a"}}}}})).contains("exactly one"));
     }
 
     #[test]

@@ -134,6 +134,7 @@ fn daemon_error(e: &DaemonError) -> Response<Full<Bytes>> {
         DaemonError::Logout(_) => StatusCode::BAD_GATEWAY,
         DaemonError::NotRunning => StatusCode::SERVICE_UNAVAILABLE,
         DaemonError::Serve(_) => StatusCode::BAD_REQUEST,
+        DaemonError::Denied(_) => StatusCode::FORBIDDEN,
     };
     error(code, e)
 }
@@ -318,7 +319,7 @@ where
                 Ok(c) => c,
                 Err(e) => return error(StatusCode::BAD_REQUEST, e),
             };
-            match d.set_serve(cfg).await {
+            match d.set_serve(cfg, caller.root).await {
                 Ok(()) => reply(StatusCode::OK, &json!({})),
                 Err(e) => daemon_error(&e),
             }
@@ -341,7 +342,7 @@ where
                 d.serve_foreground_stop(&fg.id).await;
                 return reply(StatusCode::OK, &json!({}));
             }
-            match d.serve_foreground(fg.id, fg.config).await {
+            match d.serve_foreground(fg.id, fg.config, caller.root).await {
                 Ok(()) => reply(StatusCode::OK, &json!({})),
                 Err(e) => daemon_error(&e),
             }

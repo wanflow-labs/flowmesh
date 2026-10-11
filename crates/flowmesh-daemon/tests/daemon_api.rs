@@ -1078,6 +1078,58 @@ async fn serve_configuration() {
         .body(Full::new(Bytes::new()))
         .unwrap();
     assert_eq!(api::handle(&h.daemon, req, false).await.status(), 200);
+    // The daemon holds configurations to the CLI's rules (they can arrive without the CLI), and
+    // only root may make it serve files, directories or Unix sockets with its rights.
+    let (code, msg) = api_error(
+        h.client
+            .post("serve", &json!({ "TCP": { "80": { "HTTP": true } }, "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Proxy": "http://10.0.0.5:80" } } } } }))
+            .await,
+    );
+    assert_eq!(code, 400, "{msg}");
+    let me = nix::unistd::getuid();
+    let name = nix::unistd::User::from_uid(me).unwrap().unwrap().name;
+    h.client
+        .post("set", &json!({ "operator_user": name }))
+        .await
+        .unwrap();
+    let as_operator = |path: &'static str, body: serde_json::Value| {
+        let d = h.daemon.clone();
+        async move {
+            let req = hyper::Request::post(format!("/localapi/v0/{path}"))
+                .body(Full::new(Bytes::from(body.to_string())))
+                .unwrap();
+            api::handle(
+                &d,
+                req,
+                api::Caller {
+                    root: false,
+                    uid: Some(me.as_raw()),
+                },
+            )
+            .await
+            .status()
+        }
+    };
+    let files = json!({ "TCP": { "80": { "HTTP": true } }, "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Path": "/etc" } } } } });
+    assert_eq!(as_operator("serve", files.clone()).await, 403);
+    assert_eq!(
+        as_operator(
+            "serve-foreground",
+            json!({ "id": "x", "config": files.clone() })
+        )
+        .await,
+        403
+    );
+    let sock = json!({ "TCP": { "80": { "HTTP": true } }, "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Proxy": "unix:/var/run/docker.sock" } } } } });
+    assert_eq!(as_operator("serve", sock).await, 403);
+    // Root adds a directory; the operator may then add a proxy beside it, keeping it.
+    h.client.post("serve", &files).await.unwrap();
+    let both = json!({ "TCP": { "80": { "HTTP": true } }, "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Path": "/etc" }, "/app": { "Proxy": "http://127.0.0.1:3000" } } } } });
+    assert_eq!(as_operator("serve", both.clone()).await, 200);
+    // …but not point it elsewhere.
+    let moved = json!({ "TCP": { "80": { "HTTP": true } }, "Web": { "fm1.mesh:80": { "Handlers": { "/": { "Path": "/root" } } } } });
+    assert_eq!(as_operator("serve", moved).await, 403);
+    h.client.post("serve", &bg).await.unwrap();
     // Persisted with the preferences.
     let stored: serde_json::Value =
         serde_json::from_slice(&std::fs::read(dir.join("prefs.json")).unwrap()).unwrap();

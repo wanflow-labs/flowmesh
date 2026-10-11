@@ -89,6 +89,8 @@ pub enum DaemonError {
     NotRunning,
     #[error("{0}")]
     Serve(String),
+    #[error("access denied: {0}")]
+    Denied(String),
 }
 
 /// Body of `up`.
@@ -148,8 +150,25 @@ pub struct Daemon<L: Launcher> {
 }
 
 /// Where an unparsable prefs file is moved, so it can be inspected.
-/// What flowmesh cannot serve: HTTPS needs certificates from the control server.
-fn check_serve(cfg: &ServeConfig) -> Result<(), DaemonError> {
+/// Check a serve configuration from the local API. `prev` is what it replaces; `root` is whether
+/// the caller is root (or the daemon's user): files, directories and Unix sockets are read with
+/// the daemon's rights, so only root may add or change them (the operator keeps existing ones).
+fn check_serve(
+    cfg: &ServeConfig,
+    prev: Option<&ServeConfig>,
+    root: bool,
+) -> Result<(), DaemonError> {
+    flowmesh_serve::config::validate(cfg).map_err(DaemonError::Serve)?;
+    if !root {
+        let had = prev
+            .map(flowmesh_serve::config::privileged_handlers)
+            .unwrap_or_default();
+        if !flowmesh_serve::config::privileged_handlers(cfg).is_subset(&had) {
+            return Err(DaemonError::Denied(
+                "serving files, directories or Unix sockets requires root: flowmeshd would read them with its own rights".into(),
+            ));
+        }
+    }
     for (port, h) in &cfg.tcp {
         if h.https || !h.terminate_tls.is_empty() {
             return Err(DaemonError::Serve(format!(
@@ -310,9 +329,9 @@ impl<L: Launcher> Daemon<L> {
     }
 
     /// Replace the background `serve` configuration.
-    pub async fn set_serve(&self, cfg: ServeConfig) -> Result<(), DaemonError> {
-        check_serve(&cfg)?;
+    pub async fn set_serve(&self, cfg: ServeConfig, root: bool) -> Result<(), DaemonError> {
         let mut sh = self.shared.lock().await;
+        check_serve(&cfg, Some(&sh.stored.serve), root)?;
         if sh.stored.serve == cfg {
             return Ok(());
         }
@@ -325,9 +344,14 @@ impl<L: Launcher> Daemon<L> {
     }
 
     /// Add or renew the foreground `serve` configuration `id` for another [`SERVE_LEASE`].
-    pub async fn serve_foreground(&self, id: String, cfg: ServeConfig) -> Result<(), DaemonError> {
-        check_serve(&cfg)?;
+    pub async fn serve_foreground(
+        &self,
+        id: String,
+        cfg: ServeConfig,
+        root: bool,
+    ) -> Result<(), DaemonError> {
         let mut sh = self.shared.lock().await;
+        check_serve(&cfg, sh.foreground.get(&id).map(|(c, _)| c), root)?;
         let until = tokio::time::Instant::now() + SERVE_LEASE;
         let changed = sh.foreground.get(&id).is_none_or(|(c, _)| *c != cfg);
         sh.foreground.insert(id, (cfg, until));
