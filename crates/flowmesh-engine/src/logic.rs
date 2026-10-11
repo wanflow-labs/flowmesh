@@ -124,6 +124,33 @@ pub(crate) fn dns_view(nm: &NetMap, answer_aaaa: bool) -> flowmesh_dns::DnsView 
 }
 
 /// Forwarding upstreams: `DNSConfig.Resolvers` first, otherwise the host's original nameservers.
+/// Where to send forwarded DNS while using `exit_node`: its peerapi DNS proxy, when it has one
+/// (capability version 26 or more, or a `peerapi-dns-proxy` service, as the official client
+/// decides) and advertises a peerapi port for one of its addresses (IPv4 first).
+pub(crate) fn exit_dns_target(nm: &NetMap, exit_node: NodePublic) -> Option<SocketAddr> {
+    use flowmesh_proto::control::{PEERAPI_DNS, PEERAPI4, PEERAPI6};
+    let n = nm.peers.values().find(|n| n.key == exit_node)?;
+    let services = &n.hostinfo.services;
+    let proxies = n.cap >= 26
+        || services
+            .iter()
+            .any(|s| s.proto == PEERAPI_DNS && s.port >= 1);
+    if !proxies {
+        return None;
+    }
+    let port = |proto: &str| services.iter().find(|s| s.proto == proto).map(|s| s.port);
+    let addr = |v4: bool| {
+        n.addresses
+            .iter()
+            .map(|a| a.addr())
+            .find(|a| a.is_ipv4() == v4)
+    };
+    port(PEERAPI4)
+        .zip(addr(true))
+        .or_else(|| port(PEERAPI6).zip(addr(false)))
+        .map(|(p, ip)| SocketAddr::new(ip, p))
+}
+
 pub(crate) fn dns_upstreams(nm: &NetMap, host: &[IpAddr]) -> Vec<IpAddr> {
     let from_config: Vec<IpAddr> = nm
         .dns
@@ -451,6 +478,50 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn exit_dns_goes_to_the_exit_nodes_peerapi_proxy() {
+        use flowmesh_proto::control::Service;
+        let svc = |proto: &str, port: u16| Service {
+            proto: proto.into(),
+            port,
+            description: String::new(),
+        };
+        let mut n = exit_peer(1, 1, "tse", "tsE", "100.64.0.9/32");
+        n.addresses.push("fd7a:115c:a1e0::9/128".parse().unwrap());
+        n.cap = 131;
+        n.hostinfo.services = vec![svc("peerapi4", 38210), svc("peerapi6", 39042)];
+        let mut nm = NetMap::default();
+        nm.peers.insert(1, n.clone());
+        assert_eq!(
+            exit_dns_target(&nm, n.key),
+            Some("100.64.0.9:38210".parse().unwrap())
+        );
+        // An old peer (capability below 26) needs the explicit service.
+        nm.peers.get_mut(&1).unwrap().cap = 20;
+        assert_eq!(exit_dns_target(&nm, n.key), None);
+        nm.peers
+            .get_mut(&1)
+            .unwrap()
+            .hostinfo
+            .services
+            .push(svc("peerapi-dns-proxy", 1));
+        assert!(exit_dns_target(&nm, n.key).is_some());
+        // No peerapi4 port: the IPv6 one.
+        nm.peers
+            .get_mut(&1)
+            .unwrap()
+            .hostinfo
+            .services
+            .retain(|s| s.proto != "peerapi4");
+        assert_eq!(
+            exit_dns_target(&nm, n.key),
+            Some("[fd7a:115c:a1e0::9]:39042".parse().unwrap())
+        );
+        nm.peers.get_mut(&1).unwrap().hostinfo.services.clear();
+        assert_eq!(exit_dns_target(&nm, n.key), None, "no port advertised");
+        assert_eq!(exit_dns_target(&nm, NodePublic([9; 32])), None);
+    }
 
     fn exit_peer(id: i64, key: u8, name: &str, host: &str, addr: &str) -> Node {
         Node {

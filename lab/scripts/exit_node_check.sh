@@ -10,7 +10,8 @@
 # Checks: srv reached through fmE and sees fmE (SNAT); fmE's own LAN and private ranges refused; no
 # TCP checksum errors at the user; the user's MagicDNS resolves through fmE's DNS proxy (peerapi); with --stateful-filtering a connection from srv into the mesh is
 # refused, without it it gets through. flowmesh as a user: through fmE and through tsE, its own
-# control/DERP traffic stays off the tunnel (still Running, peers reachable), LAN blocked unless
+# control/DERP traffic stays off the tunnel (still Running, peers reachable), its MagicDNS goes
+# through the exit node's DNS proxy (never its own resolver), LAN blocked unless
 # --exit-node-allow-lan-access, ExitNodeStatus in status --json, --shields-up refuses inbound pings.
 #   exit_node_check.sh   (KEEP=1 leaves the containers up)
 set -euo pipefail
@@ -138,6 +139,32 @@ via() { # exit-node label want
   expect "fmU through $2, srv sees" "$3" "$got"
 }
 via "$fme_ip" "the flowmesh exit node" 172.29.0.96
+# fmU's MagicDNS forwards through fmE's DNS proxy: nothing goes to fmU's own resolver.
+local_dns_queries() { # name: resolve it through fmU's MagicDNS; prints "<resolved 0|1> <queries fmU sent itself>"
+  # Not --rm: tcpdump exits on the first packet and its output must survive for `docker logs`.
+  docker rm -f fmU-dnscap >/dev/null 2>&1 || true
+  docker run -d --name fmU-dnscap --network container:fmU --cap-add NET_ADMIN --cap-add NET_RAW "$shoot" \
+    timeout 8 tcpdump -lni any -c 1 "(udp port 53 or host 127.0.0.11) and not host 100.100.100.100" >/dev/null 2>&1 || true
+  sleep 1
+  local ok=0 n
+  for _ in $(seq 1 5); do
+    docker run --rm --network container:fmU "$shoot" nslookup -timeout=3 "$1" 100.100.100.100 2>/dev/null | grep -q '^Name:' && { ok=1; break; }
+    sleep 1
+  done
+  sleep 1
+  # Any DNS fmU sends itself: to the control server's global nameserver (port 53), or to Docker's
+  # embedded resolver 127.0.0.11, which is DNAT'd to a random port inside the container.
+  n=$(docker logs fmU-dnscap 2>&1 | grep -cE "\.53[: ]|127\.0\.0\.11" || true)
+  docker rm -f fmU-dnscap >/dev/null 2>&1 || true
+  echo "$ok $n"
+}
+dns_via_exit() { # tld label
+  local ok n
+  read -r ok n <<<"$(local_dns_queries "example.$1")"
+  expect "fmU MagicDNS through $2 resolves" 1 "$ok"
+  expect "fmU's own resolver asked nothing" 0 "$n"
+}
+dns_via_exit com "the flowmesh exit node's DNS proxy"
 expect "fmU still Running (own traffic off the tunnel)" Running \
   "$(fu status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["BackendState"])')"
 expect "fmU -> tsU ping through the mesh" ok "$(docker run --rm --network container:fmU "$shoot" ping -c 2 -W 2 "$tsu_ip" >/dev/null 2>&1 && echo ok || echo lost)"
@@ -151,6 +178,7 @@ expect "LAN (rtr 172.29.0.95) with LAN access" ok \
   "$(docker run --rm --network container:fmU "$shoot" ping -c 2 -W 2 172.29.0.95 >/dev/null 2>&1 && echo ok || echo blocked)"
 fu set --exit-node-allow-lan-access=false
 via "$tse_ip" "the official exit node" 172.29.0.91
+dns_via_exit org "the official exit node's DNS proxy"
 # By name: tsE's DNS name without the MagicDNS suffix (older lab records may hold other tse* names).
 tse_name=$(docker exec tsE tailscale status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["Self"]["DNSName"].split(".")[0])')
 via "$tse_name" "the official exit node, by name ($tse_name)" 172.29.0.91
@@ -158,6 +186,11 @@ fu set --exit-node=
 sleep 2
 expect "no exit node: srv unreachable" "" "$(ureach 198.51.100.10 8080)"
 expect "no exit node: policy rules gone" 0 "$(docker exec fmU ip rule | grep -c 'lookup 52' || true)"
+# Control for the DNS checks above: without an exit node fmU asks its own resolver, and the same
+# capture sees it (so the zero counts were not a broken capture).
+read -r ok n <<<"$(local_dns_queries example.net)"
+expect "no exit node: fmU resolves with its own resolver" 1 "$ok"
+expect "no exit node: the capture sees fmU's own query" yes "$([ "$n" -gt 0 ] && echo yes || echo no)"
 
 echo "== shields-up on fmU"
 fmu_ip=$(docker exec fmU ip -4 -o addr show flowmesh0 | awk '{print $4}' | cut -d/ -f1)

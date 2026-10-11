@@ -459,6 +459,45 @@ fn forward_dns(
     });
 }
 
+/// Send a MagicDNS query to the exit node's DNS proxy (POST /dns-query over the mesh; the socket is
+/// marked, so it uses the main table, whose mesh route goes through the TUN).
+fn forward_doh(
+    target: SocketAddr,
+    query: Vec<u8>,
+    client: std::net::SocketAddrV4,
+    quad100: std::net::SocketAddrV4,
+    tx: mpsc::Sender<Vec<u8>>,
+) {
+    tokio::spawn(async move {
+        let ask = async {
+            let tcp = flowmesh_net::tcp_connect(&target.ip().to_string(), target.port())
+                .await
+                .ok()?;
+            let (mut sender, conn) =
+                hyper::client::conn::http1::handshake(hyper_util::rt::TokioIo::new(tcp))
+                    .await
+                    .ok()?;
+            tokio::spawn(conn);
+            let req = hyper::Request::post("/dns-query")
+                .header(hyper::header::HOST, target.to_string())
+                .header(hyper::header::CONTENT_TYPE, "application/dns-message")
+                .header(hyper::header::ACCEPT, "application/dns-message")
+                .body(http_body_util::Full::new(bytes::Bytes::from(query)))
+                .ok()?;
+            let resp = sender.send_request(req).await.ok()?;
+            if !resp.status().is_success() {
+                return None;
+            }
+            use http_body_util::BodyExt;
+            Some(resp.into_body().collect().await.ok()?.to_bytes())
+        };
+        if let Ok(Some(answer)) = tokio::time::timeout(DNS_FORWARD_TIMEOUT, ask).await {
+            let pkt = flowmesh_dataplane::ippkt::build_udp4(quad100, client, &answer);
+            let _ = tx.send(pkt).await;
+        }
+    });
+}
+
 /// Bring the installed subnet routes in line with `want` (via the TUN).
 fn sync_routes(
     tun: &str,
@@ -1321,13 +1360,21 @@ pub async fn run(
                                     // Queued: written with the batch at the end of this turn.
                                     tun_replies.push(reply);
                                 }
-                                flowmesh_dns::Decision::Forward => forward_dns(
-                                    dns_upstreams(&ctx.nm, &host_upstreams),
-                                    query.to_vec(),
-                                    client,
-                                    quad100_dns,
-                                    dns_tx.clone(),
-                                ),
+                                // Using an exit node with a DNS proxy: all forwarded DNS goes
+                                // through it, as the official client does.
+                                flowmesh_dns::Decision::Forward => match policy
+                                    .exit_node
+                                    .and_then(|k| crate::logic::exit_dns_target(&ctx.nm, k))
+                                {
+                                    Some(target) => forward_doh(target, query.to_vec(), client, quad100_dns, dns_tx.clone()),
+                                    None => forward_dns(
+                                        dns_upstreams(&ctx.nm, &host_upstreams),
+                                        query.to_vec(),
+                                        client,
+                                        quad100_dns,
+                                        dns_tx.clone(),
+                                    ),
+                                },
                                 flowmesh_dns::Decision::Drop => {}
                             }
                             Vec::new()
