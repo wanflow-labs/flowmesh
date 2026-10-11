@@ -889,7 +889,7 @@ pub async fn run(
         machine: std::env::consts::ARCH.into(),
         ..Default::default()
     };
-    crate::features::apply_to_hostinfo(&mut hostinfo, args, Vec::new());
+    crate::features::apply_to_hostinfo(&mut hostinfo, args, &Default::default());
     let mut policy = crate::logic::Policy {
         shields_up: args.shields_up,
         accept_routes: args.accept_routes,
@@ -1197,11 +1197,13 @@ pub async fn run(
     }
     // Offering an exit node: the DNS proxy peers reach over the mesh (peerapi.rs).
     let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
-    if features
+    let peerapi_changed = features
         .sync_peerapi(args, &me.addresses, rules, &host_upstreams, &mut dp)
-        .await
-    {
-        crate::features::apply_to_hostinfo(&mut hostinfo, args, features.services());
+        .await;
+    // The SSH server (`--ssh`).
+    let ssh_changed = features.sync_ssh(args, &me.addresses, &ctx.nm, &mut dp);
+    if peerapi_changed || ssh_changed {
+        crate::features::apply_to_hostinfo(&mut hostinfo, args, &features);
         report(
             client_rx.borrow().clone(),
             MapRequest {
@@ -1406,6 +1408,9 @@ pub async fn run(
                     if changed.self_node {
                         check_key(&ctx.nm, m.control_time.as_deref())?;
                     }
+                    if changed.peers || m.ssh_policy.is_some() {
+                        features.update_ssh_view(&ctx.nm);
+                    }
                     if changed.peers || changed.dns || changed.self_node {
                         view = dns_view(&ctx.nm, answer_aaaa);
                         if dns_taken && changed.dns {
@@ -1505,6 +1510,7 @@ pub async fn run(
                                 features
                                     .sync_peerapi(&cur, &me.addresses, rules, &host_upstreams, &mut dp)
                                     .await;
+                                features.sync_ssh(&cur, &me.addresses, &ctx.nm, &mut dp);
                                 if cur.advertise_exit_node != old.advertise_exit_node {
                                     exit_ifaces = cur.advertise_exit_node.then(|| interfaces(&cur.tun));
                                 }
@@ -1541,7 +1547,7 @@ pub async fn run(
                                 }
                                 dp.set_local_nets(local_nets(&ctx.nm, &cur.advertise_routes, exit_ifaces.as_ref()));
                                 let mut next = hostinfo.clone();
-                                crate::features::apply_to_hostinfo(&mut next, &cur, features.services());
+                                crate::features::apply_to_hostinfo(&mut next, &cur, &features);
                                 if next != hostinfo {
                                     hostinfo = next;
                                     report(client_rx.borrow().clone(), MapRequest {

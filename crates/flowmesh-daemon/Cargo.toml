@@ -14,6 +14,7 @@ workspace = true
 bytes = "1.12.1"
 flowmesh-engine = { version = "0.1.0", path = "../flowmesh-engine" }
 flowmesh-meshsvc = { version = "0.1.0", path = "../flowmesh-meshsvc" }
+flowmesh-ssh = { version = "0.1.0", path = "../flowmesh-ssh" }
 flowmesh-state = { version = "0.1.0", path = "../flowmesh-state" }
 http-body-util = "0.1.5"
 hyper = { version = "1.12.0", features = ["server", "client", "http1"] }

@@ -178,6 +178,44 @@ pub fn exit_node_list(status: &Value, filter: Option<&str>) -> Result<String, St
     ))
 }
 
+/// The address to reach a peer named by `who` at: its first IPv4 address, else its first.
+pub fn peer_addr(status: &Value, who: &str) -> Option<IpAddr> {
+    let p = find_peer(status, who)?;
+    pick(addrs(&p["TailscaleIPs"]), IpFamily::One)
+        .first()
+        .copied()
+}
+
+/// known_hosts lines for every peer that runs an SSH server: each host key under the peer's DNS
+/// name (with the trailing dot) and each of its addresses, as the official CLI writes them
+/// (OBS-20261012-ssh-official/ssh-known-hosts.txt).
+pub fn known_hosts(status: &Value) -> String {
+    let mut out = String::new();
+    let mut peers: Vec<&Value> = status["Peer"]
+        .as_object()
+        .into_iter()
+        .flat_map(|m| m.values())
+        .collect();
+    peers.sort_by_key(|p| p["DNSName"].as_str().unwrap_or_default().to_string());
+    for p in peers {
+        let mut names: Vec<String> = Vec::new();
+        if let Some(n) = p["DNSName"].as_str().filter(|n| !n.is_empty()) {
+            names.push(if n.ends_with('.') {
+                n.to_string()
+            } else {
+                format!("{n}.")
+            });
+        }
+        names.extend(addrs(&p["TailscaleIPs"]).iter().map(ToString::to_string));
+        for key in strings(&p["sshHostKeys"]) {
+            for name in &names {
+                out.push_str(&format!("{name} {key}\n"));
+            }
+        }
+    }
+    out
+}
+
 fn strings(v: &Value) -> Vec<String> {
     v.as_array()
         .into_iter()
@@ -409,6 +447,20 @@ mod tests {
         on["acceptDNS"] = json!(true);
         on["resolvConfManaged"] = json!(true);
         assert!(dns_status(&on, false).contains("flowmesh DNS: enabled."));
+    }
+
+    #[test]
+    fn known_hosts_like_the_official_cli() {
+        let mut st = status();
+        st["Peer"]["k1"]["sshHostKeys"] =
+            json!(["ssh-ed25519 AAAAk1", "ecdsa-sha2-nistp256 AAAAe1"]);
+        assert_eq!(
+            known_hosts(&st),
+            "toe.mesh.lab.internal. ssh-ed25519 AAAAk1\n100.64.0.42 ssh-ed25519 AAAAk1\nfd7a:115c:a1e0::2a ssh-ed25519 AAAAk1\n\
+             toe.mesh.lab.internal. ecdsa-sha2-nistp256 AAAAe1\n100.64.0.42 ecdsa-sha2-nistp256 AAAAe1\nfd7a:115c:a1e0::2a ecdsa-sha2-nistp256 AAAAe1\n"
+        );
+        assert_eq!(peer_addr(&st, "toe"), Some("100.64.0.42".parse().unwrap()));
+        assert_eq!(peer_addr(&st, "nobody"), None);
     }
 
     /// Column layout of the official table (OBS-20261012-cli-more-official/exit-node-list.txt).

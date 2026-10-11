@@ -976,7 +976,7 @@ async fn operator_may_change_settings_but_not_the_operator() {
     // Naming the current operator again is no change; naming someone else needs root.
     assert_eq!(call("set", json!({ "operator_user": name }), op).await, 200);
     assert_eq!(
-        call("set", json!({ "operator_user": "root" }), op).await,
+        call("set", json!({ "operator_user": "someone-else" }), op).await,
         403
     );
     assert_eq!(call("set", json!({ "operator_user": "" }), op).await, 403);

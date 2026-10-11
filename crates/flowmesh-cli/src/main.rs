@@ -50,8 +50,9 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let socket = inv.socket.clone();
     let client = LocalClient::new(inv.socket.unwrap_or_else(|| DEFAULT_SOCKET.into()));
-    match rt.block_on(run(&client, inv.command, &argv)) {
+    match rt.block_on(run(&client, inv.command, &argv, socket.as_deref())) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("flowmesh: {e}");
@@ -60,7 +61,12 @@ fn main() -> ExitCode {
     }
 }
 
-async fn run(client: &LocalClient, command: Command, argv: &[String]) -> Result<u8, String> {
+async fn run(
+    client: &LocalClient,
+    command: Command,
+    argv: &[String],
+    socket: Option<&std::path::Path>,
+) -> Result<u8, String> {
     let e = |e: flowmesh_daemon::client::ClientError| e.to_string();
     match command {
         Command::Ping { target, opts } => {
@@ -246,6 +252,79 @@ async fn run(client: &LocalClient, command: Command, argv: &[String]) -> Result<
             }
             Ok(0)
         }
+        Command::Ssh { target, args } => {
+            let status = client.get("status").await.map_err(e)?;
+            let (user, host) = match target.rsplit_once('@') {
+                Some((u, h)) => (Some(u), h),
+                None => (None, target.as_str()),
+            };
+            let ip = match host.parse::<std::net::IpAddr>() {
+                Ok(ip) => ip,
+                Err(_) => query::peer_addr(&status, host)
+                    .ok_or_else(|| format!("unknown host {host:?}: not a peer in the mesh"))?,
+            };
+            let known = known_hosts_path()?;
+            write_known_hosts(&known, &query::known_hosts(&status))?;
+            let exe = std::env::current_exe().map_err(|e| format!("own program path: {e}"))?;
+            let mut proxy = format!("\"{}\"", exe.display());
+            if let Some(s) = socket {
+                proxy.push_str(&format!(" --socket=\"{}\"", s.display()));
+            }
+            proxy.push_str(" nc %h %p");
+            let dest = match user {
+                Some(u) => format!("{u}@{ip}"),
+                None => ip.to_string(),
+            };
+            let mut ssh = std::process::Command::new("ssh");
+            ssh.args([
+                "-o".to_string(),
+                format!("UserKnownHostsFile \"{}\"", known.display()),
+                "-o".into(),
+                "UpdateHostKeys no".into(),
+                "-o".into(),
+                "StrictHostKeyChecking yes".into(),
+                "-o".into(),
+                "CanonicalizeHostname no".into(),
+                "-o".into(),
+                format!("ProxyCommand {proxy}"),
+                dest,
+            ]);
+            ssh.args(&args);
+            use std::os::unix::process::CommandExt;
+            let err = ssh.exec();
+            Err(format!("run ssh: {err}"))
+        }
+        Command::Nc { host, port } => {
+            let ip = match host.parse::<std::net::IpAddr>() {
+                Ok(ip) => ip,
+                Err(_) => {
+                    let status = client.get("status").await.map_err(e)?;
+                    query::peer_addr(&status, &host)
+                        .ok_or_else(|| format!("unknown host {host:?}: not a peer in the mesh"))?
+                }
+            };
+            let stream = tokio::net::TcpStream::connect((ip, port))
+                .await
+                .map_err(|e| format!("connect {ip} port {port}: {e}"))?;
+            let (mut r, mut w) = stream.into_split();
+            let up = async {
+                let _ = tokio::io::copy(&mut tokio::io::stdin(), &mut w).await;
+                let _ = tokio::io::AsyncWriteExt::shutdown(&mut w).await;
+            };
+            let down = async {
+                let mut out = tokio::io::stdout();
+                let _ = tokio::io::copy(&mut r, &mut out).await;
+                let _ = tokio::io::AsyncWriteExt::flush(&mut out).await;
+            };
+            // Done when the peer closes; our input ending only half-closes the connection.
+            tokio::select! {
+                () = async { tokio::join!(up, std::future::pending::<()>()); } => {}
+                () = down => {}
+            }
+            // Exit now: the read of stdin waits in a blocking thread the runtime would otherwise
+            // wait for, and ssh keeps our stdin open until we exit.
+            std::process::exit(0)
+        }
         Command::Version => {
             outln!("{}", env!("CARGO_PKG_VERSION"));
             Ok(0)
@@ -410,6 +489,24 @@ fn collect_system() -> Vec<Section> {
             ),
         },
     ]
+}
+
+/// `$XDG_CONFIG_HOME/flowmesh/ssh_known_hosts`, else `~/.config/flowmesh/ssh_known_hosts`.
+fn known_hosts_path() -> Result<std::path::PathBuf, String> {
+    let base = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
+        .or_else(|| std::env::var_os("HOME").map(|h| std::path::PathBuf::from(h).join(".config")))
+        .ok_or("cannot tell where your configuration directory is (no HOME)")?;
+    Ok(base.join("flowmesh").join("ssh_known_hosts"))
+}
+
+/// The known_hosts file is rewritten from the netmap each time, so keys stay current.
+fn write_known_hosts(path: &std::path::Path, content: &str) -> Result<(), String> {
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("create {}: {e}", dir.display()))?;
+    }
+    write_atomic(path, content.as_bytes()).map_err(|e| format!("write {}: {e}", path.display()))
 }
 
 /// Replace `path` in one step (a temporary file renamed over it), so a metrics collector reading

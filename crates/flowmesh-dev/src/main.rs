@@ -38,6 +38,8 @@ fn parse_args() -> Result<flowmesh_engine::EngineConfig, String> {
         stateful_filtering: false,
         exit_node: String::new(),
         exit_node_allow_lan_access: false,
+        run_ssh: false,
+        ssh_helper: None,
     };
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));

@@ -53,6 +53,14 @@ pub(crate) struct PeerApi {
     _tasks: Vec<AbortOnDrop>,
 }
 
+/// The SSH server (`--ssh`): listeners on the mesh addresses and what peers learn about it.
+pub(crate) struct SshServer {
+    view: Arc<std::sync::RwLock<flowmesh_ssh::server::View>>,
+    /// Host keys in authorized_keys form, for Hostinfo.sshHostKeys.
+    host_keys: Vec<String>,
+    _tasks: Vec<AbortOnDrop>,
+}
+
 /// The switched parts and the messages their setup produced (shown in health).
 #[derive(Default)]
 pub(crate) struct Features {
@@ -61,11 +69,112 @@ pub(crate) struct Features {
     exit_routing: Option<ExitRouting>,
     exit_msg: Option<String>,
     pub peerapi: Option<PeerApi>,
+    ssh: Option<SshServer>,
+    ssh_msg: Option<String>,
+}
+
+/// What the SSH server needs from the netmap: the policy and who each peer address belongs to.
+pub(crate) fn ssh_view(nm: &flowmesh_control::netmap::NetMap) -> flowmesh_ssh::server::View {
+    use flowmesh_ssh::policy::Peer;
+    use flowmesh_ssh::server::PeerInfo;
+    let mut peers = std::collections::HashMap::new();
+    for n in nm.peers.values() {
+        // Tagged nodes act for no user (a userLogin principal never matches them).
+        let user_login = if n.tags.is_empty() {
+            nm.user_profiles
+                .get(&n.user)
+                .map(|u| u.login_name.clone())
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+        for a in &n.addresses {
+            peers.insert(
+                a.addr(),
+                PeerInfo {
+                    peer: Peer {
+                        ip: Some(a.addr()),
+                        node: n.stable_id.clone(),
+                        user_login: user_login.clone(),
+                    },
+                    name: n.name.trim_end_matches('.').to_string(),
+                },
+            );
+        }
+    }
+    flowmesh_ssh::server::View {
+        policy: nm.ssh_policy.clone(),
+        peers,
+    }
 }
 
 impl Features {
     pub fn health(&self) -> impl Iterator<Item = String> + '_ {
-        self.forward_msg.iter().chain(self.exit_msg.iter()).cloned()
+        self.forward_msg
+            .iter()
+            .chain(self.exit_msg.iter())
+            .chain(self.ssh_msg.iter())
+            .cloned()
+    }
+
+    /// The SSH server runs while `--ssh` is on. Returns whether Hostinfo changed.
+    pub fn sync_ssh(
+        &mut self,
+        cfg: &EngineConfig,
+        own: &[IpNet],
+        nm: &flowmesh_control::netmap::NetMap,
+        dp: &mut flowmesh_dataplane::plane::Dataplane,
+    ) -> bool {
+        match (cfg.run_ssh, self.ssh.is_some()) {
+            (true, true) | (false, false) => false,
+            (false, true) => {
+                self.ssh = None; // Drop stops the listeners; running sessions end with them.
+                self.ssh_msg = None;
+                dp.set_ssh_redirect(None);
+                log("ssh: server stopped");
+                true
+            }
+            (true, false) => match start_ssh(cfg, own, nm) {
+                Ok((server, port, admissions)) => {
+                    dp.set_ssh_redirect(Some((
+                        port,
+                        own.iter().map(IpNet::addr).collect(),
+                        admissions,
+                    )));
+                    log(format!(
+                        "ssh: server on port 22 of {:?} (listening on port {port}, mesh interface only)",
+                        own.iter().map(IpNet::addr).collect::<Vec<_>>()
+                    ));
+                    self.ssh = Some(server);
+                    self.ssh_msg = None;
+                    true
+                }
+                Err(e) => {
+                    let msg = format!("SSH server could not start: {e}");
+                    log(&msg);
+                    let changed = self.ssh_msg.as_ref() != Some(&msg);
+                    self.ssh_msg = Some(msg);
+                    changed
+                }
+            },
+        }
+    }
+
+    /// Bring the SSH server's view of the netmap up to date.
+    pub fn update_ssh_view(&self, nm: &flowmesh_control::netmap::NetMap) {
+        if let Some(s) = &self.ssh {
+            let v = ssh_view(nm);
+            *s.view
+                .write()
+                .unwrap_or_else(std::sync::PoisonError::into_inner) = v;
+        }
+    }
+
+    pub fn ssh_host_keys(&self) -> Vec<String> {
+        self.ssh
+            .as_ref()
+            .map(|s| s.host_keys.clone())
+            .unwrap_or_default()
     }
 
     /// Forwarding rules: needed while anything is advertised; reinstalled when what they depend
@@ -212,6 +321,62 @@ impl Features {
     }
 }
 
+fn start_ssh(
+    cfg: &EngineConfig,
+    own: &[IpNet],
+    nm: &flowmesh_control::netmap::NetMap,
+) -> Result<(SshServer, u16, flowmesh_dataplane::plane::Admissions), String> {
+    let dir = cfg
+        .state_file
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join("ssh");
+    let keys = flowmesh_ssh::hostkeys::load_or_create(&dir)?;
+    let host_keys = flowmesh_ssh::hostkeys::public_lines(&keys);
+    let helper = match &cfg.ssh_helper {
+        Some(p) => p.clone(),
+        None => std::env::current_exe().map_err(|e| format!("own program path: {e}"))?,
+    };
+    let view = Arc::new(std::sync::RwLock::new(ssh_view(nm)));
+    let admissions = flowmesh_dataplane::plane::Admissions::default();
+    let admitted = admissions.clone();
+    let shared = Arc::new(flowmesh_ssh::server::Shared {
+        config: Arc::new(flowmesh_ssh::server::config(keys)),
+        view: view.clone(),
+        log: Arc::new(log),
+        helper,
+        admitted: Arc::new(move |from| admitted.take(from)),
+    });
+    // IPv4 first picks the port; the other addresses use the same one.
+    let mut addrs: Vec<std::net::IpAddr> = own.iter().map(IpNet::addr).collect();
+    addrs.sort_by_key(|a| a.is_ipv6());
+    let mut port = 0u16;
+    let mut tasks = Vec::new();
+    for ip in addrs {
+        let l = flowmesh_ssh::server::listen(SocketAddr::new(ip, port), &cfg.tun)
+            .map_err(|e| format!("listen on {ip}: {e}"))?;
+        if port == 0 {
+            port = l.local_addr().map_err(|e| e.to_string())?.port();
+        }
+        tasks.push(AbortOnDrop(tokio::spawn(flowmesh_ssh::server::serve(
+            l,
+            shared.clone(),
+        ))));
+    }
+    if tasks.is_empty() {
+        return Err("no mesh address".into());
+    }
+    Ok((
+        SshServer {
+            view,
+            host_keys,
+            _tasks: tasks,
+        },
+        port,
+        admissions,
+    ))
+}
+
 async fn start_peerapi(
     own: &[IpNet],
     rules: Vec<flowmesh_filter::compile::CompiledRule>,
@@ -261,17 +426,18 @@ async fn start_peerapi(
     })
 }
 
-/// Host info fields that follow the settings.
+/// Host info fields that follow the settings and the running features.
 pub(crate) fn apply_to_hostinfo(
     h: &mut flowmesh_proto::control::Hostinfo,
     cfg: &EngineConfig,
-    services: Vec<Service>,
+    features: &Features,
 ) {
     h.hostname.clone_from(&cfg.hostname);
     h.routable_ips = advertised(cfg);
     h.request_tags.clone_from(&cfg.advertise_tags);
     h.shields_up = cfg.shields_up;
-    h.services = services;
+    h.services = features.services();
+    h.ssh_host_keys = features.ssh_host_keys();
 }
 
 /// Whether `new` differs from `cur` only in settings the engine can change while running.

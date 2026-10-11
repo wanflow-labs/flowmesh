@@ -135,6 +135,9 @@ fn node(n: &PeerStatus) -> Value {
     });
     // Official shape: present only when set / true.
     if let Some(obj) = v.as_object_mut() {
+        if !n.ssh_host_keys.is_empty() {
+            obj.insert("sshHostKeys".into(), n.ssh_host_keys.clone().into());
+        }
         if !n.tags.is_empty() {
             obj.insert("Tags".into(), n.tags.clone().into());
         }
@@ -200,6 +203,7 @@ mod tests {
             exit_node_option: false,
             exit_node: false,
             tags: Vec::new(),
+            ssh_host_keys: Vec::new(),
             key_expiry: None,
             expired: false,
         }
@@ -251,6 +255,21 @@ mod tests {
         assert_eq!(
             v["Peer"]["nodekey:bb"]["Tags"],
             json!(["tag:relay-strict", "tag:relay-enabled"])
+        );
+    }
+
+    /// The official field (OBS-20261012-ssh-official/client-status.json): a peer's SSH host keys,
+    /// only for peers that run an SSH server.
+    #[test]
+    fn ssh_host_keys_only_for_ssh_servers() {
+        let mut snap = running();
+        let plain = out(BackendState::Running, true, &snap);
+        assert!(plain["Peer"]["nodekey:bb"].get("sshHostKeys").is_none());
+        snap.peers[0].ssh_host_keys = vec!["ssh-ed25519 AAAAx".into()];
+        let v = out(BackendState::Running, true, &snap);
+        assert_eq!(
+            v["Peer"]["nodekey:bb"]["sshHostKeys"],
+            json!(["ssh-ed25519 AAAAx"])
         );
     }
 

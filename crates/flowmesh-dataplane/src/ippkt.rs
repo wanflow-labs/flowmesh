@@ -60,6 +60,48 @@ fn l4(proto: IpProto, src: IpAddr, dst: IpAddr, body: &[u8]) -> Option<Packet> {
     Some(p)
 }
 
+/// Where the TCP header starts, when `pkt` is a TCP packet (or the first fragment of one) whose
+/// ports and checksum are inside it.
+fn tcp_header(pkt: &[u8]) -> Option<usize> {
+    let off = match pkt.first()? >> 4 {
+        4 => {
+            let ihl = usize::from(pkt[0] & 0x0f) * 4;
+            let frag_offset = u16::from_be_bytes([*pkt.get(6)?, *pkt.get(7)?]) & 0x1fff;
+            if ihl < 20 || pkt[9] != 6 || frag_offset != 0 {
+                return None;
+            }
+            ihl
+        }
+        6 if *pkt.get(6)? == 6 => 40,
+        _ => return None,
+    };
+    (pkt.len() >= off + 18).then_some(off)
+}
+
+/// One's complement sum fold (RFC 1071).
+fn fold(mut sum: u32) -> u16 {
+    while sum > 0xffff {
+        sum = (sum & 0xffff) + (sum >> 16);
+    }
+    sum as u16
+}
+
+/// Set a TCP port (`dst`: destination, else source) and update the checksum incrementally
+/// (RFC 1624: HC' = ~(~HC + ~m + m')). Returns false when `pkt` is not such a TCP packet.
+pub fn set_tcp_port(pkt: &mut [u8], dst: bool, port: u16) -> bool {
+    let Some(off) = tcp_header(pkt) else {
+        return false;
+    };
+    let at = off + if dst { 2 } else { 0 };
+    let old = u16::from_be_bytes([pkt[at], pkt[at + 1]]);
+    let hc = u16::from_be_bytes([pkt[off + 16], pkt[off + 17]]);
+    let sum = u32::from(!hc) + u32::from(!old) + u32::from(port);
+    let new = !fold(sum);
+    pkt[at..at + 2].copy_from_slice(&port.to_be_bytes());
+    pkt[off + 16..off + 18].copy_from_slice(&new.to_be_bytes());
+    true
+}
+
 /// UDP payload: (source address, destination address, payload), IPv4 only (used for quad-100 DNS interception).
 pub fn udp4_payload(pkt: &[u8]) -> Option<(std::net::SocketAddrV4, std::net::SocketAddrV4, &[u8])> {
     if pkt.first()? >> 4 != 4 || *pkt.get(9)? != 17 {
@@ -206,6 +248,73 @@ pub(crate) mod build {
 mod tests {
     use super::build::*;
     use super::*;
+
+    /// TCP checksum from scratch (pseudo-header + segment), to check the incremental update.
+    fn tcp_checksum(pkt: &[u8]) -> u16 {
+        let (off, mut sum) = match pkt[0] >> 4 {
+            4 => {
+                let ihl = usize::from(pkt[0] & 0x0f) * 4;
+                let mut s = 0u32;
+                for c in pkt[12..20].chunks(2) {
+                    s += u32::from(u16::from_be_bytes([c[0], c[1]]));
+                }
+                (ihl, s + 6 + (pkt.len() - ihl) as u32)
+            }
+            _ => {
+                let mut s = 0u32;
+                for c in pkt[8..40].chunks(2) {
+                    s += u32::from(u16::from_be_bytes([c[0], c[1]]));
+                }
+                (40, s + 6 + (pkt.len() - 40) as u32)
+            }
+        };
+        for (i, c) in pkt[off..].chunks(2).enumerate() {
+            if i == 8 {
+                continue; // the checksum field itself
+            }
+            sum += u32::from(u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)]));
+        }
+        !fold(sum)
+    }
+
+    fn with_checksum(mut pkt: Vec<u8>) -> Vec<u8> {
+        let off = tcp_header(&pkt).unwrap();
+        let c = tcp_checksum(&pkt);
+        pkt[off + 16..off + 18].copy_from_slice(&c.to_be_bytes());
+        pkt
+    }
+
+    #[test]
+    fn tcp_port_rewrite_keeps_the_checksum_valid() {
+        let mut seg = tcp(51000, 22, 0x02);
+        seg.extend_from_slice(b"payload!x");
+        for mut p in [
+            with_checksum(v4([100, 64, 0, 2], [100, 64, 0, 1], 6, &seg)),
+            with_checksum(v6([0xfd; 16], [0xfe; 16], 6, &seg)),
+        ] {
+            assert!(set_tcp_port(&mut p, true, 41234));
+            assert_eq!(parse(&p).unwrap().dst_port, 41234);
+            let off = tcp_header(&p).unwrap();
+            assert_eq!(
+                u16::from_be_bytes([p[off + 16], p[off + 17]]),
+                tcp_checksum(&p)
+            );
+            assert!(set_tcp_port(&mut p, false, 22));
+            assert_eq!(parse(&p).unwrap().src_port, 22);
+            assert_eq!(
+                u16::from_be_bytes([p[off + 16], p[off + 17]]),
+                tcp_checksum(&p)
+            );
+        }
+        // Not TCP, a later fragment, or a truncated header: left alone.
+        let mut u = v4([1; 4], [2; 4], 17, &udp(1, 22));
+        assert!(!set_tcp_port(&mut u, true, 9));
+        let mut frag = v4([1; 4], [2; 4], 6, &seg);
+        frag[7] = 1;
+        assert!(!set_tcp_port(&mut frag, true, 9));
+        let mut short = v4([1; 4], [2; 4], 6, &seg[..10]);
+        assert!(!set_tcp_port(&mut short, true, 9));
+    }
 
     /// Found by fuzzing (fuzz/artifacts/ippkt): an IPv4 header length below 20 bytes made
     /// udp4_payload read the addresses past the end of a 12-byte packet.

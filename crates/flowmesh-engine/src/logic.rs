@@ -193,6 +193,7 @@ pub(crate) fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
         relay,
         exit_node_option: n.allowed_ips.iter().any(|p| p.prefix_len() == 0),
         tags: n.tags.clone(),
+        ssh_host_keys: n.hostinfo.ssh_host_keys.clone(),
         key_expiry: n
             .key_expiry
             .clone()

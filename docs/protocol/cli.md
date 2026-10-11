@@ -112,6 +112,8 @@ Use 'sudo flowmesh set --shields-up'.
 To not require root, use 'sudo flowmesh set --operator=$USER' once.
 ```
 
+- `--ssh` (`up`/`set`): run the SSH server; `flowmesh ssh` and `flowmesh nc` are the client side. See docs/protocol/ssh.md.
+
 ## 7. Lab notes
 
 - **Official client and a plain-HTTP control server.** After a noise dial has succeeded, the official client remembers it and insists on port 443 for later control dials ("forcing port 443 dial due to recent noise dial"); the memory does not expire on its own. The lab headscale serves plain HTTP on port 80, so a logout, or the login right after it, fails on the official side for this reason alone. `cli_diff.sh` restarts ts2 around each logout (state is persisted, so this clears only the in-memory heuristic). flowmesh has no such heuristic (deviation #2).

@@ -6,6 +6,13 @@
 fn main() -> std::process::ExitCode {
     #[cfg(target_os = "linux")]
     {
+        // An SSH session's helper (flowmesh-ssh/src/child.rs): becomes the user, then runs the
+        // session's program. Checked before anything else starts.
+        let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+        if args.first().is_some_and(|a| a == "be-child") && args.get(1).is_some_and(|a| a == "ssh")
+        {
+            return flowmesh_ssh::child::main(&args[2..]);
+        }
         linux::main()
     }
     #[cfg(not(target_os = "linux"))]

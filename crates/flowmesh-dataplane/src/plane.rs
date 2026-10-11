@@ -43,6 +43,18 @@ pub struct PeerConfig {
     pub disco: DiscoPublic,
 }
 
+/// The port SSH clients connect to.
+pub const SSH_PORT: u16 = 22;
+
+/// A TCP packet from one of `own` with source port `port`.
+fn is_tcp_from(pkt: &[u8], own: &[IpAddr], port: u16) -> bool {
+    ippkt::parse(pkt).is_some_and(|m| {
+        m.proto == flowmesh_filter::packet::IpProto::Tcp
+            && m.src_port == port
+            && own.contains(&m.src)
+    })
+}
+
 /// Packets dropped, by direction and reason (the official metric labels).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Drops {
@@ -82,6 +94,55 @@ pub struct Dataplane {
     /// This node's peerapi listeners: TCP to them skips the filter (the service authorizes itself,
     /// as the official client's peerapi does).
     peerapi: std::collections::HashSet<std::net::SocketAddr>,
+    /// The SSH server: TCP port 22 of this node's addresses is delivered to this port (where the
+    /// server listens, on the mesh interface only), and its replies leave as port 22.
+    ssh: Option<SshRedirect>,
+}
+
+#[derive(Debug, Clone)]
+struct SshRedirect {
+    port: u16,
+    own: Vec<IpAddr>,
+    admissions: Admissions,
+}
+
+/// Connections the dataplane let through to the SSH server: the source address of each SYN it
+/// delivered from port 22 to the server's port, with when. The server accepts a connection only
+/// if its source is here (and takes it out): a local process connecting to the server's port
+/// directly never passes through the dataplane, whatever source address it manages to use.
+#[derive(Debug, Clone, Default)]
+pub struct Admissions(
+    std::sync::Arc<std::sync::Mutex<HashMap<std::net::SocketAddr, std::time::Instant>>>,
+);
+
+/// How long a delivered SYN stays admissible (the handshake normally completes in one round trip).
+pub const ADMISSION_TTL: Duration = Duration::from_secs(30);
+/// Bound on remembered SYNs (a peer flooding SYNs cannot grow memory without limit).
+const ADMISSIONS_MAX: usize = 4096;
+
+impl Admissions {
+    fn admit(&self, from: std::net::SocketAddr) {
+        let mut m = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if m.len() >= ADMISSIONS_MAX {
+            m.retain(|_, t| t.elapsed() < ADMISSION_TTL);
+            if m.len() >= ADMISSIONS_MAX {
+                return;
+            }
+        }
+        m.insert(from, std::time::Instant::now());
+    }
+
+    /// Whether a connection from `from` came through the dataplane; one use per SYN.
+    pub fn take(&self, from: std::net::SocketAddr) -> bool {
+        let mut m = self
+            .0
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        m.remove(&from).is_some_and(|t| t.elapsed() < ADMISSION_TTL)
+    }
 }
 
 struct Peer {
@@ -111,6 +172,7 @@ impl Dataplane {
             static_public,
             local: None,
             peerapi: Default::default(),
+            ssh: None,
         }
     }
 
@@ -218,7 +280,28 @@ impl Dataplane {
         self.filter.set_rules(rules);
     }
 
+    /// Deliver TCP port 22 of `own` to `port` (the SSH server), recording each SYN in
+    /// `admissions`; or stop (`None`).
+    pub fn set_ssh_redirect(&mut self, r: Option<(u16, Vec<IpAddr>, Admissions)>) {
+        self.ssh = r.map(|(port, own, admissions)| SshRedirect {
+            port,
+            own,
+            admissions,
+        });
+    }
+
     pub fn outbound(&mut self, pkt: &[u8], now: Duration) -> Vec<Output> {
+        // The SSH server's replies go out from port 22, the port the peer connected to.
+        let rewritten;
+        let pkt = match &self.ssh {
+            Some(r) if is_tcp_from(pkt, &r.own, r.port) => {
+                let mut p = pkt.to_vec();
+                ippkt::set_tcp_port(&mut p, false, SSH_PORT);
+                rewritten = p;
+                rewritten.as_slice()
+            }
+            _ => pkt,
+        };
         let Some(meta) = ippkt::parse(pkt) else {
             self.drops.outbound_error += 1;
             return Vec::new();
@@ -277,9 +360,25 @@ impl Dataplane {
                         && self
                             .peerapi
                             .contains(&std::net::SocketAddr::new(meta.dst, meta.dst_port));
+                    let ssh = self.ssh.as_ref().filter(|r| {
+                        meta.proto == flowmesh_filter::packet::IpProto::Tcp
+                            && r.own.contains(&meta.dst)
+                    });
                     if !owned || !ours {
                         self.drops.inbound_error += 1;
+                    } else if ssh.is_some_and(|r| meta.dst_port == r.port) {
+                        // The server's own port is reachable only through port 22.
+                        self.drops.inbound_acl += 1;
                     } else if peerapi || self.filter.check_in(&meta, now) == Verdict::Accept {
+                        let mut pkt = pkt;
+                        if let Some(r) = ssh.filter(|_| meta.dst_port == SSH_PORT) {
+                            ippkt::set_tcp_port(&mut pkt, true, r.port);
+                            // SYN without ACK: a new connection.
+                            if meta.tcp_flags & 0x12 == 0x02 {
+                                r.admissions
+                                    .admit(std::net::SocketAddr::new(meta.src, meta.src_port));
+                            }
+                        }
                         outputs.push(Output::ToTun(pkt));
                     } else {
                         self.drops.inbound_acl += 1;
@@ -432,6 +531,46 @@ mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    /// Port 22 of this node goes to the SSH server's port and the replies come back as port 22;
+    /// the server's own port cannot be reached directly; other nodes' port 22 is untouched.
+    #[test]
+    fn ssh_port_redirect() {
+        let (mut a, pa, mut b, pb) = pair();
+        b.set_filter_rules(allow_all());
+        a.set_filter_rules(allow_all());
+        let admissions = Admissions::default();
+        b.set_ssh_redirect(Some((41234, vec![IpAddr::from(B_IP)], admissions.clone())));
+        let syn = build::v4(A_IP, B_IP, 6, &build::tcp(50000, 22, 0x02));
+        let first = a.outbound(&syn, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(tun_b.len(), 1);
+        let m = ippkt::parse(&tun_b[0]).unwrap();
+        assert_eq!((m.src_port, m.dst_port), (50000, 41234));
+        // The SYN is admitted once; nothing else is.
+        let from = std::net::SocketAddr::new(IpAddr::from(A_IP), 50000);
+        assert!(!admissions.take(std::net::SocketAddr::new(IpAddr::from(A_IP), 50001)));
+        assert!(admissions.take(from));
+        assert!(!admissions.take(from));
+        // The server answers from its port; A sees port 22.
+        let synack = build::v4(B_IP, A_IP, 6, &build::tcp(41234, 50000, 0x12));
+        let out = b.outbound(&synack, Duration::ZERO);
+        let (_, tun_a) = run(&mut b, pb, &mut a, pa, out);
+        assert_eq!(tun_a.len(), 1);
+        let m = ippkt::parse(&tun_a[0]).unwrap();
+        assert_eq!((m.src_port, m.dst_port), (22, 50000));
+        // Straight to the server's port: dropped.
+        let direct = build::v4(A_IP, B_IP, 6, &build::tcp(50001, 41234, 0x02));
+        let first = a.outbound(&direct, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert!(tun_b.is_empty());
+        // Off: port 22 reaches the host as it is.
+        b.set_ssh_redirect(None);
+        let syn = build::v4(A_IP, B_IP, 6, &build::tcp(50002, 22, 0x02));
+        let first = a.outbound(&syn, Duration::ZERO);
+        let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
+        assert_eq!(ippkt::parse(&tun_b[0]).unwrap().dst_port, 22);
     }
 
     #[test]

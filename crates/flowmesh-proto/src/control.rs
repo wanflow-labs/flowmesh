@@ -68,6 +68,10 @@ pub struct Hostinfo {
     /// proxy (Proto `peerapi4`, `peerapi6`, `peerapi-dns-proxy`).
     #[serde(rename = "Services", skip_serializing_if = "Vec::is_empty")]
     pub services: Vec<Service>,
+    /// SSH host keys in authorized_keys form (`ssh-ed25519 AAAA…`), while the node runs the SSH
+    /// server. Lower-case key, as the official client sends it (OBS-20261012-ssh-official).
+    #[serde(rename = "sshHostKeys", skip_serializing_if = "Vec::is_empty")]
+    pub ssh_host_keys: Vec<String>,
     #[serde(rename = "NetInfo", skip_serializing_if = "Option::is_none")]
     pub net_info: Option<NetInfo>,
 }
@@ -291,6 +295,86 @@ pub struct DnsConfig {
     pub extra_records: Vec<DnsRecord>,
 }
 
+/// The control server's SSH access rules for this node, evaluated in order (docs/protocol/ssh.md).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshPolicy {
+    #[serde(rename = "rules")]
+    pub rules: Vec<SshRule>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshRule {
+    /// RFC 3339; a rule past this time is ignored.
+    #[serde(rename = "ruleExpires", skip_serializing_if = "Option::is_none")]
+    pub rule_expires: Option<String>,
+    #[serde(rename = "principals")]
+    pub principals: Vec<SshPrincipal>,
+    /// Requested user -> local user: `=` keeps the name, `""` refuses it; key `*` matches any user
+    /// not listed.
+    #[serde(rename = "sshUsers")]
+    pub ssh_users: std::collections::BTreeMap<String, String>,
+    #[serde(rename = "action", skip_serializing_if = "Option::is_none")]
+    pub action: Option<SshAction>,
+}
+
+/// Who a rule applies to; one field set per principal.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshPrincipal {
+    /// Stable node ID.
+    #[serde(rename = "node", skip_serializing_if = "String::is_empty")]
+    pub node: String,
+    #[serde(rename = "nodeIP", skip_serializing_if = "String::is_empty")]
+    pub node_ip: String,
+    /// The connecting node's user's login name.
+    #[serde(rename = "userLogin", skip_serializing_if = "String::is_empty")]
+    pub user_login: String,
+    #[serde(rename = "any", skip_serializing_if = "std::ops::Not::not")]
+    pub any: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SshAction {
+    /// Shown to the user (accept or reject).
+    #[serde(rename = "message", skip_serializing_if = "String::is_empty")]
+    pub message: String,
+    #[serde(rename = "reject", skip_serializing_if = "std::ops::Not::not")]
+    pub reject: bool,
+    #[serde(rename = "accept", skip_serializing_if = "std::ops::Not::not")]
+    pub accept: bool,
+    /// Nanoseconds a session may last; 0 for no limit.
+    #[serde(rename = "sessionDuration", skip_serializing_if = "is_zero")]
+    pub session_duration: i64,
+    #[serde(
+        rename = "allowAgentForwarding",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub allow_agent_forwarding: bool,
+    /// Ask a URL whether to accept (the official client's "check" mode); flowmesh refuses.
+    #[serde(rename = "holdAndDelegate", skip_serializing_if = "String::is_empty")]
+    pub hold_and_delegate: String,
+    #[serde(
+        rename = "allowLocalPortForwarding",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub allow_local_port_forwarding: bool,
+    #[serde(
+        rename = "allowRemotePortForwarding",
+        skip_serializing_if = "std::ops::Not::not"
+    )]
+    pub allow_remote_port_forwarding: bool,
+    /// Session recorders; flowmesh records nothing and refuses rules that require recording.
+    #[serde(rename = "recorders", skip_serializing_if = "Vec::is_empty")]
+    pub recorders: Vec<String>,
+}
+
+fn is_zero(v: &i64) -> bool {
+    *v == 0
+}
+
 /// 网络地图流中的一条消息。除 `keep_alive` 外，其余字段只在本条消息带有对应变更时才出现。
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -312,6 +396,9 @@ pub struct MapResponse {
     pub peers_changed_patch: Vec<PeerChange>,
     #[serde(rename = "DNSConfig", skip_serializing_if = "Option::is_none")]
     pub dns_config: Option<DnsConfig>,
+    /// Who may SSH to this node as whom; present when it changed (docs/protocol/ssh.md).
+    #[serde(rename = "SSHPolicy", skip_serializing_if = "Option::is_none")]
+    pub ssh_policy: Option<SshPolicy>,
     #[serde(rename = "Domain", skip_serializing_if = "String::is_empty")]
     pub domain: String,
     /// 旧式的单一规则表；headscale 0.26 不发送，改用 `PacketFilters`。

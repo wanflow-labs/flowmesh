@@ -2,7 +2,7 @@
 //! Merge the map stream's initial full snapshot and later deltas into a current, complete network map (pure function).
 //! Message semantics in docs/protocol/control.md §5.
 
-use flowmesh_proto::control::{DnsConfig, MapResponse, Node, UserProfile};
+use flowmesh_proto::control::{DnsConfig, MapResponse, Node, SshPolicy, UserProfile};
 use flowmesh_proto::derp::DerpMap;
 use flowmesh_proto::filter::FilterRule;
 use std::collections::BTreeMap;
@@ -14,6 +14,8 @@ pub struct NetMap {
     pub peers: BTreeMap<i64, Node>,
     pub derp_map: DerpMap,
     pub dns: Option<DnsConfig>,
+    /// SSH access rules for this node (replaced whenever a message carries them).
+    pub ssh_policy: Option<SshPolicy>,
     pub domain: String,
     /// Packet filter rule groups (`PacketFilters`); a key with a null value means "delete this group".
     pub packet_filters: BTreeMap<String, Vec<FilterRule>>,
@@ -48,6 +50,10 @@ impl NetMap {
         if let Some(dns) = &m.dns_config {
             self.dns = Some(dns.clone());
             c.dns = true;
+        }
+        // Absent means unchanged, as for the other optional parts (tailcfg semantics).
+        if let Some(p) = &m.ssh_policy {
+            self.ssh_policy = Some(p.clone());
         }
         if !m.domain.is_empty() {
             self.domain = m.domain.clone();

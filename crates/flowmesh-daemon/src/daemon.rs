@@ -467,6 +467,8 @@ fn engine_config(p: &Prefs, authkey: Option<String>, opts: &Options) -> EngineCo
         stateful_filtering: p.stateful_filtering,
         exit_node: p.exit_node.clone(),
         exit_node_allow_lan_access: p.exit_node_allow_lan_access,
+        run_ssh: p.run_ssh,
+        ssh_helper: None,
     }
 }
 

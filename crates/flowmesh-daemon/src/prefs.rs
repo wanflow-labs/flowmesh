@@ -34,6 +34,8 @@ pub struct Prefs {
     pub exit_node_allow_lan_access: bool,
     /// Local user (name) who may change settings without root (`--operator`); empty for none.
     pub operator_user: String,
+    /// Run the SSH server (`--ssh`). Default false.
+    pub run_ssh: bool,
     pub want_running: bool,
 }
 
@@ -53,6 +55,7 @@ impl Default for Prefs {
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
             operator_user: String::new(),
+            run_ssh: false,
             want_running: false,
         }
     }
@@ -75,6 +78,7 @@ pub struct PrefsUpdate {
     pub exit_node: Option<String>,
     pub exit_node_allow_lan_access: Option<bool>,
     pub operator_user: Option<String>,
+    pub run_ssh: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -145,6 +149,9 @@ impl Prefs {
         }
         if self.operator_user != d.operator_user {
             out.push(("--operator", self.operator_user.clone()));
+        }
+        if self.run_ssh != d.run_ssh {
+            out.push(("--ssh", self.run_ssh.to_string()));
         }
         out
     }
@@ -224,6 +231,9 @@ impl Prefs {
         if let Some(v) = &update.operator_user {
             p.operator_user.clone_from(v);
         }
+        if let Some(v) = update.run_ssh {
+            p.run_ssh = v;
+        }
         p
     }
 }
@@ -245,6 +255,7 @@ impl PrefsUpdate {
             "--exit-node" => self.exit_node.is_some(),
             "--exit-node-allow-lan-access" => self.exit_node_allow_lan_access.is_some(),
             "--operator" => self.operator_user.is_some(),
+            "--ssh" => self.run_ssh.is_some(),
             _ => false,
         }
     }
@@ -409,6 +420,7 @@ mod tests {
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
             operator_user: "alice".into(),
+            run_ssh: false,
             want_running: true,
         };
         assert_eq!(

@@ -60,6 +60,16 @@ pub enum Command {
     Metrics {
         write: Option<PathBuf>,
     },
+    /// `ssh [user@]<host> [args...]`: the system ssh, checking the peer's advertised host keys.
+    Ssh {
+        target: String,
+        args: Vec<String>,
+    },
+    /// `nc <host> <port>`: connect stdin/stdout to a peer's TCP port (ssh's ProxyCommand).
+    Nc {
+        host: String,
+        port: u16,
+    },
 }
 
 /// `--auth-key` value; `file:<path>` reads the key from a file (official syntax).
@@ -75,7 +85,7 @@ pub struct Invocation {
     pub command: Command,
 }
 
-pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ip|ping|whois|exit-node|netcheck|dns|metrics|debug|bugreport|version> [flags]";
+pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ip|ping|ssh|nc|whois|exit-node|netcheck|dns|metrics|debug|bugreport|version> [flags]";
 
 /// Parse the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Invocation, String> {
@@ -143,6 +153,20 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
             }
             Command::Netcheck { json }
         }
+        "ssh" => match rest {
+            [target, args @ ..] if !target.starts_with('-') => Command::Ssh {
+                target: target.clone(),
+                args: args.to_vec(),
+            },
+            _ => return Err("usage: flowmesh ssh [user@]<host> [args...]".into()),
+        },
+        "nc" => match rest {
+            [host, port] => Command::Nc {
+                host: host.clone(),
+                port: port.parse().map_err(|_| format!("invalid port {port:?}"))?,
+            },
+            _ => return Err("usage: flowmesh nc <hostname-or-IP> <port>".into()),
+        },
         "metrics" => match rest {
             [s] if s == "print" => Command::Metrics { write: None },
             [s, path] if s == "write" => Command::Metrics {
@@ -443,6 +467,7 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
             "exit-node-allow-lan-access" => {
                 update.exit_node_allow_lan_access = Some(bool_value(name, inline)?)
             }
+            "ssh" => update.run_ssh = Some(bool_value(name, inline)?),
             // Accepted as given, like the official client (an unknown user simply matches nobody).
             "operator" => update.operator_user = Some(take_value(name, inline, rest, &mut i)?),
             "advertise-tags" => {
@@ -832,6 +857,39 @@ mod tests {
         );
         assert!(p(&["exit-node"]).is_err());
         assert!(p(&["exit-node", "list", "--json"]).is_err());
+    }
+
+    #[test]
+    fn ssh_and_nc_commands() {
+        assert_eq!(
+            cmd(&["ssh", "root@tss", "-tt", "id"]),
+            Command::Ssh {
+                target: "root@tss".into(),
+                args: vec!["-tt".into(), "id".into()]
+            }
+        );
+        assert_eq!(
+            cmd(&["ssh", "tss"]),
+            Command::Ssh {
+                target: "tss".into(),
+                args: vec![]
+            }
+        );
+        assert!(p(&["ssh"]).is_err());
+        assert!(p(&["ssh", "-v", "tss"]).is_err());
+        assert_eq!(
+            cmd(&["nc", "tss", "22"]),
+            Command::Nc {
+                host: "tss".into(),
+                port: 22
+            }
+        );
+        assert!(p(&["nc", "tss", "x"]).is_err());
+        assert!(p(&["nc", "tss"]).is_err());
+        let Command::Set(u) = cmd(&["set", "--ssh"]) else {
+            panic!()
+        };
+        assert_eq!(u.run_ssh, Some(true));
     }
 
     #[test]

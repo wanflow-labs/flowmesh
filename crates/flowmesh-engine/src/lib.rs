@@ -53,6 +53,11 @@ pub struct EngineConfig {
     pub exit_node: String,
     /// Keep the host's own networks off the exit node (`--exit-node-allow-lan-access`).
     pub exit_node_allow_lan_access: bool,
+    /// Run the SSH server (`--ssh`).
+    pub run_ssh: bool,
+    /// The program that runs SSH sessions as the user (`<it> be-child ssh …`); None: this
+    /// program.
+    pub ssh_helper: Option<std::path::PathBuf>,
 }
 
 /// Why the engine stopped with an error.

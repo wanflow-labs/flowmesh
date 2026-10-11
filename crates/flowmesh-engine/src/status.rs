@@ -27,6 +27,8 @@ pub struct PeerStatus {
     pub exit_node: bool,
     /// ACL tags the control server gave the node.
     pub tags: Vec<String>,
+    /// The node's SSH host keys while it runs an SSH server.
+    pub ssh_host_keys: Vec<String>,
     /// RFC 3339, when the server set one.
     pub key_expiry: Option<String>,
     /// The node key has expired (the peer is listed but not reachable).
