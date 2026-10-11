@@ -386,6 +386,8 @@ impl<L: Launcher> Daemon<L> {
             accept_routes: p.accept_routes,
             advertise_routes: p.advertise_routes.clone(),
             snat_subnet_routes: p.snat_subnet_routes,
+            advertise_tags: p.advertise_tags.clone(),
+            shields_up: p.shields_up,
         };
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();

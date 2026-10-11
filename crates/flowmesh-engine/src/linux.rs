@@ -765,7 +765,12 @@ pub async fn run(
         hostname: args.hostname.clone(),
         machine: std::env::consts::ARCH.into(),
         routable_ips: args.advertise_routes.clone(),
+        request_tags: args.advertise_tags.clone(),
+        shields_up: args.shields_up,
         ..Default::default()
+    };
+    let policy = crate::logic::Policy {
+        shields_up: args.shields_up,
     };
     let register_req = |node_key: NodePublic, old_node_key: NodePublic| RegisterRequest {
         version: CAPABILITY_VERSION,
@@ -991,7 +996,13 @@ pub async fn run(
         udp_tx: crate::udpio::UdpTx::new(),
         pending: Vec::with_capacity(PENDING_MAX),
     };
-    if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
+    if let Err(e) = apply_netmap(
+        &mut dp,
+        &mut ctx.ps,
+        &ctx.nm,
+        crate::logic::unix_now(),
+        &policy,
+    ) {
         log(e);
     }
     dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));
@@ -1269,7 +1280,7 @@ pub async fn run(
                         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                     }
                     if changed.peers || changed.filter || changed.derp || changed.self_node {
-                        if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now()) {
+                        if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
             log(e);
         }
                         dp.set_local_nets(local_nets(&ctx.nm, &args.advertise_routes, None));

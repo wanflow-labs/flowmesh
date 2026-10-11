@@ -203,6 +203,28 @@ fn parse_route(r: &str) -> Result<IpNet, String> {
     Ok(net)
 }
 
+/// One `--advertise-tags` entry, checked like the official client (same messages): `tag:` and a
+/// name that starts with a letter and holds only letters, digits and dashes.
+fn check_tag(t: &str) -> Result<String, String> {
+    let name = t
+        .strip_prefix("tag:")
+        .ok_or_else(|| format!("tag: {t:?}: tags must start with 'tag:'"))?;
+    if name.is_empty() {
+        return Err(format!("tag: {t:?}: tag names must not be empty"));
+    }
+    if !name.starts_with(|c: char| c.is_ascii_alphabetic()) {
+        return Err(format!(
+            "tag: {t:?}: tag names must start with a letter, after 'tag:'"
+        ));
+    }
+    if !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+        return Err(format!(
+            "tag: {t:?}: tag names can only contain numbers, letters, or dashes"
+        ));
+    }
+    Ok(t.to_string())
+}
+
 fn split_flag(a: &str) -> Result<(&str, Option<&str>), String> {
     let body = a
         .strip_prefix("--")
@@ -270,6 +292,18 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
                 update.advertise_routes = Some(routes);
             }
             "snat-subnet-routes" => update.snat_subnet_routes = Some(bool_value(name, inline)?),
+            "shields-up" => update.shields_up = Some(bool_value(name, inline)?),
+            "advertise-tags" => {
+                let v = take_value(name, inline, rest, &mut i)?;
+                let tags = if v.is_empty() {
+                    Vec::new()
+                } else {
+                    v.split(',')
+                        .map(|t| check_tag(t.trim()))
+                        .collect::<Result<_, _>>()?
+                };
+                update.advertise_tags = Some(tags);
+            }
             "auth-key" | "authkey" if is_up => {
                 let v = take_value(name, inline, rest, &mut i)?;
                 authkey = Some(match v.strip_prefix("file:") {
@@ -418,6 +452,39 @@ mod tests {
             update.advertise_routes,
             Some(vec!["192.168.1.10/32".parse().unwrap()])
         );
+    }
+
+    /// The official client's messages for bad tags (observed against tailscaled 1.94.2).
+    #[test]
+    fn advertise_tags_are_checked_like_the_official_client() {
+        for (arg, msg) in [
+            ("eng", "tag: \"eng\": tags must start with 'tag:'"),
+            ("tag:", "tag: \"tag:\": tag names must not be empty"),
+            (
+                "tag:bad_name",
+                "tag: \"tag:bad_name\": tag names can only contain numbers, letters, or dashes",
+            ),
+            (
+                "tag:9lives",
+                "tag: \"tag:9lives\": tag names must start with a letter, after 'tag:'",
+            ),
+        ] {
+            assert_eq!(
+                p(&["up", &format!("--advertise-tags={arg}")]).unwrap_err(),
+                msg
+            );
+        }
+        let Command::Up { update, .. } = cmd(&["up", "--advertise-tags=tag:Upper,tag:ok-1"]) else {
+            panic!()
+        };
+        assert_eq!(
+            update.advertise_tags,
+            Some(vec!["tag:Upper".into(), "tag:ok-1".into()])
+        );
+        let Command::Set(update) = cmd(&["set", "--shields-up"]) else {
+            panic!()
+        };
+        assert_eq!(update.shields_up, Some(true));
     }
 
     #[test]

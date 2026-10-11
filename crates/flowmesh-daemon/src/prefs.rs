@@ -20,6 +20,10 @@ pub struct Prefs {
     /// Masquerade traffic forwarded from the mesh into advertised subnets. Default true, same as the
     /// official client (`--snat-subnet-routes`).
     pub snat_subnet_routes: bool,
+    /// ACL tags requested from the control server (`--advertise-tags`).
+    pub advertise_tags: Vec<String>,
+    /// Refuse all inbound connections (`--shields-up`). Default false.
+    pub shields_up: bool,
     pub want_running: bool,
 }
 
@@ -32,6 +36,8 @@ impl Default for Prefs {
             accept_routes: false,
             advertise_routes: Vec::new(),
             snat_subnet_routes: true,
+            advertise_tags: Vec::new(),
+            shields_up: false,
             want_running: false,
         }
     }
@@ -47,6 +53,8 @@ pub struct PrefsUpdate {
     pub accept_routes: Option<bool>,
     pub advertise_routes: Option<Vec<IpNet>>,
     pub snat_subnet_routes: Option<bool>,
+    pub advertise_tags: Option<Vec<String>>,
+    pub shields_up: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -90,6 +98,12 @@ impl Prefs {
         }
         if self.snat_subnet_routes != d.snat_subnet_routes {
             out.push(("--snat-subnet-routes", self.snat_subnet_routes.to_string()));
+        }
+        if self.advertise_tags != d.advertise_tags {
+            out.push(("--advertise-tags", self.advertise_tags.join(",")));
+        }
+        if self.shields_up != d.shields_up {
+            out.push(("--shields-up", self.shields_up.to_string()));
         }
         out
     }
@@ -148,6 +162,12 @@ impl Prefs {
         if let Some(v) = update.snat_subnet_routes {
             p.snat_subnet_routes = v;
         }
+        if let Some(v) = &update.advertise_tags {
+            p.advertise_tags.clone_from(v);
+        }
+        if let Some(v) = update.shields_up {
+            p.shields_up = v;
+        }
         p
     }
 }
@@ -162,6 +182,8 @@ impl PrefsUpdate {
             "--accept-routes" => self.accept_routes.is_some(),
             "--advertise-routes" => self.advertise_routes.is_some(),
             "--snat-subnet-routes" => self.snat_subnet_routes.is_some(),
+            "--advertise-tags" => self.advertise_tags.is_some(),
+            "--shields-up" => self.shields_up.is_some(),
             _ => false,
         }
     }
@@ -319,6 +341,8 @@ mod tests {
                 "10.1.0.0/24".parse().unwrap(),
             ],
             snat_subnet_routes: false,
+            advertise_tags: Vec::new(),
+            shields_up: false,
             want_running: true,
         };
         assert_eq!(

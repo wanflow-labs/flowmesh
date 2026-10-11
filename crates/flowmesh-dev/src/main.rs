@@ -32,6 +32,8 @@ fn parse_args() -> Result<flowmesh_engine::EngineConfig, String> {
         accept_routes: false,
         advertise_routes: Vec::new(),
         snat_subnet_routes: true,
+        advertise_tags: Vec::new(),
+        shields_up: false,
     };
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));

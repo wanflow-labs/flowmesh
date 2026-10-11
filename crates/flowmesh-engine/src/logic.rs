@@ -306,11 +306,19 @@ pub(crate) fn local_nets(
     flowmesh_dataplane::netset::LocalNets::new(own.chain(routes).chain(exits))
 }
 
+/// Local choices that shape how a network map is applied.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct Policy {
+    /// `--shields-up`: no inbound connections at all, whatever the control server's filter says.
+    pub shields_up: bool,
+}
+
 pub(crate) fn apply_netmap(
     dp: &mut Dataplane,
     ps: &mut PathSock,
     nm: &NetMap,
     now_unix: i64,
+    policy: &Policy,
 ) -> Result<(), String> {
     dp.set_peers(
         live_peers(nm, now_unix)
@@ -332,6 +340,12 @@ pub(crate) fn apply_netmap(
             .collect(),
     );
     ps.set_mode(mode_of(nm));
+    // Shields up: no rules, so only replies to this node's own connections come in (the filter
+    // tracks outbound flows), as the official client does.
+    if policy.shields_up {
+        dp.set_filter_rules(Vec::new());
+        return Ok(());
+    }
     // fail-closed: on a compile error the previous valid rules stay (design doc §7.2).
     let rules = flowmesh_filter::compile::compile(&nm.filter_rules())
         .map_err(|e| format!("filter rules rejected, keeping previous: {e}"))?;
@@ -1103,7 +1117,10 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert_eq!(apply_netmap(&mut dp, &mut ps, &nm, 0), Ok(()));
+        assert_eq!(
+            apply_netmap(&mut dp, &mut ps, &nm, 0, &Policy::default()),
+            Ok(())
+        );
         assert_eq!(
             ps.current_route(pb, Duration::ZERO),
             Route::Derp(1000),
@@ -1113,7 +1130,7 @@ mod tests {
             "SrcIPs": ["not-an-address"], "DstPorts": [{ "IP": "*", "Ports": { "First": 0, "Last": 65535 } }]
         })).unwrap();
         nm.packet_filters.insert("g".into(), vec![bad]);
-        let err = apply_netmap(&mut dp, &mut ps, &nm, 0).unwrap_err();
+        let err = apply_netmap(&mut dp, &mut ps, &nm, 0, &Policy::default()).unwrap_err();
         assert!(err.contains("keeping previous"), "{err}");
     }
 
@@ -1205,7 +1222,7 @@ mod tests {
         );
         let ids: Vec<i64> = live_peers(&nm, 0).map(|n| n.id).collect();
         assert_eq!(ids, [2], "judged by the server's clock, not the local 0");
-        apply_netmap(&mut dp, &mut ps, &nm, 0).unwrap();
+        apply_netmap(&mut dp, &mut ps, &nm, 0, &Policy::default()).unwrap();
         assert_eq!(ps.current_route(pb, Duration::ZERO), Route::Derp(1000));
         assert_eq!(
             ps.current_route(gone, Duration::ZERO),

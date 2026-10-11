@@ -201,7 +201,7 @@ mod tests {
         let mut dp = flowmesh_dataplane::plane::Dataplane::new(
             flowmesh_proto::key::NodePrivate::generate().unwrap(),
         );
-        crate::logic::apply_netmap(&mut dp, &mut ps, &nm, 0).unwrap();
+        crate::logic::apply_netmap(&mut dp, &mut ps, &nm, 0, &Default::default()).unwrap();
         let v = paths(&nm, &ps, Duration::ZERO);
         assert_eq!(v[0]["peer"]["name"], "ts1");
         assert_eq!(v[0]["peer"]["ip"], "100.64.0.1");

@@ -40,6 +40,8 @@ pub struct Hostinfo {
     pub routable_ips: Vec<IpNet>,
     #[serde(rename = "RequestTags", skip_serializing_if = "Vec::is_empty")]
     pub request_tags: Vec<String>,
+    #[serde(rename = "ShieldsUp", skip_serializing_if = "std::ops::Not::not")]
+    pub shields_up: bool,
     #[serde(rename = "NetInfo", skip_serializing_if = "Option::is_none")]
     pub net_info: Option<NetInfo>,
 }

@@ -37,6 +37,10 @@ pub struct EngineConfig {
     pub advertise_routes: Vec<ipnet::IpNet>,
     /// Masquerade traffic forwarded from the mesh into those subnets (`--snat-subnet-routes`).
     pub snat_subnet_routes: bool,
+    /// ACL tags to request (`--advertise-tags`), sent as Hostinfo.RequestTags.
+    pub advertise_tags: Vec<String>,
+    /// Refuse all inbound connections (`--shields-up`).
+    pub shields_up: bool,
 }
 
 /// Why the engine stopped with an error.
