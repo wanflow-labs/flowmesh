@@ -3,3 +3,7 @@
 # Reverse lookup zone for the mesh IPv6 prefix fd7a:115c:a1e0::/48 (mechanically derived from the address prefix; a protocol fact).
 # Source: OBS-20261010-flowmesh-probe/map-0000.json, a key in DNSConfig.Routes (sent by headscale)
 0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa
+# The official CLI's message when --exit-node names this machine's own address (users and scripts match it).
+# Source: OBS-20261011-exit-node-official/tsL-own-exit.txt
+cannot use {s} as an exit node as it is a local IP address to this machine; did you mean --advertise-exit-node?
+cannot use 100.64.0.7 as an exit node as it is a local IP address to this machine; did you mean --advertise-exit-node?

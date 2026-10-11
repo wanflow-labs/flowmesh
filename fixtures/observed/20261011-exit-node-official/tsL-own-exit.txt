@@ -1,0 +1,2 @@
+## tailscale set --exit-node=<own address>
+cannot use <own address> as an exit node as it is a local IP address to this machine; did you mean --advertise-exit-node?

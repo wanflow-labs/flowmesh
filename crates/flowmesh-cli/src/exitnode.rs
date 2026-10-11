@@ -18,7 +18,10 @@ pub fn resolve(spec: &str, status: &Value) -> Result<String, String> {
             .any(|v| v.as_str().and_then(|s| s.parse::<IpAddr>().ok()) == Some(*ip))
     };
     let local = |s: &str| {
-        format!("cannot use {s} as an exit node as it is a local IP address to this machine")
+        // The official CLI's wording, including its hint (OBS-20261011-exit-node-official/tsL-own-exit.txt).
+        format!(
+            "cannot use {s} as an exit node as it is a local IP address to this machine; did you mean --advertise-exit-node?"
+        )
     };
     let peers: Vec<&Value> = status["Peer"]
         .as_object()
@@ -141,7 +144,7 @@ mod tests {
         assert_eq!(
             resolve("100.64.0.7", &s),
             Err(
-                "cannot use 100.64.0.7 as an exit node as it is a local IP address to this machine"
+                "cannot use 100.64.0.7 as an exit node as it is a local IP address to this machine; did you mean --advertise-exit-node?"
                     .into()
             )
         );

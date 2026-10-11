@@ -1,0 +1,6 @@
+## tailscale set --exit-node=100.64.0.1
+node 100.64.0.1 is not advertising an exit node
+## tailscale set --exit-node=100.64.0.250
+no node found in netmap with IP 100.64.0.250
+## tailscale set --exit-node=fm-a
+node "fm-a" is not advertising an exit node
