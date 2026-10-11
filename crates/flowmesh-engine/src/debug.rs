@@ -15,6 +15,12 @@ pub enum DebugTopic {
     Paths,
     Filter,
     Derp,
+    /// The relay map as received (official field names), for `flowmesh netcheck`.
+    DerpMap,
+    /// DNS settings from control and the host, for `flowmesh dns status`.
+    Dns,
+    /// Prometheus text, for `flowmesh metrics`.
+    Metrics,
 }
 
 impl std::str::FromStr for DebugTopic {
@@ -25,6 +31,9 @@ impl std::str::FromStr for DebugTopic {
             "paths" => Ok(Self::Paths),
             "filter" => Ok(Self::Filter),
             "derp" => Ok(Self::Derp),
+            "derpmap" => Ok(Self::DerpMap),
+            "dns" => Ok(Self::Dns),
+            "metrics" => Ok(Self::Metrics),
             other => Err(format!(
                 "unknown debug topic {other:?} (netmap, paths, filter, derp)"
             )),
@@ -129,11 +138,91 @@ pub fn derp(nm: &NetMap, plan: &Value) -> Value {
     })
 }
 
+/// `search`/`domain` entries of a resolv.conf.
+fn resolv_search(content: &str) -> Vec<String> {
+    content
+        .lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            matches!(w.next(), Some("search" | "domain"))
+                .then(|| w.map(str::to_owned).collect::<Vec<_>>())
+        })
+        .flatten()
+        .collect()
+}
+
+/// What `dns status` shows: the control server's DNS settings, this node's name, and the host's own
+/// resolver configuration (the one in place before MagicDNS took resolv.conf over).
+pub fn dns(nm: &NetMap, accept_dns: bool, taken: bool, host_resolv: &str) -> Value {
+    let dns = nm.dns.clone().unwrap_or_default();
+    let self_name = nm
+        .self_node
+        .as_ref()
+        .map(|n| n.name.trim_end_matches('.').to_string())
+        .unwrap_or_default();
+    let suffix = self_name
+        .split_once('.')
+        .map(|(_, s)| s.to_string())
+        .unwrap_or_default();
+    let addrs = |v: &[flowmesh_proto::control::DnsResolver]| {
+        v.iter().map(|r| r.addr.clone()).collect::<Vec<_>>()
+    };
+    json!({
+        "acceptDNS": accept_dns,
+        "resolvConfManaged": taken,
+        "magicDNS": dns.proxied,
+        "suffix": suffix,
+        "selfName": self_name,
+        "resolvers": addrs(&dns.resolvers),
+        "routes": dns.routes.iter().map(|(k, v)| (k.clone(), json!(addrs(v)))).collect::<serde_json::Map<_, _>>(),
+        "fallbackResolvers": addrs(&dns.fallback_resolvers),
+        "domains": dns.domains,
+        "extraRecords": dns.extra_records.iter().map(|r| json!({
+            "name": r.name,
+            "type": if r.record_type.is_empty() { if r.value.contains(':') { "AAAA" } else { "A" } } else { r.record_type.as_str() },
+            "value": r.value,
+        })).collect::<Vec<_>>(),
+        "system": {
+            "nameservers": flowmesh_netcfg::resolv::parse_nameservers(host_resolv).iter().map(ToString::to_string).collect::<Vec<_>>(),
+            "search": resolv_search(host_resolv),
+        },
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use flowmesh_proto::control::Node;
     use flowmesh_proto::key::{DiscoPrivate, NodePublic};
+
+    #[test]
+    fn dns_view_carries_control_and_host_settings() {
+        let mut nm = nm();
+        nm.self_node = Some(Node {
+            name: "fm1.mesh.lab.internal.".into(),
+            ..Default::default()
+        });
+        nm.dns = Some(serde_json::from_value(json!({
+            "Resolvers": [{"Addr": "1.1.1.1"}],
+            "Routes": {"corp.example": [{"Addr": "10.0.0.53"}]},
+            "Domains": ["mesh.lab.internal"],
+            "Proxied": true,
+            "ExtraRecords": [{"Name": "svc.mesh.lab.internal", "Value": "100.64.0.250"}, {"Name": "v6.mesh.lab.internal", "Value": "fd7a::1"}],
+        })).unwrap());
+        let host = "# generated\nnameserver 127.0.0.53\nsearch lan example.com\noptions edns0\n";
+        let v = dns(&nm, true, true, host);
+        assert_eq!(v["suffix"], "mesh.lab.internal");
+        assert_eq!(v["selfName"], "fm1.mesh.lab.internal");
+        assert_eq!(v["magicDNS"], true);
+        assert_eq!(v["resolvers"], json!(["1.1.1.1"]));
+        assert_eq!(v["routes"], json!({"corp.example": ["10.0.0.53"]}));
+        assert_eq!(v["extraRecords"][0]["type"], "A");
+        assert_eq!(v["extraRecords"][1]["type"], "AAAA");
+        assert_eq!(
+            v["system"],
+            json!({"nameservers": ["127.0.0.53"], "search": ["lan", "example.com"]})
+        );
+    }
 
     fn nm() -> NetMap {
         let mut nm = NetMap {

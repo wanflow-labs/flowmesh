@@ -3,7 +3,7 @@
 
 use flowmesh_cli::args::{self, AuthKey, Command};
 use flowmesh_cli::bugreport::{self, Section};
-use flowmesh_cli::{ping, render};
+use flowmesh_cli::{netcheck, ping, query, render};
 use flowmesh_daemon::client::{DEFAULT_SOCKET, LocalClient};
 use serde_json::{Value, json};
 use std::process::ExitCode;
@@ -51,7 +51,7 @@ fn main() -> ExitCode {
         }
     };
     let client = LocalClient::new(inv.socket.unwrap_or_else(|| DEFAULT_SOCKET.into()));
-    match rt.block_on(run(&client, inv.command)) {
+    match rt.block_on(run(&client, inv.command, &argv)) {
         Ok(code) => ExitCode::from(code),
         Err(e) => {
             eprintln!("flowmesh: {e}");
@@ -60,7 +60,7 @@ fn main() -> ExitCode {
     }
 }
 
-async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
+async fn run(client: &LocalClient, command: Command, argv: &[String]) -> Result<u8, String> {
     let e = |e: flowmesh_daemon::client::ClientError| e.to_string();
     match command {
         Command::Ping { target, opts } => {
@@ -169,6 +169,83 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             );
             Ok(0)
         }
+        Command::Ip { family, peer } => {
+            let status = client.get("status").await.map_err(e)?;
+            let resolve = |name: &str| {
+                use std::net::ToSocketAddrs;
+                (name, 0)
+                    .to_socket_addrs()
+                    .map(|a| a.map(|s| s.ip()).collect())
+                    .map_err(|e| e.to_string())
+            };
+            match query::ip(&status, family, peer.as_deref(), resolve) {
+                Ok(ips) => {
+                    for ip in ips {
+                        outln!("{ip}");
+                    }
+                    Ok(0)
+                }
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    Ok(1)
+                }
+            }
+        }
+        Command::ExitNodeList { filter } => {
+            let status = client.get("status").await.map_err(e)?;
+            match query::exit_node_list(&status, filter.as_deref()) {
+                Ok(t) => {
+                    outln!("{t}");
+                    Ok(0)
+                }
+                Err(msg) => {
+                    eprintln!("{msg}");
+                    Ok(1)
+                }
+            }
+        }
+        Command::DnsStatus { all } => {
+            let v = client.get("dns").await.map_err(e)?;
+            out!("{}", query::dns_status(&v, all));
+            Ok(0)
+        }
+        Command::Netcheck { json } => {
+            let dm: flowmesh_proto::derp::DerpMap = match client.get("derpmap").await {
+                Ok(v) => serde_json::from_value(v).map_err(|e| format!("relay map: {e}"))?,
+                Err(flowmesh_daemon::client::ClientError::Api { status, .. })
+                    if status.as_u16() == 503 =>
+                {
+                    // The official client would fetch a default map from its vendor here.
+                    eprintln!(
+                        "flowmesh is not running: netcheck measures the relays in the map from your control server, so connect first ('flowmesh up')"
+                    );
+                    return Ok(1);
+                }
+                Err(other) => return Err(other.to_string()),
+            };
+            let observed = netcheck::probe(&dm).await;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default();
+            let report = netcheck::summarize(&dm, &observed, now);
+            if json {
+                eprintln!("# Warning: this JSON format is not yet considered a stable interface");
+                outln!("{}", netcheck::json(&report));
+            } else {
+                out!("{}", netcheck::text(&dm, &report));
+            }
+            Ok(0)
+        }
+        Command::Metrics { write } => {
+            let v = client.get("metrics").await.map_err(e)?;
+            let text = v.as_str().unwrap_or_default();
+            match write {
+                None => out!("{text}"),
+                Some(path) => write_atomic(&path, text.as_bytes())
+                    .map_err(|e| format!("write {}: {e}", path.display()))?,
+            }
+            Ok(0)
+        }
         Command::Version => {
             outln!("{}", env!("CARGO_PKG_VERSION"));
             Ok(0)
@@ -186,18 +263,24 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             Ok(render::exit_code(&s))
         }
         Command::Down => {
-            client.post("down", &json!({})).await.map_err(e)?;
+            if let Some(code) = change(client, "down", &json!({}), argv).await? {
+                return Ok(code);
+            }
             Ok(0)
         }
         Command::Logout => {
-            client.post("logout", &json!({})).await.map_err(e)?;
+            if let Some(code) = change(client, "logout", &json!({}), argv).await? {
+                return Ok(code);
+            }
             Ok(0)
         }
         Command::Set(mut update) => {
             resolve_exit_node(client, &mut update).await?;
             warn_forwarding(&update);
             let body = serde_json::to_value(update).map_err(|e| e.to_string())?;
-            client.post("set", &body).await.map_err(e)?;
+            if let Some(code) = change(client, "set", &body, argv).await? {
+                return Ok(code);
+            }
             Ok(0)
         }
         Command::Up {
@@ -219,9 +302,31 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             resolve_exit_node(client, &mut update).await?;
             warn_forwarding(&update);
             let body = json!({ "update": update, "reset": reset, "authkey": authkey });
-            client.post("up", &body).await.map_err(e)?;
+            if let Some(code) = change(client, "up", &body, argv).await? {
+                return Ok(code);
+            }
             wait_running(client, timeout).await
         }
+    }
+}
+
+/// Send a change. Refused for lack of rights: say how to run it, as the official CLI does
+/// (OBS-20261012-cli-more-official/operator-access.txt), and return the exit code.
+async fn change(
+    client: &LocalClient,
+    path: &str,
+    body: &Value,
+    argv: &[String],
+) -> Result<Option<u8>, String> {
+    match client.post(path, body).await {
+        Ok(_) => Ok(None),
+        Err(flowmesh_daemon::client::ClientError::Api { status, message })
+            if status.as_u16() == 403 =>
+        {
+            eprintln!("{}", render::access_denied(&message, argv));
+            Ok(Some(1))
+        }
+        Err(other) => Err(other.to_string()),
     }
 }
 
@@ -305,6 +410,18 @@ fn collect_system() -> Vec<Section> {
             ),
         },
     ]
+}
+
+/// Replace `path` in one step (a temporary file renamed over it), so a metrics collector reading
+/// the file never sees half of it.
+fn write_atomic(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
+    let mut tmp = path.as_os_str().to_owned();
+    tmp.push(format!(".tmp{}", std::process::id()));
+    let tmp = std::path::PathBuf::from(tmp);
+    std::fs::write(&tmp, data)?;
+    std::fs::rename(&tmp, path).inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 /// Bug reports can contain addresses and routes: create them readable by the owner only.

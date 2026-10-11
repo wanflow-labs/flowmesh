@@ -43,8 +43,23 @@ pub struct PeerConfig {
     pub disco: DiscoPublic,
 }
 
+/// Packets dropped, by direction and reason (the official metric labels).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Drops {
+    /// Inbound, refused by the packet filter.
+    pub inbound_acl: u64,
+    /// Inbound, malformed or not for this node (inner source outside the peer's AllowedIPs,
+    /// destination not local).
+    pub inbound_error: u64,
+    /// Outbound to a multicast destination.
+    pub outbound_multicast: u64,
+    /// Outbound with no peer to send it to, or that WireGuard could not encapsulate.
+    pub outbound_error: u64,
+}
+
 pub struct Dataplane {
     me: NodePrivate,
+    drops: Drops,
     peers: HashMap<NodePublic, Peer>,
     filter: Filter,
     next_index: u32,
@@ -83,6 +98,7 @@ impl Dataplane {
         let static_public = x25519_dalek::PublicKey::from(&static_secret);
         Self {
             me,
+            drops: Drops::default(),
             peers: HashMap::new(),
             filter: Filter::new(vec![]),
             next_index: 1,
@@ -204,19 +220,35 @@ impl Dataplane {
 
     pub fn outbound(&mut self, pkt: &[u8], now: Duration) -> Vec<Output> {
         let Some(meta) = ippkt::parse(pkt) else {
+            self.drops.outbound_error += 1;
             return Vec::new();
         };
+        if meta.dst.is_multicast() {
+            self.drops.outbound_multicast += 1;
+            return Vec::new();
+        }
         let Some(key) = self.route(meta.dst) else {
+            self.drops.outbound_error += 1;
             return Vec::new();
         };
         self.filter.check_out(&meta, now);
         let Some(peer) = self.peers.get_mut(&key) else {
+            self.drops.outbound_error += 1;
             return Vec::new();
         };
         match peer.tunn.encapsulate(pkt, &mut self.scratch) {
             TunnResult::WriteToNetwork(out) => vec![Output::ToPeer(key, out.to_vec())],
-            _ => Vec::new(),
+            // Queued until the handshake completes: not dropped.
+            TunnResult::Done => Vec::new(),
+            _ => {
+                self.drops.outbound_error += 1;
+                Vec::new()
+            }
         }
+    }
+
+    pub fn drops(&self) -> Drops {
+        self.drops
     }
 
     pub fn inbound(&mut self, src: NodePublic, data: &[u8], now: Duration) -> Vec<Output> {
@@ -234,20 +266,23 @@ impl Dataplane {
                 }
                 TunnResult::WriteToTunnelV4(pkt, _) | TunnResult::WriteToTunnelV6(pkt, _) => {
                     let pkt = pkt.to_vec();
-                    if let Some(meta) = ippkt::parse(&pkt) {
-                        // WireGuard cryptokey routing: the inner source address must be within that peer's AllowedIPs.
-                        let owned = peer.allowed.iter().any(|n| n.contains(&meta.src));
-                        let ours = self.local.as_ref().is_none_or(|l| l.contains(&meta.dst));
-                        let peerapi = meta.proto == flowmesh_filter::packet::IpProto::Tcp
-                            && self
-                                .peerapi
-                                .contains(&std::net::SocketAddr::new(meta.dst, meta.dst_port));
-                        if owned
-                            && ours
-                            && (peerapi || self.filter.check_in(&meta, now) == Verdict::Accept)
-                        {
-                            outputs.push(Output::ToTun(pkt));
-                        }
+                    let Some(meta) = ippkt::parse(&pkt) else {
+                        self.drops.inbound_error += 1;
+                        break;
+                    };
+                    // WireGuard cryptokey routing: the inner source address must be within that peer's AllowedIPs.
+                    let owned = peer.allowed.iter().any(|n| n.contains(&meta.src));
+                    let ours = self.local.as_ref().is_none_or(|l| l.contains(&meta.dst));
+                    let peerapi = meta.proto == flowmesh_filter::packet::IpProto::Tcp
+                        && self
+                            .peerapi
+                            .contains(&std::net::SocketAddr::new(meta.dst, meta.dst_port));
+                    if !owned || !ours {
+                        self.drops.inbound_error += 1;
+                    } else if peerapi || self.filter.check_in(&meta, now) == Verdict::Accept {
+                        outputs.push(Output::ToTun(pkt));
+                    } else {
+                        self.drops.inbound_acl += 1;
                     }
                     break;
                 }
@@ -390,6 +425,35 @@ mod tests {
         let first = a.outbound(&syn, Duration::ZERO);
         let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
         assert!(tun_b.is_empty());
+        assert_eq!(
+            b.drops(),
+            Drops {
+                inbound_acl: 1,
+                ..Default::default()
+            }
+        );
+    }
+
+    #[test]
+    fn outbound_drops_are_counted_by_reason() {
+        let (mut a, _, _, _) = pair();
+        let mcast = build::v4(A_IP, [224, 0, 0, 251], 17, &build::udp(5353, 5353));
+        assert!(a.outbound(&mcast, Duration::ZERO).is_empty());
+        let nowhere = build::v4(A_IP, [100, 64, 0, 77], 1, &build::icmp(8));
+        assert!(a.outbound(&nowhere, Duration::ZERO).is_empty());
+        assert_eq!(
+            a.drops(),
+            Drops {
+                outbound_multicast: 1,
+                outbound_error: 1,
+                ..Default::default()
+            }
+        );
+        // The first packet to a peer waits for the handshake: queued, not dropped.
+        let ping = build::v4(A_IP, B_IP, 1, &build::icmp(8));
+        a.outbound(&ping, Duration::ZERO);
+        a.outbound(&ping, Duration::ZERO);
+        assert_eq!(a.drops().outbound_error, 1);
     }
 
     #[test]
@@ -406,6 +470,8 @@ mod tests {
         let first = a.outbound(&spoof, Duration::ZERO);
         let (_, tun_b) = run(&mut a, pa, &mut b, pb, first);
         assert!(tun_b.is_empty());
+        assert_eq!(b.drops().inbound_error, 1);
+        assert_eq!(b.drops().inbound_acl, 0);
         // Control: a legitimate packet in the same session does arrive, so the check above is not passing just because the path is broken.
         let legit = build::v4(A_IP, B_IP, 1, &build::icmp(8));
         let first = a.outbound(&legit, Duration::ZERO);

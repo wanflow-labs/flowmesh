@@ -56,12 +56,16 @@ pub async fn serve<L: Launcher>(
             },
             _ = stop.changed() => return,
         };
-        let privileged = is_privileged(stream.peer_cred().ok().map(|c| c.uid()), owner_uid);
+        let uid = stream.peer_cred().ok().map(|c| c.uid());
+        let caller = Caller {
+            root: is_privileged(uid, owner_uid),
+            uid,
+        };
         let d = daemon.clone();
         tokio::spawn(async move {
             let svc = service_fn(move |req| {
                 let d = d.clone();
-                async move { Ok::<_, Infallible>(handle(&d, req, privileged).await) }
+                async move { Ok::<_, Infallible>(handle(&d, req, caller).await) }
             });
             let _ = http1::Builder::new()
                 .serve_connection(TokioIo::new(stream), svc)
@@ -74,6 +78,40 @@ pub async fn serve<L: Launcher>(
 pub fn is_privileged(peer_uid: Option<u32>, owner_uid: u32) -> bool {
     peer_uid == Some(0) || peer_uid == Some(owner_uid)
 }
+
+/// Who is on the other end of a local API connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Caller {
+    /// Root, or the user the daemon runs as.
+    pub root: bool,
+    pub uid: Option<u32>,
+}
+
+impl From<bool> for Caller {
+    fn from(root: bool) -> Self {
+        Self { root, uid: None }
+    }
+}
+
+/// Whether `uid` is the operator named in the preferences (`--operator`). The name is looked up
+/// on every request, so a user created or renamed later is matched without a restart.
+pub fn is_operator(uid: Option<u32>, operator: &str) -> bool {
+    let (Some(uid), false) = (uid, operator.is_empty()) else {
+        return false;
+    };
+    matches!(nix::unistd::User::from_name(operator), Ok(Some(u)) if u.uid.as_raw() == uid)
+}
+
+/// Whether a change names a different operator (repeating the current one, as `up` requires for
+/// every non-default setting, is not a change; `up --reset` without it clears it).
+pub fn changes_operator(current: &str, given: Option<&str>, reset: bool) -> bool {
+    match given {
+        Some(v) => v != current,
+        None => reset && !current.is_empty(),
+    }
+}
+
+const OPERATOR_ROOT_ONLY: &str = "access denied: only root can change the operator";
 
 fn reply(code: StatusCode, body: &Value) -> Response<Full<Bytes>> {
     let mut r = Response::new(Full::new(Bytes::from(body.to_string())));
@@ -174,12 +212,15 @@ fn parse<T: serde::de::DeserializeOwned + Default>(body: &[u8]) -> Result<T, Str
 pub async fn handle<L: Launcher, B>(
     d: &Daemon<L>,
     req: Request<B>,
-    privileged: bool,
+    caller: impl Into<Caller>,
 ) -> Response<Full<Bytes>>
 where
     B: hyper::body::Body,
     B::Error: Into<Box<dyn std::error::Error + Send + Sync>>,
 {
+    let caller = caller.into();
+    // The operator may do what root may, except name another operator.
+    let privileged = caller.root || is_operator(caller.uid, &d.prefs().await.operator_user);
     let method = req.method().clone();
     let req_query = req.uri().query().map(str::to_owned);
     let Some(name) = req.uri().path().strip_prefix(PREFIX).map(str::to_owned) else {
@@ -191,10 +232,24 @@ where
     };
     match (&method, name.as_str()) {
         (&Method::GET, "status") => reply(StatusCode::OK, &d.status_json().await),
+        // Read-only views for `dns status`, `netcheck` and `metrics`: open to every local user like
+        // status (no keys or peer endpoints in them).
+        (&Method::GET, "dns" | "derpmap" | "metrics") => {
+            use flowmesh_engine::debug::DebugTopic;
+            let topic = match name.as_str() {
+                "dns" => DebugTopic::Dns,
+                "derpmap" => DebugTopic::DerpMap,
+                _ => DebugTopic::Metrics,
+            };
+            match d.debug(topic).await {
+                Ok(v) => reply(StatusCode::OK, &v),
+                Err(e) => daemon_error(&e),
+            }
+        }
         // Peers' keys and endpoints: root (or the daemon's user) only.
         (&Method::GET, "debug") if !privileged => error(
             StatusCode::FORBIDDEN,
-            "access denied: debug views require root",
+            "access denied: debug views require root or the operator",
         ),
         (&Method::GET, "debug") => {
             let topic = req_query
@@ -248,13 +303,19 @@ where
         }
         (&Method::POST, "up" | "down" | "logout" | "set") if !privileged => error(
             StatusCode::FORBIDDEN,
-            "access denied: changing flowmesh requires root",
+            "access denied: changing flowmesh requires root or the operator",
         ),
         (&Method::POST, "up") => {
             let req: UpRequest = match parse(&body) {
                 Ok(r) => r,
                 Err(e) => return error(StatusCode::BAD_REQUEST, e),
             };
+            let cur = d.prefs().await.operator_user;
+            if !caller.root
+                && changes_operator(&cur, req.update.operator_user.as_deref(), req.reset)
+            {
+                return error(StatusCode::FORBIDDEN, OPERATOR_ROOT_ONLY);
+            }
             match d.up(req).await {
                 Ok(()) => reply(StatusCode::OK, &json!({})),
                 Err(e) => daemon_error(&e),
@@ -265,6 +326,10 @@ where
                 Ok(r) => r,
                 Err(e) => return error(StatusCode::BAD_REQUEST, e),
             };
+            let cur = d.prefs().await.operator_user;
+            if !caller.root && changes_operator(&cur, update.operator_user.as_deref(), false) {
+                return error(StatusCode::FORBIDDEN, OPERATOR_ROOT_ONLY);
+            }
             match d.set(update).await {
                 Ok(()) => reply(StatusCode::OK, &json!({})),
                 Err(e) => daemon_error(&e),

@@ -900,6 +900,125 @@ async fn debug_views_are_root_only() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn dns_derpmap_and_metrics_are_open_to_every_user() {
+    use http_body_util::Full;
+    use hyper::body::Bytes;
+    let h = start(temp_dir("openviews"), Fake::default()).await;
+    let (code, _) = api_error(h.client.get("metrics").await);
+    assert_eq!(code, 503, "not running");
+    h.up(json!({ "update": full_flags(), "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    for (name, want) in [
+        ("dns", "Dns"),
+        ("derpmap", "DerpMap"),
+        ("metrics", "Metrics"),
+    ] {
+        let req = hyper::Request::get(format!("/localapi/v0/{name}"))
+            .body(Full::new(Bytes::new()))
+            .unwrap();
+        let resp = api::handle(&h.daemon, req, false).await;
+        assert_eq!(resp.status(), 200, "{name}");
+        let body = http_body_util::BodyExt::collect(resp.into_body())
+            .await
+            .unwrap()
+            .to_bytes();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v["topic"], want);
+    }
+}
+
+/// The operator (`--operator`) may change settings and read debug views without root, but not
+/// name another operator; everyone else stays read-only.
+#[tokio::test(flavor = "multi_thread")]
+async fn operator_may_change_settings_but_not_the_operator() {
+    use http_body_util::Full;
+    use hyper::body::Bytes;
+    let me = nix::unistd::getuid();
+    let name = nix::unistd::User::from_uid(me).unwrap().unwrap().name;
+    let h = start(temp_dir("operator"), Fake::default()).await;
+    let mut flags = full_flags();
+    flags["operator_user"] = json!(name);
+    h.up(json!({ "update": flags, "authkey": GOOD_KEY }))
+        .await
+        .unwrap();
+    h.wait_state("Running").await;
+    assert_eq!(
+        h.client.get("prefs").await.unwrap()["operator_user"],
+        json!(name)
+    );
+    let call = |path: &str, body: serde_json::Value, uid: u32| {
+        let req = hyper::Request::post(format!("/localapi/v0/{path}"))
+            .body(Full::new(Bytes::from(body.to_string())))
+            .unwrap();
+        let d = h.daemon.clone();
+        async move {
+            api::handle(
+                &d,
+                req,
+                api::Caller {
+                    root: false,
+                    uid: Some(uid),
+                },
+            )
+            .await
+            .status()
+        }
+    };
+    let op = me.as_raw();
+    let other = op.wrapping_add(4242);
+    assert_eq!(call("set", json!({ "shields_up": true }), op).await, 200);
+    assert_eq!(
+        call("set", json!({ "shields_up": false }), other).await,
+        403
+    );
+    // Naming the current operator again is no change; naming someone else needs root.
+    assert_eq!(call("set", json!({ "operator_user": name }), op).await, 200);
+    assert_eq!(
+        call("set", json!({ "operator_user": "root" }), op).await,
+        403
+    );
+    assert_eq!(call("set", json!({ "operator_user": "" }), op).await, 403);
+    let mut reset = full_flags();
+    reset.as_object_mut().unwrap().remove("operator_user");
+    assert_eq!(
+        call("up", json!({ "update": reset, "reset": true }), op).await,
+        403
+    );
+    let req = hyper::Request::get("/localapi/v0/debug?topic=paths")
+        .body(Full::new(Bytes::new()))
+        .unwrap();
+    let resp = api::handle(
+        &h.daemon,
+        req,
+        api::Caller {
+            root: false,
+            uid: Some(op),
+        },
+    )
+    .await;
+    assert_eq!(resp.status(), 200);
+    assert_eq!(
+        h.client.get("prefs").await.unwrap()["shields_up"],
+        json!(true)
+    );
+}
+
+#[test]
+fn operator_change_rule() {
+    assert!(!api::changes_operator("alice", Some("alice"), false));
+    assert!(api::changes_operator("alice", Some("bob"), false));
+    assert!(api::changes_operator("", Some("bob"), false));
+    assert!(!api::changes_operator("alice", None, false));
+    assert!(api::changes_operator("alice", None, true));
+    assert!(!api::changes_operator("", None, true));
+    assert!(!api::is_operator(Some(0), ""));
+    assert!(!api::is_operator(None, "root"));
+    assert!(api::is_operator(Some(0), "root"));
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn whois_by_address_forms() {
     let h = start(temp_dir("whois"), Fake::default()).await;
     let (code, _) = api_error(h.client.get("whois?addr=100.64.0.1").await);

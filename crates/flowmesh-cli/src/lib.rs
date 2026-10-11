@@ -4,5 +4,7 @@
 pub mod args;
 pub mod bugreport;
 pub mod exitnode;
+pub mod netcheck;
 pub mod ping;
+pub mod query;
 pub mod render;

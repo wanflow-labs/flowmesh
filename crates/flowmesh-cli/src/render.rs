@@ -164,8 +164,51 @@ pub fn forwarding_warning(ipv4: Option<bool>, ipv6: Option<bool>) -> Option<&'st
     }
 }
 
+/// The message for a change the daemon refused for lack of rights, laid out like the official
+/// one: the reason, the command again with sudo, and how to avoid sudo for good.
+pub fn access_denied(reason: &str, argv: &[String]) -> String {
+    let mut reason = reason.to_string();
+    if let Some(first) = reason.get(..1) {
+        reason.replace_range(..1, &first.to_uppercase());
+    }
+    let quoted: Vec<String> = argv
+        .iter()
+        .map(|a| {
+            let plain = a
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || "-_=./:,@+".contains(c));
+            if plain { a.clone() } else { format!("\"{a}\"") }
+        })
+        .collect();
+    format!(
+        "{reason}\n\nUse 'sudo flowmesh {}'.\nTo not require root, use 'sudo flowmesh set --operator=$USER' once.",
+        quoted.join(" ")
+    )
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn access_denied_like_the_official_cli() {
+        let argv: Vec<String> = ["set", "--shields-up"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert_eq!(
+            super::access_denied(
+                "access denied: changing flowmesh requires root or the operator",
+                &argv
+            ),
+            "Access denied: changing flowmesh requires root or the operator\n\nUse 'sudo flowmesh set --shields-up'.\nTo not require root, use 'sudo flowmesh set --operator=$USER' once."
+        );
+        let argv: Vec<String> = ["set", "--hostname=a b"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
+        assert!(
+            super::access_denied("x", &argv).contains("'sudo flowmesh set \"--hostname=a b\"'")
+        );
+    }
 
     #[test]
     fn forwarding_warning_follows_the_official_client() {

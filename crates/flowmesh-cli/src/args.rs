@@ -39,6 +39,27 @@ pub enum Command {
         output: Option<PathBuf>,
     },
     Version,
+    /// `ip [-4|-6|-1] [peer]`
+    Ip {
+        family: crate::query::IpFamily,
+        peer: Option<String>,
+    },
+    /// `exit-node list [--filter=country]`
+    ExitNodeList {
+        filter: Option<String>,
+    },
+    /// `dns status [--all]`
+    DnsStatus {
+        all: bool,
+    },
+    /// `netcheck [--format=json]`
+    Netcheck {
+        json: bool,
+    },
+    /// `metrics print`, or `metrics write <file>`
+    Metrics {
+        write: Option<PathBuf>,
+    },
 }
 
 /// `--auth-key` value; `file:<path>` reads the key from a file (official syntax).
@@ -54,7 +75,7 @@ pub struct Invocation {
     pub command: Command,
 }
 
-pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ping|whois|debug|bugreport|version> [flags]";
+pub const USAGE: &str = "usage: flowmesh [--socket=PATH] <up|down|logout|set|status|ip|ping|whois|exit-node|netcheck|dns|metrics|debug|bugreport|version> [flags]";
 
 /// Parse the arguments after the program name.
 pub fn parse(args: &[String]) -> Result<Invocation, String> {
@@ -90,6 +111,46 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
             Command::Status { json }
         }
         "ping" => ping_command(rest)?,
+        "ip" => ip_command(rest)?,
+        "exit-node" => exit_node_command(rest)?,
+        "dns" => match rest {
+            [s] if s == "status" => Command::DnsStatus { all: false },
+            [s, f] if s == "status" => match split_flag(f)? {
+                ("all", inline) => Command::DnsStatus {
+                    all: bool_value("all", inline)?,
+                },
+                (name, _) => return Err(format!("dns status: unknown flag -{name}")),
+            },
+            _ => return Err("usage: flowmesh dns status [--all]".into()),
+        },
+        "netcheck" => {
+            let mut json = false;
+            let mut j = 0;
+            while let Some(a) = rest.get(j) {
+                let (name, inline) = split_flag(a)?;
+                match name {
+                    "format" => match take_value(name, inline, rest, &mut j)?.as_str() {
+                        "" => json = false,
+                        "json" | "json-line" => json = true,
+                        other => return Err(format!("unknown output format {other:?}")),
+                    },
+                    "every" | "verbose" => {
+                        return Err(format!("netcheck: -{name} is not supported by flowmesh"));
+                    }
+                    _ => return Err(format!("netcheck: unknown flag -{name}")),
+                }
+                j += 1;
+            }
+            Command::Netcheck { json }
+        }
+        "metrics" => match rest {
+            [s] if s == "print" => Command::Metrics { write: None },
+            [s, path] if s == "write" => Command::Metrics {
+                write: Some(PathBuf::from(path)),
+            },
+            [s] if s == "write" => return Err("usage: flowmesh metrics write <path>".into()),
+            _ => return Err("usage: flowmesh metrics print|write <path>".into()),
+        },
         "whois" => {
             let mut json = false;
             let mut i = 0;
@@ -167,6 +228,62 @@ fn ping_command(rest: &[String]) -> Result<Command, String> {
         }),
         [] => Err("usage: flowmesh ping [flags] <hostname-or-IP>".into()),
         _ => Err("too many non-flag arguments".into()),
+    }
+}
+
+/// `ip [-4|-6|-1] [peer]`, with the official CLI's messages.
+fn ip_command(rest: &[String]) -> Result<Command, String> {
+    use crate::query::IpFamily;
+    let (mut v4, mut v6, mut one) = (false, false, false);
+    let mut i = 0;
+    while let Some(a) = rest.get(i).filter(|a| a.starts_with('-')) {
+        let (name, inline) = split_flag(a)?;
+        match name {
+            "4" => v4 = bool_value(name, inline)?,
+            "6" => v6 = bool_value(name, inline)?,
+            "1" => one = bool_value(name, inline)?,
+            _ => return Err(format!("ip: unknown flag -{name}")),
+        }
+        i += 1;
+    }
+    let family = match (v4, v6, one) {
+        (false, false, false) => IpFamily::All,
+        (true, false, false) => IpFamily::V4,
+        (false, true, false) => IpFamily::V6,
+        (false, false, true) => IpFamily::One,
+        _ => return Err("flowmesh ip -1, -4, and -6 are mutually exclusive".into()),
+    };
+    match &rest[i.min(rest.len())..] {
+        [] => Ok(Command::Ip { family, peer: None }),
+        [peer] => Ok(Command::Ip {
+            family,
+            peer: Some(peer.clone()),
+        }),
+        _ => Err("too many arguments, expected at most one peer".into()),
+    }
+}
+
+/// `exit-node list [--filter=country]`.
+fn exit_node_command(rest: &[String]) -> Result<Command, String> {
+    const USE: &str = "usage: flowmesh exit-node list [--filter=country]";
+    match rest.first().map(String::as_str) {
+        Some("list") => {
+            let mut filter = None;
+            let mut i = 1;
+            while let Some(a) = rest.get(i) {
+                let (name, inline) = split_flag(a)?;
+                match name {
+                    "filter" => {
+                        let v = take_value(name, inline, rest, &mut i)?;
+                        filter = (!v.is_empty()).then_some(v);
+                    }
+                    _ => return Err(format!("exit-node list: unknown flag -{name}")),
+                }
+                i += 1;
+            }
+            Ok(Command::ExitNodeList { filter })
+        }
+        _ => Err(USE.into()),
     }
 }
 
@@ -326,6 +443,8 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
             "exit-node-allow-lan-access" => {
                 update.exit_node_allow_lan_access = Some(bool_value(name, inline)?)
             }
+            // Accepted as given, like the official client (an unknown user simply matches nobody).
+            "operator" => update.operator_user = Some(take_value(name, inline, rest, &mut i)?),
             "advertise-tags" => {
                 let v = take_value(name, inline, rest, &mut i)?;
                 let tags = if v.is_empty() {
@@ -653,6 +772,95 @@ mod tests {
         assert_eq!(cmd(&["status", "--json"]), Command::Status { json: true });
         assert!(p(&["down", "--json"]).is_err());
         assert!(p(&["down", "extra"]).is_err());
+    }
+
+    #[test]
+    fn ip_and_exit_node_commands() {
+        use crate::query::IpFamily;
+        assert_eq!(
+            cmd(&["ip"]),
+            Command::Ip {
+                family: IpFamily::All,
+                peer: None
+            }
+        );
+        assert_eq!(
+            cmd(&["ip", "-4"]),
+            Command::Ip {
+                family: IpFamily::V4,
+                peer: None
+            }
+        );
+        assert_eq!(
+            cmd(&["ip", "--6", "toe"]),
+            Command::Ip {
+                family: IpFamily::V6,
+                peer: Some("toe".into())
+            }
+        );
+        assert_eq!(
+            cmd(&["ip", "-1"]),
+            Command::Ip {
+                family: IpFamily::One,
+                peer: None
+            }
+        );
+        // Official messages (OBS-20261012-cli-more-official/ip-4-6.txt, ip-too-many.txt).
+        assert_eq!(
+            p(&["ip", "-4", "-6"]).unwrap_err(),
+            "flowmesh ip -1, -4, and -6 are mutually exclusive"
+        );
+        assert_eq!(
+            p(&["ip", "a", "b"]).unwrap_err(),
+            "too many arguments, expected at most one peer"
+        );
+        assert_eq!(
+            cmd(&["exit-node", "list"]),
+            Command::ExitNodeList { filter: None }
+        );
+        assert_eq!(
+            cmd(&["exit-node", "list", "--filter=Korea"]),
+            Command::ExitNodeList {
+                filter: Some("Korea".into())
+            }
+        );
+        assert_eq!(
+            cmd(&["exit-node", "list", "-filter", "Korea"]),
+            Command::ExitNodeList {
+                filter: Some("Korea".into())
+            }
+        );
+        assert!(p(&["exit-node"]).is_err());
+        assert!(p(&["exit-node", "list", "--json"]).is_err());
+    }
+
+    #[test]
+    fn dns_netcheck_metrics_commands() {
+        assert_eq!(cmd(&["dns", "status"]), Command::DnsStatus { all: false });
+        assert_eq!(
+            cmd(&["dns", "status", "--all"]),
+            Command::DnsStatus { all: true }
+        );
+        assert!(p(&["dns"]).is_err());
+        assert_eq!(cmd(&["netcheck"]), Command::Netcheck { json: false });
+        assert_eq!(
+            cmd(&["netcheck", "--format=json"]),
+            Command::Netcheck { json: true }
+        );
+        // Official message (netcheck-bad-format.txt).
+        assert_eq!(
+            p(&["netcheck", "--format=xml"]).unwrap_err(),
+            "unknown output format \"xml\""
+        );
+        assert_eq!(cmd(&["metrics", "print"]), Command::Metrics { write: None });
+        assert_eq!(
+            cmd(&["metrics", "write", "/var/lib/node_exporter/flowmesh.prom"]),
+            Command::Metrics {
+                write: Some("/var/lib/node_exporter/flowmesh.prom".into())
+            }
+        );
+        assert!(p(&["metrics"]).is_err());
+        assert!(p(&["metrics", "write"]).is_err());
     }
 
     #[test]

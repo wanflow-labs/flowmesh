@@ -94,7 +94,25 @@ Capabilities:
 - Local API: `GET /localapi/v0/whois?addr=<ip | ip:port | [v6]:port>` → `{"Node", "UserProfile", "CapMap"}`; 404 `peer not found`, 400 for a bad address, 503 when not Running; open to every local user.
 - `flowmesh-meshsvc` uses the same lookup: a mesh service gets a `Caller` (node, tags, user, caps) for each connection and never sees a connection whose source the netmap cannot name. Access control stays in the packet filter.
 
-## 6. Lab notes
+## 6. Query and operations commands
+
+Source: `OBS-20261012-cli-more-official` (`lab/scripts/cli_more_observe.sh`); flowmesh checked against a live mesh with an official exit node by `lab/scripts/cli_more_check.sh`. Machine-readable output (JSON, metric names and labels, messages scripts match on) keeps the official form so existing tools read it; human-facing prose is flowmesh's own wording.
+
+- `ip [-4|-6|-1] [peer]`: this node's mesh addresses, or a peer's (by address, short name, host name or full DNS name; a name the netmap does not know is looked up with the system resolver and must lead to a peer's address). `-1` prints one address, IPv4 when there is one. Messages as official: `flowmesh ip -1, -4, and -6 are mutually exclusive`, `too many arguments, expected at most one peer`, `error looking up IP of "x": …`, and when stopped `no current flowmesh IPs; state: NeedsLogin` (all exit 1).
+- `exit-node list [--filter=country]`: the official table (tabwriter layout, minimum column width 10, padding 5, blank line before and after) followed by two `#` hint lines; `STATUS` is `selected`, `offline` or `-`. Headscale sends no locations, so `COUNTRY`/`CITY` are `-`. `no exit nodes found for "x"` (exit 1). `exit-node suggest` is not offered.
+- `dns status [--all]`: the official sections in the official order (use-DNS state, MagicDNS configuration, resolvers, split DNS routes, search domains; with `--all` also fallback resolvers, nameserver addresses, certificate domains, additional records, exit-node filtered suffixes, match domains; then the system configuration). Routes without resolvers (headscale sends one per mesh reverse zone) are left out, as official. The system configuration is the host's resolv.conf from before MagicDNS took it over. Local API `GET /localapi/v0/dns`, open to every local user.
+- `netcheck [--format=json]`: probes run in the CLI process, as official: STUN binding requests (three tries, 300 ms apart) to every relay node of every measured region, IPv4 and IPv6; latency is the fastest answer, rounded to 100 µs in the text report; `MappingVariesByDestIP` is true when servers saw different external addresses; regions STUN does not reach are timed by a TCP connect to the relay. Text and JSON layouts match the official ones byte for byte for the same measurements (JSON: official field order, tab indent, nanoseconds; the warning line goes to stderr). `unknown output format "xml"` (exit 1). PortMapping is always empty (no UPnP/NAT-PMP/PCP). The relay map comes from flowmeshd (`GET /localapi/v0/derpmap`, open to every local user); when it has none, netcheck refuses (deviation #13).
+- `metrics print` / `metrics write <file>`: Prometheus text with the official metric names, types and labels (the help texts are flowmesh's own) (`tailscaled_advertised_routes`, `…_approved_routes`, `…_health_messages{type="warning"}`, `…_home_derp_region_id`, `…_{inbound,outbound}_{bytes,packets}_total{path=derp|direct_ipv4|direct_ipv6|peer_relay_ipv4|peer_relay_ipv6}`, `…_outbound_dropped_packets_total{reason=error|multicast}`). flowmesh also fills `…_inbound_dropped_packets_total{reason="acl"|"error"}` (filter refusals; packets not for this node or from outside the peer's AllowedIPs), which the official client declares without samples. Byte counts are WireGuard datagram sizes. `write` replaces the file atomically (for node_exporter's textfile collector). Local API `GET /localapi/v0/metrics`, open to every local user.
+- `--operator=<user>` (`up`/`set`): that local user may change settings and read the debug views without root; anyone else is read-only (the socket is 0666). The name is accepted as given (an unknown user matches nobody) and looked up on each request. Only root (or the daemon's own user) may name a different operator; repeating the current one, as `up` requires for non-default settings, is allowed. A refused change prints, like the official client:
+
+```
+Access denied: changing flowmesh requires root or the operator
+
+Use 'sudo flowmesh set --shields-up'.
+To not require root, use 'sudo flowmesh set --operator=$USER' once.
+```
+
+## 7. Lab notes
 
 - **Official client and a plain-HTTP control server.** After a noise dial has succeeded, the official client remembers it and insists on port 443 for later control dials ("forcing port 443 dial due to recent noise dial"); the memory does not expire on its own. The lab headscale serves plain HTTP on port 80, so a logout, or the login right after it, fails on the official side for this reason alone. `cli_diff.sh` restarts ts2 around each logout (state is persisted, so this clears only the in-memory heuristic). flowmesh has no such heuristic (deviation #2).
 - The official client also queries bootstrap DNS on vendor DERP hosts when the control name does not resolve; flowmesh never contacts built-in third-party addresses (deviation #3).

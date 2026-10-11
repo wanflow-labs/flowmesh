@@ -32,6 +32,8 @@ pub struct Prefs {
     pub exit_node: String,
     /// Reach the host's own networks directly while using an exit node. Default false.
     pub exit_node_allow_lan_access: bool,
+    /// Local user (name) who may change settings without root (`--operator`); empty for none.
+    pub operator_user: String,
     pub want_running: bool,
 }
 
@@ -50,6 +52,7 @@ impl Default for Prefs {
             stateful_filtering: false,
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
+            operator_user: String::new(),
             want_running: false,
         }
     }
@@ -71,6 +74,7 @@ pub struct PrefsUpdate {
     pub stateful_filtering: Option<bool>,
     pub exit_node: Option<String>,
     pub exit_node_allow_lan_access: Option<bool>,
+    pub operator_user: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -138,6 +142,9 @@ impl Prefs {
                 "--exit-node-allow-lan-access",
                 self.exit_node_allow_lan_access.to_string(),
             ));
+        }
+        if self.operator_user != d.operator_user {
+            out.push(("--operator", self.operator_user.clone()));
         }
         out
     }
@@ -214,6 +221,9 @@ impl Prefs {
         if let Some(v) = update.exit_node_allow_lan_access {
             p.exit_node_allow_lan_access = v;
         }
+        if let Some(v) = &update.operator_user {
+            p.operator_user.clone_from(v);
+        }
         p
     }
 }
@@ -234,6 +244,7 @@ impl PrefsUpdate {
             "--stateful-filtering" => self.stateful_filtering.is_some(),
             "--exit-node" => self.exit_node.is_some(),
             "--exit-node-allow-lan-access" => self.exit_node_allow_lan_access.is_some(),
+            "--operator" => self.operator_user.is_some(),
             _ => false,
         }
     }
@@ -397,6 +408,7 @@ mod tests {
             stateful_filtering: false,
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
+            operator_user: "alice".into(),
             want_running: true,
         };
         assert_eq!(
@@ -408,6 +420,7 @@ mod tests {
                 ("--accept-routes", "true".to_string()),
                 ("--advertise-routes", "10.0.0.0/24,10.1.0.0/24".to_string()),
                 ("--snat-subnet-routes", "false".to_string()),
+                ("--operator", "alice".to_string()),
             ]
         );
         assert!(Prefs::default().non_default_flags().is_empty());

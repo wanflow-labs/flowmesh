@@ -596,6 +596,10 @@ struct Ctx {
     /// WireGuard datagrams routed to a UDP address (direct or peer relay), sent together by
     /// `flush` so that runs to one destination can leave in one GSO send.
     pending: Vec<Pending>,
+    /// WireGuard traffic per path, for `flowmesh metrics`.
+    traffic: crate::metrics::Traffic,
+    /// Datagrams for a peer that could not be sent (no path, send error).
+    send_errors: u64,
 }
 
 /// A WireGuard datagram waiting in `Ctx::pending`.
@@ -734,23 +738,31 @@ impl Ctx {
                 }
             }
         }
+        use crate::metrics::Path;
         match route {
-            Route::Direct(addr) => self.pending.push(Pending {
-                to: addr,
-                data: bytes,
-                direct: Some(key),
-            }),
-            Route::PeerRelay { server, vni } => self.pending.push(Pending {
-                to: server,
-                data: relayed(vni, PROTO_WIREGUARD, &bytes),
-                direct: None,
-            }),
+            Route::Direct(addr) => {
+                self.traffic.sent(Path::Direct(addr.ip()), bytes.len());
+                self.pending.push(Pending {
+                    to: addr,
+                    data: bytes,
+                    direct: Some(key),
+                });
+            }
+            Route::PeerRelay { server, vni } => {
+                self.traffic.sent(Path::PeerRelay(server.ip()), bytes.len());
+                self.pending.push(Pending {
+                    to: server,
+                    data: relayed(vni, PROTO_WIREGUARD, &bytes),
+                    direct: None,
+                });
+            }
             Route::Derp(region) => {
+                self.traffic.sent(Path::Derp, bytes.len());
                 self.relays
                     .send(region, &self.nm.derp_map, key, &bytes)
                     .await
             }
-            Route::None => {}
+            Route::None => self.send_errors += 1,
         }
     }
 
@@ -788,7 +800,10 @@ impl Ctx {
                                 )
                                 .await;
                         }
-                        None => log(format!("peer relay send {to}: {e}")),
+                        None => {
+                            self.send_errors += 1;
+                            log(format!("peer relay send {to}: {e}"));
+                        }
                     }
                 }
             }
@@ -1093,6 +1108,8 @@ pub async fn run(
         Backoff::default(),
     )));
     let mut control_health: Option<String> = None;
+    // Health messages at the last status publish, for `flowmesh metrics`.
+    let mut warnings = 0usize;
     let mut peer_ids: Vec<i64> = Vec::new();
 
     let mut dp = Dataplane::new(keys.node.clone());
@@ -1106,6 +1123,8 @@ pub async fn run(
         peer_relay: RelayClient::new(disco.public()),
         udp_tx: crate::udpio::UdpTx::new(),
         pending: Vec::with_capacity(PENDING_MAX),
+        traffic: Default::default(),
+        send_errors: 0,
     };
     exit_health = select_exit_node(&mut policy, &ctx.nm, &args.exit_node);
     if let Err(e) = apply_netmap(
@@ -1279,7 +1298,10 @@ pub async fn run(
                                 .peer_for_datagram(from.ip(), payload)
                                 .or_else(|| ctx.ps.peer_for_relay(from, h.vni))
                             {
-                                Some(peer) => dp.inbound(peer, payload, now),
+                                Some(peer) => {
+                                    ctx.traffic.received(crate::metrics::Path::PeerRelay(from.ip()), payload.len());
+                                    dp.inbound(peer, payload, now)
+                                }
                                 None => Vec::new(),
                             }
                         } else {
@@ -1324,6 +1346,7 @@ pub async fn run(
                         // rate-limited.
                         .or_else(|| ctx.ps.peer_for_addr(from))
                     {
+                        ctx.traffic.received(crate::metrics::Path::Direct(from.ip()), data.len());
                         dp.inbound(peer, data, now)
                     } else {
                         Vec::new()
@@ -1350,6 +1373,7 @@ pub async fn run(
                             if !looks_like_wireguard(&data) {
                                 tap("derp-other", &data, now);
                             }
+                            ctx.traffic.received(crate::metrics::Path::Derp, data.len());
                             dp.inbound(src, &data, now)
                         }
                     }
@@ -1448,6 +1472,24 @@ pub async fn run(
                                 DebugTopic::Derp => {
                                     let plan = ctx.relays.plan.describe(ctx.relays.now());
                                     crate::debug::derp(&ctx.nm, &plan)
+                                }
+                                DebugTopic::DerpMap => serde_json::to_value(&ctx.nm.derp_map).unwrap_or_default(),
+                                DebugTopic::Dns => crate::debug::dns(&ctx.nm, cur.accept_dns, dns_taken, &original_resolv),
+                                DebugTopic::Metrics => {
+                                    let advertised = crate::features::advertised(&cur);
+                                    let approved = ctx.nm.self_node.as_ref().map_or(0, |n| {
+                                        advertised.iter().filter(|r| n.allowed_ips.contains(r)).count()
+                                    });
+                                    let snap = crate::metrics::Snapshot {
+                                        advertised_routes: advertised.len(),
+                                        approved_routes: approved,
+                                        warnings,
+                                        home_region: ctx.relays.plan.home(),
+                                        traffic: ctx.traffic.clone(),
+                                        drops: dp.drops(),
+                                        send_errors: ctx.send_errors,
+                                    };
+                                    serde_json::Value::String(crate::metrics::prometheus(&snap))
                                 }
                             };
                             let _ = reply.send(v);
@@ -1576,6 +1618,7 @@ pub async fn run(
                         all_health.extend(exit_health.clone());
                         all_health.extend(dns_msg.clone());
                         all_health.extend(features.health());
+                        warnings = all_health.len();
                         let mut snap = snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health);
                         if let Some(key) = policy.exit_node {
                             let key = key.to_string();
