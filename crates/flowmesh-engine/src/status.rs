@@ -25,6 +25,8 @@ pub struct PeerStatus {
     pub exit_node_option: bool,
     /// This peer is the exit node in use.
     pub exit_node: bool,
+    /// ACL tags the control server gave the node.
+    pub tags: Vec<String>,
     /// RFC 3339, when the server set one.
     pub key_expiry: Option<String>,
     /// The node key has expired (the peer is listed but not reachable).

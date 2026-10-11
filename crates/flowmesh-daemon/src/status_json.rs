@@ -135,6 +135,9 @@ fn node(n: &PeerStatus) -> Value {
     });
     // Official shape: present only when set / true.
     if let Some(obj) = v.as_object_mut() {
+        if !n.tags.is_empty() {
+            obj.insert("Tags".into(), n.tags.clone().into());
+        }
         if let Some(e) = &n.key_expiry {
             obj.insert("KeyExpiry".into(), e.as_str().into());
         }
@@ -196,6 +199,7 @@ mod tests {
             active: true,
             exit_node_option: false,
             exit_node: false,
+            tags: Vec::new(),
             key_expiry: None,
             expired: false,
         }
@@ -230,6 +234,26 @@ mod tests {
 
     /// ExitNodeStatus as the official client shows it (OBS-20261011-exit-node-official): only while an
     /// exit node is in use, with its ID, online state and addresses as prefixes.
+    /// Tags as the official client shows them (OBS-20261010-cli/status-initial.json): on Self and
+    /// on each peer, only for tagged nodes.
+    #[test]
+    fn tags_only_for_tagged_nodes() {
+        let mut snap = running();
+        let plain = out(BackendState::Running, true, &snap);
+        assert!(
+            plain["Self"].get("Tags").is_none()
+                && plain["Peer"]["nodekey:bb"].get("Tags").is_none()
+        );
+        snap.self_node.as_mut().unwrap().tags = vec!["tag:relay-enabled".into()];
+        snap.peers[0].tags = vec!["tag:relay-strict".into(), "tag:relay-enabled".into()];
+        let v = out(BackendState::Running, true, &snap);
+        assert_eq!(v["Self"]["Tags"], json!(["tag:relay-enabled"]));
+        assert_eq!(
+            v["Peer"]["nodekey:bb"]["Tags"],
+            json!(["tag:relay-strict", "tag:relay-enabled"])
+        );
+    }
+
     #[test]
     fn exit_node_status_only_while_using_one() {
         let mut snap = running();
