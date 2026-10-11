@@ -36,6 +36,8 @@ fn parse_args() -> Result<flowmesh_engine::EngineConfig, String> {
         shields_up: false,
         advertise_exit_node: false,
         stateful_filtering: false,
+        exit_node: String::new(),
+        exit_node_allow_lan_access: false,
     };
     while let Some(a) = it.next() {
         let mut val = || it.next().ok_or(format!("{a} needs a value"));

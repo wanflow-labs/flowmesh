@@ -193,14 +193,15 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
             client.post("logout", &json!({})).await.map_err(e)?;
             Ok(0)
         }
-        Command::Set(update) => {
+        Command::Set(mut update) => {
+            resolve_exit_node(client, &mut update).await?;
             warn_forwarding(&update);
             let body = serde_json::to_value(update).map_err(|e| e.to_string())?;
             client.post("set", &body).await.map_err(e)?;
             Ok(0)
         }
         Command::Up {
-            update,
+            mut update,
             reset,
             authkey,
             timeout,
@@ -215,12 +216,27 @@ async fn run(client: &LocalClient, command: Command) -> Result<u8, String> {
                         .to_string(),
                 ),
             };
+            resolve_exit_node(client, &mut update).await?;
             warn_forwarding(&update);
             let body = json!({ "update": update, "reset": reset, "authkey": authkey });
             client.post("up", &body).await.map_err(e)?;
             wait_running(client, timeout).await
         }
     }
+}
+
+/// Turn `--exit-node=<name or address>` into the address to store, checked against the current
+/// status like the official CLI (a stopped daemon: an address is taken as given).
+async fn resolve_exit_node(
+    client: &LocalClient,
+    update: &mut flowmesh_daemon::prefs::PrefsUpdate,
+) -> Result<(), String> {
+    let Some(spec) = update.exit_node.clone().filter(|s| !s.is_empty()) else {
+        return Ok(());
+    };
+    let status = client.get("status").await.unwrap_or(Value::Null);
+    update.exit_node = Some(flowmesh_cli::exitnode::resolve(&spec, &status)?);
+    Ok(())
 }
 
 /// When the command advertises routes, warn if the kernel does not forward (the daemon never changes

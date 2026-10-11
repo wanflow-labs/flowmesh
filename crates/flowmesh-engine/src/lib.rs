@@ -45,6 +45,10 @@ pub struct EngineConfig {
     pub advertise_exit_node: bool,
     /// Drop new connections forwarded into the mesh (`--stateful-filtering`).
     pub stateful_filtering: bool,
+    /// The exit node to use (`--exit-node`: an address or a unique node name; empty: none).
+    pub exit_node: String,
+    /// Keep the host's own networks off the exit node (`--exit-node-allow-lan-access`).
+    pub exit_node_allow_lan_access: bool,
 }
 
 /// Why the engine stopped with an error.

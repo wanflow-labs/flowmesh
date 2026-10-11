@@ -1,0 +1,20 @@
+[package]
+name = "flowmesh-net"
+description = "flowmesh's own sockets: marked so policy routing keeps them off the mesh interface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+tokio = { version = "1.53.2", features = ["net"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.31.3", default-features = false, features = ["socket"] }
+
+[dev-dependencies]
+tokio = { version = "1.53.2", features = ["macros", "rt", "net"] }

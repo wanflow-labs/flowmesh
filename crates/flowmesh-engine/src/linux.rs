@@ -41,6 +41,47 @@ const HOME_HEALTH_GRACE: Duration = Duration::from_secs(5);
 const MTU: u16 = 1280;
 const DEFAULT_STUN_PORT: u16 = 3478;
 
+/// Resolve `--exit-node` against the current network map; returns why it cannot be used, if so.
+/// The routing through the mesh stays in place either way: traffic does not leak around an exit
+/// node that is unknown or offline (the official client also keeps routing to it).
+fn select_exit_node(
+    policy: &mut crate::logic::Policy,
+    nm: &flowmesh_control::netmap::NetMap,
+    spec: &str,
+) -> Option<String> {
+    if spec.is_empty() {
+        policy.exit_node = None;
+        return None;
+    }
+    match crate::logic::resolve_exit_node(nm, spec) {
+        Ok(key) => {
+            policy.exit_node = Some(key);
+            let offers = nm
+                .peers
+                .values()
+                .find(|n| n.key == key)
+                .is_some_and(|n| n.allowed_ips.iter().any(|p| p.prefix_len() == 0));
+            (!offers).then(|| format!("exit node {spec} does not offer to be an exit node; internet traffic is dropped"))
+        }
+        Err(e) => {
+            policy.exit_node = None;
+            Some(format!(
+                "{e}; internet traffic is dropped until it is found"
+            ))
+        }
+    }
+}
+
+/// Removes the exit node policy routing when dropped.
+struct ExitRouting;
+
+impl Drop for ExitRouting {
+    fn drop(&mut self) {
+        flowmesh_netcfg::exit_route::remove();
+        log("exit node: policy routing removed");
+    }
+}
+
 /// Removes the subnet-router netfilter rules when dropped.
 struct ForwardRules(flowmesh_netcfg::forward::Backend);
 
@@ -342,12 +383,10 @@ async fn choose_home(dm: &DerpMap) -> Option<(u32, DerpNode)> {
         };
         probes.spawn(async move {
             let t = Instant::now();
-            let ok = tokio::time::timeout(
-                HOME_PROBE_TIMEOUT,
-                tokio::net::TcpStream::connect((host.as_str(), port)),
-            )
-            .await
-            .is_ok_and(|r| r.is_ok());
+            let ok =
+                tokio::time::timeout(HOME_PROBE_TIMEOUT, flowmesh_net::tcp_connect(&host, port))
+                    .await
+                    .is_ok_and(|r| r.is_ok());
             (id, ok.then(|| t.elapsed()))
         });
     }
@@ -404,7 +443,7 @@ fn forward_dns(
             return;
         };
         let bind = if up.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" };
-        let Ok(sock) = UdpSocket::bind(bind).await else {
+        let Ok(sock) = UdpSocket::bind(bind).await.inspect(flowmesh_net::mark) else {
             return;
         };
         if sock.send_to(&query, (up, 53)).await.is_err() {
@@ -814,9 +853,13 @@ pub async fn run(
         shields_up: args.shields_up,
         ..Default::default()
     };
-    let policy = crate::logic::Policy {
+    let mut policy = crate::logic::Policy {
         shields_up: args.shields_up,
+        accept_routes: args.accept_routes,
+        exit_node: None,
     };
+    // Why the configured exit node is not in use, for the health list.
+    let mut exit_health: Option<String>;
     let register_req = |node_key: NodePublic, old_node_key: NodePublic| RegisterRequest {
         version: CAPABILITY_VERSION,
         node_key,
@@ -887,6 +930,7 @@ pub async fn run(
             .map_err(|e| format!("udp bind :{}: {e}", args.port))?,
     );
     set_socket_buffers(&udp);
+    flowmesh_net::mark(udp.as_ref());
     let gro = crate::udpio::enable_gro(&udp);
     log(format!(
         "udp: GRO {}",
@@ -1041,6 +1085,7 @@ pub async fn run(
         udp_tx: crate::udpio::UdpTx::new(),
         pending: Vec::with_capacity(PENDING_MAX),
     };
+    exit_health = select_exit_node(&mut policy, &ctx.nm, &args.exit_node);
     if let Err(e) = apply_netmap(
         &mut dp,
         &mut ctx.ps,
@@ -1103,6 +1148,50 @@ pub async fn run(
             Err(e) => {
                 let msg = format!(
                     "subnet routes are advertised, but the forwarding rules could not be installed: {e}"
+                );
+                log(&msg);
+                health.push(msg);
+                None
+            }
+        }
+    };
+    // Using an exit node: everything but flowmesh's own (marked) packets goes through the mesh.
+    let _exit_routing = if args.exit_node.is_empty() {
+        None
+    } else {
+        let lan = if args.exit_node_allow_lan_access {
+            interfaces(&args.tun).nets
+        } else {
+            Vec::new()
+        };
+        let ipv6 = me.addresses.iter().any(|a| a.addr().is_ipv6());
+        match flowmesh_netcfg::exit_route::install(
+            &args.tun,
+            flowmesh_net::BYPASS_MARK,
+            flowmesh_net::BYPASS_MASK,
+            &lan,
+            ipv6,
+        ) {
+            Ok(warning) => {
+                log(format!(
+                    "exit node: using {}; LAN access {}",
+                    args.exit_node,
+                    if args.exit_node_allow_lan_access {
+                        format!("allowed {lan:?}")
+                    } else {
+                        "blocked".into()
+                    }
+                ));
+                if let Some(w) = warning {
+                    log(&w);
+                    health.push(w);
+                }
+                Some(ExitRouting)
+            }
+            Err(e) => {
+                let msg = format!(
+                    "exit node {}: routing could not be installed: {e}",
+                    args.exit_node
                 );
                 log(&msg);
                 health.push(msg);
@@ -1334,6 +1423,7 @@ pub async fn run(
                         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                     }
                     if changed.peers || changed.filter || changed.derp || changed.self_node {
+                        exit_health = select_exit_node(&mut policy, &ctx.nm, &args.exit_node);
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
             log(e);
         }
@@ -1442,7 +1532,15 @@ pub async fn run(
                         let mut all_health = health.clone();
                         all_health.extend(control_health.clone());
                         all_health.extend(ctx.relays.health());
-                        status.send_replace(snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health));
+                        all_health.extend(exit_health.clone());
+                        let mut snap = snapshot(&ctx.nm, &ctx.ps, &dp, now, &all_health);
+                        if let Some(key) = policy.exit_node {
+                            let key = key.to_string();
+                            for p in &mut snap.peers {
+                                p.exit_node = p.public_key == key;
+                            }
+                        }
+                        status.send_replace(snap);
                     }
                     dp.tick()
                 }

@@ -311,6 +311,41 @@ pub(crate) fn local_nets(
 pub(crate) struct Policy {
     /// `--shields-up`: no inbound connections at all, whatever the control server's filter says.
     pub shields_up: bool,
+    /// `--accept-routes`: peers' subnet routes go into their AllowedIPs (and the kernel table).
+    pub accept_routes: bool,
+    /// The exit node in use: the only peer whose default routes go into its AllowedIPs.
+    pub exit_node: Option<NodePublic>,
+}
+
+/// The AllowedIPs this node gives a peer: its own addresses, its subnet routes when routes are
+/// accepted, its default routes only when it is the exit node in use (the official client builds
+/// its WireGuard configuration the same way).
+pub(crate) fn peer_allowed_ips(n: &Node, policy: &Policy) -> Vec<ipnet::IpNet> {
+    n.allowed_ips
+        .iter()
+        .copied()
+        .filter(|p| {
+            if n.addresses.contains(p) {
+                true
+            } else if p.prefix_len() == 0 {
+                policy.exit_node == Some(n.key)
+            } else {
+                policy.accept_routes
+            }
+        })
+        .collect()
+}
+
+/// The peer `--exit-node` names. The CLI resolves names to an address (as the official CLI does),
+/// so the engine looks the address up.
+pub(crate) fn resolve_exit_node(nm: &NetMap, spec: &str) -> Result<NodePublic, String> {
+    let bad = || format!("exit node {spec} is not in the network map");
+    let ip: IpAddr = spec.parse().map_err(|_| bad())?;
+    nm.peers
+        .values()
+        .find(|n| n.addresses.iter().any(|a| a.addr() == ip))
+        .map(|n| n.key)
+        .ok_or_else(bad)
 }
 
 pub(crate) fn apply_netmap(
@@ -324,7 +359,7 @@ pub(crate) fn apply_netmap(
         live_peers(nm, now_unix)
             .map(|n| PeerConfig {
                 key: n.key,
-                allowed_ips: n.allowed_ips.clone(),
+                allowed_ips: peer_allowed_ips(n, policy),
                 disco: n.disco_key,
             })
             .collect(),
@@ -416,6 +451,81 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
 
 #[cfg(test)]
 mod tests {
+
+    fn exit_peer(id: i64, key: u8, name: &str, host: &str, addr: &str) -> Node {
+        Node {
+            id,
+            key: NodePublic([key; 32]),
+            name: format!("{name}.mesh.lab.internal."),
+            hostinfo: flowmesh_proto::control::Hostinfo {
+                hostname: host.into(),
+                ..Default::default()
+            },
+            addresses: vec![addr.parse().unwrap()],
+            allowed_ips: vec![
+                addr.parse().unwrap(),
+                "0.0.0.0/0".parse().unwrap(),
+                "::/0".parse().unwrap(),
+                "10.9.0.0/24".parse().unwrap(),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn allowed_ips_carry_default_routes_only_for_the_exit_node_in_use() {
+        let n = exit_peer(1, 1, "tse", "tsE", "100.64.0.9/32");
+        let none = peer_allowed_ips(&n, &Policy::default());
+        assert_eq!(
+            none,
+            vec!["100.64.0.9/32".parse::<ipnet::IpNet>().unwrap()],
+            "no routes accepted, not the exit node"
+        );
+        let routes = peer_allowed_ips(
+            &n,
+            &Policy {
+                accept_routes: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            routes.contains(&"10.9.0.0/24".parse().unwrap())
+                && routes.iter().all(|p| p.prefix_len() != 0)
+        );
+        let exit = peer_allowed_ips(
+            &n,
+            &Policy {
+                exit_node: Some(n.key),
+                ..Default::default()
+            },
+        );
+        assert!(
+            exit.contains(&"0.0.0.0/0".parse().unwrap()) && exit.contains(&"::/0".parse().unwrap())
+        );
+        assert!(
+            !exit.contains(&"10.9.0.0/24".parse().unwrap()),
+            "using an exit node does not accept subnet routes"
+        );
+    }
+
+    #[test]
+    fn exit_node_is_looked_up_by_address() {
+        let mut nm = NetMap::default();
+        let n = exit_peer(1, 1, "tse", "tsE", "100.64.0.9/32");
+        nm.peers.insert(n.id, n);
+        assert_eq!(
+            resolve_exit_node(&nm, "100.64.0.9"),
+            Ok(NodePublic([1; 32]))
+        );
+        assert_eq!(
+            resolve_exit_node(&nm, "100.64.0.99"),
+            Err("exit node 100.64.0.99 is not in the network map".into())
+        );
+        assert!(
+            resolve_exit_node(&nm, "tse").is_err(),
+            "names are resolved by the CLI"
+        );
+    }
 
     #[test]
     fn local_nets_cover_own_addresses_routes_and_a_shrunk_exit() {

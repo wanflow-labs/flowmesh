@@ -314,6 +314,18 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
             "shields-up" => update.shields_up = Some(bool_value(name, inline)?),
             "advertise-exit-node" => update.advertise_exit_node = Some(bool_value(name, inline)?),
             "stateful-filtering" => update.stateful_filtering = Some(bool_value(name, inline)?),
+            "exit-node" => {
+                let v = take_value(name, inline, rest, &mut i)?;
+                if v.starts_with("auto:") {
+                    return Err(format!(
+                        "--exit-node={v}: automatic exit node selection is not supported yet; name an exit node"
+                    ));
+                }
+                update.exit_node = Some(v);
+            }
+            "exit-node-allow-lan-access" => {
+                update.exit_node_allow_lan_access = Some(bool_value(name, inline)?)
+            }
             "advertise-tags" => {
                 let v = take_value(name, inline, rest, &mut i)?;
                 let tags = if v.is_empty() {
@@ -531,6 +543,32 @@ mod tests {
             panic!()
         };
         assert_eq!(update.shields_up, Some(true));
+    }
+
+    #[test]
+    fn exit_node_flags() {
+        let Command::Up { update, .. } = cmd(&[
+            "up",
+            "--exit-node=100.64.0.9",
+            "--exit-node-allow-lan-access",
+        ]) else {
+            panic!()
+        };
+        assert_eq!(update.exit_node.as_deref(), Some("100.64.0.9"));
+        assert_eq!(update.exit_node_allow_lan_access, Some(true));
+        let Command::Set(update) = cmd(&["set", "--exit-node="]) else {
+            panic!()
+        };
+        assert_eq!(
+            update.exit_node.as_deref(),
+            Some(""),
+            "empty: stop using an exit node"
+        );
+        assert!(
+            p(&["up", "--exit-node=auto:any"])
+                .unwrap_err()
+                .contains("not supported yet")
+        );
     }
 
     #[test]

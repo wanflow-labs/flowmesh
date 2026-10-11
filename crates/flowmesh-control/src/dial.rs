@@ -7,7 +7,6 @@ use crate::Error;
 use crate::client::ServerUrl;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::net::TcpStream;
 
 /// A connected stream, plain or TLS.
 pub trait Io: AsyncRead + AsyncWrite + Unpin + Send {}
@@ -18,7 +17,7 @@ pub type BoxIo = Box<dyn Io>;
 /// Connect to the control server; for `https://` complete a TLS handshake that verifies the
 /// server's certificate against the system roots (`SSL_CERT_FILE`/`SSL_CERT_DIR` are honored).
 pub async fn dial(url: &ServerUrl) -> Result<BoxIo, Error> {
-    let tcp = TcpStream::connect((url.host.as_str(), url.port)).await?;
+    let tcp = flowmesh_net::tcp_connect(&url.host, url.port).await?;
     if !url.tls {
         return Ok(Box::new(tcp));
     }

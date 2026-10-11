@@ -9,7 +9,6 @@ use flowmesh_proto::key::{NodePrivate, NodePublic};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 
 const DEFAULT_DERP_PORT: u16 = 443;
@@ -191,7 +190,7 @@ impl DerpClient {
         } else {
             node.ipv4.clone()
         };
-        let tcp = TcpStream::connect((addr.as_str(), port)).await?;
+        let tcp = flowmesh_net::tcp_connect(&addr, port).await?;
         tcp.set_nodelay(true)?;
         let name = rustls::pki_types::ServerName::try_from(node.host_name.clone())
             .map_err(|e| Error::Protocol(format!("bad DERP host name: {e}")))?;

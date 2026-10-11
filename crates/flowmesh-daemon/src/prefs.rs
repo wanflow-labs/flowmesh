@@ -28,6 +28,10 @@ pub struct Prefs {
     pub advertise_exit_node: bool,
     /// Only replies may be forwarded into the mesh (`--stateful-filtering`). Default false.
     pub stateful_filtering: bool,
+    /// Exit node to use (`--exit-node`): an address or a unique node name; empty for none.
+    pub exit_node: String,
+    /// Reach the host's own networks directly while using an exit node. Default false.
+    pub exit_node_allow_lan_access: bool,
     pub want_running: bool,
 }
 
@@ -44,6 +48,8 @@ impl Default for Prefs {
             shields_up: false,
             advertise_exit_node: false,
             stateful_filtering: false,
+            exit_node: String::new(),
+            exit_node_allow_lan_access: false,
             want_running: false,
         }
     }
@@ -63,6 +69,8 @@ pub struct PrefsUpdate {
     pub shields_up: Option<bool>,
     pub advertise_exit_node: Option<bool>,
     pub stateful_filtering: Option<bool>,
+    pub exit_node: Option<String>,
+    pub exit_node_allow_lan_access: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -121,6 +129,15 @@ impl Prefs {
         }
         if self.stateful_filtering != d.stateful_filtering {
             out.push(("--stateful-filtering", self.stateful_filtering.to_string()));
+        }
+        if self.exit_node != d.exit_node {
+            out.push(("--exit-node", self.exit_node.clone()));
+        }
+        if self.exit_node_allow_lan_access != d.exit_node_allow_lan_access {
+            out.push((
+                "--exit-node-allow-lan-access",
+                self.exit_node_allow_lan_access.to_string(),
+            ));
         }
         out
     }
@@ -191,6 +208,12 @@ impl Prefs {
         if let Some(v) = update.stateful_filtering {
             p.stateful_filtering = v;
         }
+        if let Some(v) = &update.exit_node {
+            p.exit_node.clone_from(v);
+        }
+        if let Some(v) = update.exit_node_allow_lan_access {
+            p.exit_node_allow_lan_access = v;
+        }
         p
     }
 }
@@ -209,6 +232,8 @@ impl PrefsUpdate {
             "--shields-up" => self.shields_up.is_some(),
             "--advertise-exit-node" => self.advertise_exit_node.is_some(),
             "--stateful-filtering" => self.stateful_filtering.is_some(),
+            "--exit-node" => self.exit_node.is_some(),
+            "--exit-node-allow-lan-access" => self.exit_node_allow_lan_access.is_some(),
             _ => false,
         }
     }
@@ -370,6 +395,8 @@ mod tests {
             shields_up: false,
             advertise_exit_node: false,
             stateful_filtering: false,
+            exit_node: String::new(),
+            exit_node_allow_lan_access: false,
             want_running: true,
         };
         assert_eq!(

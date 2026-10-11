@@ -87,6 +87,20 @@ pub fn render(i: &Input<'_>) -> Value {
         "backend": "userspace",
         "relayMode": if i.snap.relay_mode.is_empty() { Value::Null } else { i.snap.relay_mode.as_str().into() },
     });
+    // Official: present only while an exit node is in use.
+    if let Some(e) = i.snap.peers.iter().find(|p| p.exit_node)
+        && let Some(obj) = top.as_object_mut()
+    {
+        let prefixes: Vec<Value> = e
+            .tailscale_ips
+            .iter()
+            .map(|a| format!("{a}/{}", if a.is_ipv4() { 32 } else { 128 }).into())
+            .collect();
+        obj.insert(
+            "ExitNodeStatus".into(),
+            json!({ "ID": e.id.to_string(), "Online": e.online, "TailscaleIPs": prefixes }),
+        );
+    }
     // Official: present only while a node key is held.
     if i.logged_in
         && let Some(obj) = top.as_object_mut()
@@ -116,6 +130,7 @@ fn node(n: &PeerStatus) -> Value {
         "LastSeen": n.last_seen.as_deref().unwrap_or(ZERO_TIME),
         "Online": n.online,
         "ExitNodeOption": n.exit_node_option,
+        "ExitNode": n.exit_node,
         "Active": n.active,
     });
     // Official shape: present only when set / true.
@@ -180,6 +195,7 @@ mod tests {
             tx_bytes: 6,
             active: true,
             exit_node_option: false,
+            exit_node: false,
             key_expiry: None,
             expired: false,
         }
@@ -210,6 +226,25 @@ mod tests {
     /// Same JSON type (null/string/number/bool/array/object) as the official output for every field we emit.
     fn same_kind(a: &Value, b: &Value) -> bool {
         std::mem::discriminant(a) == std::mem::discriminant(b)
+    }
+
+    /// ExitNodeStatus as the official client shows it (OBS-20261011-exit-node-official): only while an
+    /// exit node is in use, with its ID, online state and addresses as prefixes.
+    #[test]
+    fn exit_node_status_only_while_using_one() {
+        let mut snap = running();
+        assert!(
+            out(BackendState::Running, true, &snap)
+                .get("ExitNodeStatus")
+                .is_none()
+        );
+        snap.peers[0].exit_node = true;
+        let v = out(BackendState::Running, true, &snap);
+        assert_eq!(
+            v["ExitNodeStatus"],
+            json!({ "ID": "7", "Online": true, "TailscaleIPs": ["100.64.0.1/32"] })
+        );
+        assert_eq!(v["Peer"]["nodekey:bb"]["ExitNode"], json!(true));
     }
 
     #[test]

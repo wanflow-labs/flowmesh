@@ -390,6 +390,8 @@ impl<L: Launcher> Daemon<L> {
             shields_up: p.shields_up,
             advertise_exit_node: p.advertise_exit_node,
             stateful_filtering: p.stateful_filtering,
+            exit_node: p.exit_node.clone(),
+            exit_node_allow_lan_access: p.exit_node_allow_lan_access,
         };
         let (stop_tx, stop_rx) = watch::channel(false);
         sh.errors.clear();

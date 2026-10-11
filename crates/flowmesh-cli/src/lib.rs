@@ -3,5 +3,6 @@
 
 pub mod args;
 pub mod bugreport;
+pub mod exitnode;
 pub mod ping;
 pub mod render;

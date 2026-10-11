@@ -11,6 +11,7 @@ repository.workspace = true
 workspace = true
 
 [dependencies]
+flowmesh-net = { version = "0.1.0", path = "../flowmesh-net" }
 crypto_box = { version = "0.9.1", features = ["std", "salsa20"] }
 flowmesh-proto = { version = "0.1.0", path = "../flowmesh-proto" }
 getrandom = "0.3"
