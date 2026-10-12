@@ -50,7 +50,7 @@ sudo systemctl enable --now flowmeshd
 
 ## 3. 加入组网
 
-flowmesh **没有默认控制服务器**，第一次 `up` 必须给出 `--login-server`：
+FlowMesh **没有默认控制服务器**，第一次 `up` 必须给出 `--login-server`：
 
 ```bash
 sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-key=file:/root/flowmesh.key
@@ -61,7 +61,7 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 - `--auth-key` 可以直接写密钥，也可以写 `file:<路径>` 从文件读取（避免密钥出现在 shell 历史和进程列表里）。密钥只用于注册，不会写入磁盘。
 - `up` 会一直等到网络进入 Running（退出码 0）；控制服务器拒绝时退出码为 1，并打印登录地址（如果服务器给了）。可以用 `--timeout=30s` 限制等待时间。
 - 其他常用参数：`--hostname=<名称>`、`--accept-dns=false`（不接管系统 DNS）、`--accept-routes`（接受其他节点通告的子网路由）。
-- 作为子网路由器：`--advertise-routes=192.168.1.0/24`（多个用逗号分隔），控制服务器上批准该路由后，其他节点加 `--accept-routes` 即可访问该网段。需要内核开启转发（`sysctl -w net.ipv4.ip_forward=1`，IPv6 为 `net.ipv6.conf.all.forwarding=1`；flowmesh 不会替你改，未开启时 `up` 会给出警告）。默认对进入该网段的流量做地址伪装（SNAT），网段内主机看到的来源是路由器；`--snat-subnet-routes=false` 可关闭，此时网段内主机需要有回到 `100.64.0.0/10` 的路由。转发规则写入系统的 `iptables`（没有时用 `nft`），`down` 或退出时自动撤除。
+- 作为子网路由器：`--advertise-routes=192.168.1.0/24`（多个用逗号分隔），控制服务器上批准该路由后，其他节点加 `--accept-routes` 即可访问该网段。需要内核开启转发（`sysctl -w net.ipv4.ip_forward=1`，IPv6 为 `net.ipv6.conf.all.forwarding=1`；FlowMesh 不会替你改，未开启时 `up` 会给出警告）。默认对进入该网段的流量做地址伪装（SNAT），网段内主机看到的来源是路由器；`--snat-subnet-routes=false` 可关闭，此时网段内主机需要有回到 `100.64.0.0/10` 的路由。转发规则写入系统的 `iptables`（没有时用 `nft`），`down` 或退出时自动撤除。
 - 作为出口节点：`--advertise-exit-node`（同样需要开启转发，并在控制服务器上批准 `0.0.0.0/0,::/0`）。出口节点只转发到公网，本机所在的局域网和私网地址不经出口节点开放（需要的话另外以子网路由宣告）。`--stateful-filtering` 可阻止从外部新建到组网内的连接。
 - 使用出口节点：`--exit-node=<IP 或节点名>`，此后全部上网流量（包括 DNS）经出口节点；出口节点离线时上网流量被丢弃而不会绕开。需要直接访问本机局域网时加 `--exit-node-allow-lan-access`。`--exit-node=` 取消。
 - `--shields-up`：拒绝所有入站连接（本机主动发起的连接不受影响）。`--advertise-tags=tag:xxx`：向控制服务器申请标签（是否授予由服务器决定）。
@@ -99,9 +99,9 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 
 ## 4. DNS
 
-`--accept-dns`（默认开启）时，flowmeshd 会把 `/etc/resolv.conf` 改为指向 `100.100.100.100`，原文件备份在 `/var/lib/flowmesh/resolv.conf.backup`，停止服务时自动还原。
+`--accept-dns`（默认开启）时，`flowmeshd` 会把 `/etc/resolv.conf` 改为指向 `100.100.100.100`，原文件备份在 `/var/lib/flowmesh/resolv.conf.backup`，停止服务时自动还原。
 
-如果 `/etc/resolv.conf` 是符号链接（由 systemd-resolved、resolvconf 或 NetworkManager 管理），flowmeshd **不会修改它**，并在 `flowmesh status` 的 Health 中说明；组网内的名称仍可通过 `100.100.100.100` 查询。这种情况下建议使用 `--accept-dns=false`。
+如果 `/etc/resolv.conf` 是符号链接（由 systemd-resolved、resolvconf 或 NetworkManager 管理），`flowmeshd` **不会修改它**，并在 `flowmesh status` 的 Health 中说明；组网内的名称仍可通过 `100.100.100.100` 查询。这种情况下建议使用 `--accept-dns=false`。
 
 ## 5. 文件与权限
 

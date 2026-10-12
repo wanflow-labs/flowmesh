@@ -1,4 +1,4 @@
-# Installing and running flowmesh (Linux + systemd)
+# Installing and running FlowMesh (Linux + systemd)
 
 [中文](install.zh-CN.md)
 
@@ -50,7 +50,7 @@ sudo systemctl enable --now flowmeshd
 
 ## 3. Joining a mesh
 
-flowmesh has **no default control server**: the first `up` must name one with `--login-server`:
+FlowMesh has **no default control server**: the first `up` must name one with `--login-server`:
 
 ```bash
 sudo flowmesh up --login-server=http://<control server>:<port> --auth-key=file:/root/flowmesh.key
@@ -60,7 +60,7 @@ sudo flowmesh up --login-server=http://<control server>:<port> --auth-key=file:/
 - `--auth-key` takes the key itself or `file:<path>` to read it from a file (so it stays out of shell history and the process list). The key is used for registration only and never written to disk.
 - `up` waits until the node is Running (exit code 0). When the control server refuses, it exits 1 and prints the login URL if the server gave one. `--timeout=30s` limits the wait.
 - Other common flags: `--hostname=<name>`, `--accept-dns=false` (leave the system DNS alone), `--accept-routes` (use subnet routes other nodes advertise).
-- Subnet router: `--advertise-routes=192.168.1.0/24` (comma-separated for several). Once the control server approves the route, nodes with `--accept-routes` reach that network. The kernel must forward (`sysctl -w net.ipv4.ip_forward=1`, and `net.ipv6.conf.all.forwarding=1` for IPv6); flowmesh does not change this for you and `up` warns when it is off. Traffic into the network is masqueraded (SNAT) by default, so hosts there see the router as the source; `--snat-subnet-routes=false` turns that off, and those hosts then need a route back to `100.64.0.0/10`. The forwarding rules go into the system's `iptables` (`nft` when there is none) and are removed on `down` or exit.
+- Subnet router: `--advertise-routes=192.168.1.0/24` (comma-separated for several). Once the control server approves the route, nodes with `--accept-routes` reach that network. The kernel must forward (`sysctl -w net.ipv4.ip_forward=1`, and `net.ipv6.conf.all.forwarding=1` for IPv6); FlowMesh does not change this for you and `up` warns when it is off. Traffic into the network is masqueraded (SNAT) by default, so hosts there see the router as the source; `--snat-subnet-routes=false` turns that off, and those hosts then need a route back to `100.64.0.0/10`. The forwarding rules go into the system's `iptables` (`nft` when there is none) and are removed on `down` or exit.
 - Exit node: `--advertise-exit-node` (forwarding must be on as well, and the control server must approve `0.0.0.0/0,::/0`). An exit node forwards to the internet only; its own LAN and private addresses are not opened through it (advertise them as subnet routes if needed). `--stateful-filtering` blocks new connections from outside into the mesh.
 - Using an exit node: `--exit-node=<IP or node name>`. From then on all internet traffic, DNS included, goes through the exit node; while it is offline that traffic is dropped rather than sent around it. `--exit-node-allow-lan-access` keeps the local LAN directly reachable. `--exit-node=` clears it.
 - `--shields-up` refuses all incoming connections (connections this machine opens are not affected). `--advertise-tags=tag:xxx` asks the control server for tags (the server decides).
@@ -98,9 +98,9 @@ Reading the state needs no root; changing anything needs root or the operator.
 
 ## 4. DNS
 
-With `--accept-dns` (the default) flowmeshd points `/etc/resolv.conf` at `100.100.100.100`, keeps the original in `/var/lib/flowmesh/resolv.conf.backup`, and restores it when the service stops.
+With `--accept-dns` (the default) `flowmeshd` points `/etc/resolv.conf` at `100.100.100.100`, keeps the original in `/var/lib/flowmesh/resolv.conf.backup`, and restores it when the service stops.
 
-If `/etc/resolv.conf` is a symbolic link (managed by systemd-resolved, resolvconf or NetworkManager), flowmeshd **does not change it** and says so in the Health of `flowmesh status`; mesh names can still be looked up at `100.100.100.100`. Use `--accept-dns=false` in that case.
+If `/etc/resolv.conf` is a symbolic link (managed by systemd-resolved, resolvconf or NetworkManager), `flowmeshd` **does not change it** and says so in the Health of `flowmesh status`; mesh names can still be looked up at `100.100.100.100`. Use `--accept-dns=false` in that case.
 
 ## 5. Files and permissions
 

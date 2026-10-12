@@ -1,16 +1,16 @@
-# flowmesh
+# FlowMesh
 
 **The fast, lightweight Linux client for WanFlow Mesh.** Open source, written in Rust.
 
-[中文](README.md) · [Website](https://www.wanflow.com) · [Download WanFlow apps](https://www.wanflow.com/downloads) · [Install flowmesh](docs/install.md)
+[中文](README.md) · [Website](https://www.wanflow.com) · [Download WanFlow apps](https://www.wanflow.com/downloads) · [Install FlowMesh](docs/install.md)
 
-flowmesh puts your Linux servers, gateways and routers on a WanFlow Mesh: one private, encrypted network with your offices, cloud servers, laptops and phones, wherever they are. Devices connect directly to each other whenever the network allows it and fall back to WanFlow's relays when it does not. There are no ports to open and no VPN concentrator to run.
+FlowMesh puts your Linux servers, gateways and routers on a WanFlow Mesh: one private, encrypted network with your offices, cloud servers, laptops and phones, wherever they are. Devices connect directly to each other whenever the network allows it and fall back to WanFlow's relays when it does not. There are no ports to open and no VPN concentrator to run.
 
-## Why flowmesh
+## Why FlowMesh
 
 Measured side by side against Tailscale 1.94.2 in the same mesh:
 
-| | flowmesh | Tailscale |
+| | FlowMesh | Tailscale |
 |---|---|---|
 | TCP throughput, sending | **2.88 Gbit/s** | 2.39 Gbit/s |
 | TCP throughput, receiving | 2.52 Gbit/s | 2.70 Gbit/s |
@@ -22,12 +22,12 @@ Measured side by side against Tailscale 1.94.2 in the same mesh:
 
 The same throughput class at **a third to a half of the CPU** and **a fifth of the memory** — which matters most where resources are tight: a router, a small cloud instance, an edge box, or a server whose CPU should go to its real work. Leave out the SSH server at build time and the daemon shrinks by another 2 MB.
 
-<sub>Lab measurements on one busy host (Docker on an 8-core Apple Silicon Mac, load average about 8): `iperf3` for 10 s each way between two nodes of each client on a direct path, median of 4 runs (single runs vary by up to ±20%; an earlier, quieter run gave 4.44 / 4.21 Gbit/s against 3.71 / 3.35). flowmesh's packet path uses one core while Tailscale spreads over several, so on idle many-core machines Tailscale can gain more from the extra cores. Memory and threads were sampled while idle after both joined the same 100-node mesh. The Tailscale side is WanFlow's build of Tailscale 1.94.2, whose data path is unmodified upstream code. Compare the columns with each other, not with your hardware.</sub>
+<sub>Lab measurements on one busy host (Docker on an 8-core Apple Silicon Mac, load average about 8): `iperf3` for 10 s each way between two nodes of each client on a direct path, median of 4 runs (single runs vary by up to ±20%; an earlier, quieter run gave 4.44 / 4.21 Gbit/s against 3.71 / 3.35). FlowMesh's packet path uses one core while Tailscale spreads over several, so on idle many-core machines Tailscale can gain more from the extra cores. Memory and threads were sampled while idle after both joined the same 100-node mesh. The Tailscale side is WanFlow's build of Tailscale 1.94.2, whose data path is unmodified upstream code. Compare the columns with each other, not with your hardware.</sub>
 
 ## Get started
 
 1. **Create a mesh.** WanFlow Mesh has a free plan that stays free. Sign up at [wanflow.com](https://www.wanflow.com); the console gives you your mesh's address and an auth key.
-2. **Install flowmesh** on each Linux machine ([packages and instructions](docs/install.md)) and join:
+2. **Install FlowMesh** on each Linux machine ([packages and instructions](docs/install.md)) and join:
 
    ```bash
    sudo flowmesh up --login-server=<your mesh address> --auth-key=file:/root/mesh.key
@@ -49,13 +49,13 @@ The same throughput class at **a third to a half of the CPU** and **a fifth of t
 ## Trust, by design
 
 - **Open source**, Apache-2.0. Read every line that runs on your machine.
-- **No telemetry.** flowmeshd connects only to your mesh's control server, the relays it names, your peers and your DNS servers. No default server, no auto-update, nothing phoning home.
+- **No telemetry.** `flowmeshd` connects only to your mesh's control server, the relays it names, your peers and your DNS servers. No default server, no auto-update, nothing phoning home.
 - **Reproducible builds.** Released binaries can be rebuilt from this source byte for byte ([how](docs/reproducible-builds.md)).
 - **Memory safe.** Rust with `unsafe` forbidden in every crate.
 
 ## Also speaks Tailscale
 
-flowmesh implements the Tailscale coordination protocol, so it also joins networks run by [headscale](https://github.com/juanfont/headscale) and works side by side with official Tailscale clients; command-line flags and output follow the official client's ([details](docs/protocol/cli.md)). It is an independent implementation with no code from Tailscale or headscale. Intended differences are listed in [deviations.md](docs/deviations.md).
+FlowMesh implements the Tailscale coordination protocol, so it also joins networks run by [headscale](https://github.com/juanfont/headscale) and works side by side with official Tailscale clients; command-line flags and output follow the official client's ([details](docs/protocol/cli.md)). It is an independent implementation with no code from Tailscale or headscale. Intended differences are listed in [deviations.md](docs/deviations.md).
 
 ## About WanFlow
 

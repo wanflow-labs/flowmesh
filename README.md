@@ -1,16 +1,16 @@
-# flowmesh
+# FlowMesh
 
 **万联组网（WanFlow Mesh）的 Linux 客户端：更快、更轻。** 开源，Rust 编写。
 
-[English](README.en.md) · [官网](https://www.wanflow.com) · [下载万联客户端](https://www.wanflow.com/downloads) · [安装 flowmesh](docs/install.zh-CN.md)
+[English](README.en.md) · [官网](https://www.wanflow.com) · [下载万联客户端](https://www.wanflow.com/downloads) · [安装 FlowMesh](docs/install.zh-CN.md)
 
-flowmesh 把你的 Linux 服务器、网关和路由器接入万联组网：总部、分支、云服务器、笔记本和手机，无论身在何处，都在同一张加密的私有网络里。网络条件允许时设备之间直接互连，不允许时自动经万联的中继转发。不需要开放端口，也不需要自建 VPN 网关。
+FlowMesh 把你的 Linux 服务器、网关和路由器接入万联组网：总部、分支、云服务器、笔记本和手机，无论身在何处，都在同一张加密的私有网络里。网络条件允许时设备之间直接互连，不允许时自动经万联的中继转发。不需要开放端口，也不需要自建 VPN 网关。
 
-## 为什么选 flowmesh
+## 为什么选 FlowMesh
 
 在同一张组网里与 Tailscale 1.94.2 并排实测：
 
-| | flowmesh | Tailscale |
+| | FlowMesh | Tailscale |
 |---|---|---|
 | 隧道内 TCP 吞吐，发送 | **2.88 Gbit/s** | 2.39 Gbit/s |
 | 隧道内 TCP 吞吐，接收 | 2.52 Gbit/s | 2.70 Gbit/s |
@@ -22,12 +22,12 @@ flowmesh 把你的 Linux 服务器、网关和路由器接入万联组网：总�
 
 同一量级的吞吐，CPU 只要 **三分之一到一半**，内存只要 **五分之一**。资源越紧张越能体现差别：路由器、小规格云主机、边缘设备，或者 CPU 本该留给业务的服务器。构建时去掉 SSH 服务端，守护进程还能再小 2 MB。
 
-<sub>实验环境数据，同一台繁忙主机（8 核 Apple Silicon Mac 上的 Docker，负载约 8）：两种客户端各两个节点直连，`iperf3` 每个方向 10 秒，取 4 轮中位数（单轮波动可达 ±20%；此前一次较空闲时的测量为 4.44 / 4.21 Gbit/s 对 3.71 / 3.35）。flowmesh 的数据包处理用一个核，Tailscale 会分散到多个核，因此在空闲的多核机器上 Tailscale 能从多出的核获益更多。内存与线程数在两者加入同一个 100 节点组网后空闲时采样。Tailscale 一侧是万联构建的 Tailscale 1.94.2，数据面为未修改的上游代码。请横向比较两列，不要直接对照你自己的硬件。</sub>
+<sub>实验环境数据，同一台繁忙主机（8 核 Apple Silicon Mac 上的 Docker，负载约 8）：两种客户端各两个节点直连，`iperf3` 每个方向 10 秒，取 4 轮中位数（单轮波动可达 ±20%；此前一次较空闲时的测量为 4.44 / 4.21 Gbit/s 对 3.71 / 3.35）。FlowMesh 的数据包处理用一个核，Tailscale 会分散到多个核，因此在空闲的多核机器上 Tailscale 能从多出的核获益更多。内存与线程数在两者加入同一个 100 节点组网后空闲时采样。Tailscale 一侧是万联构建的 Tailscale 1.94.2，数据面为未修改的上游代码。请横向比较两列，不要直接对照你自己的硬件。</sub>
 
 ## 快速开始
 
 1. **创建组网。** 万联组网提供永久免费的免费版。在 [wanflow.com](https://www.wanflow.com) 注册，控制台会给出组网地址和接入密钥。
-2. **在每台 Linux 机器上安装 flowmesh**（[安装包与说明](docs/install.zh-CN.md)），然后加入：
+2. **在每台 Linux 机器上安装 FlowMesh**（[安装包与说明](docs/install.zh-CN.md)），然后加入：
 
    ```bash
    sudo flowmesh up --login-server=<你的组网地址> --auth-key=file:/root/mesh.key
@@ -49,13 +49,13 @@ flowmesh 把你的 Linux 服务器、网关和路由器接入万联组网：总�
 ## 值得信任
 
 - **开源**，Apache-2.0。运行在你机器上的每一行代码都可以审阅。
-- **零遥测。** flowmeshd 只连接你组网的控制服务器、它指定的中继、组网内的对端和你的 DNS 服务器。没有默认服务器，没有自动更新，不会偷偷回传任何数据。
+- **零遥测。** `flowmeshd` 只连接你组网的控制服务器、它指定的中继、组网内的对端和你的 DNS 服务器。没有默认服务器，没有自动更新，不会偷偷回传任何数据。
 - **可复现构建。** 发布的二进制可以由这份源码逐字节重建（[方法](docs/reproducible-builds.md)）。
 - **内存安全。** Rust 编写，所有 crate 都禁止 `unsafe`。
 
 ## 同样兼容 Tailscale
 
-flowmesh 实现了 Tailscale 的协调协议，因此也能加入由 [headscale](https://github.com/juanfont/headscale) 管理的网络，并与官方 Tailscale 客户端互通；命令行参数与输出遵循官方客户端（[详情](docs/protocol/cli.md)）。它是独立实现，不包含 Tailscale 或 headscale 的代码。有意为之的差异列在 [deviations.md](docs/deviations.md)。
+FlowMesh 实现了 Tailscale 的协调协议，因此也能加入由 [headscale](https://github.com/juanfont/headscale) 管理的网络，并与官方 Tailscale 客户端互通；命令行参数与输出遵循官方客户端（[详情](docs/protocol/cli.md)）。它是独立实现，不包含 Tailscale 或 headscale 的代码。有意为之的差异列在 [deviations.md](docs/deviations.md)。
 
 ## 关于万联
 

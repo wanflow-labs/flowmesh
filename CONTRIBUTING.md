@@ -1,4 +1,4 @@
-# Contributing to flowmesh
+# Contributing to FlowMesh
 
 Thank you for helping. A few rules keep the project what it promises to be.
 
@@ -12,7 +12,7 @@ CI rejects pull requests with unsigned commits (`scripts/check-dco.sh`).
 
 ## Independent implementation
 
-flowmesh is compatible with Tailscale but contains none of its code, and must stay that way.
+FlowMesh is compatible with Tailscale but contains none of its code, and must stay that way.
 
 - Do not copy code from Tailscale, headscale or other implementations of the protocol, and do not translate it line by line from Go.
 - Protocol facts come from observing the official client (lab captures, command output) and are written up in `docs/protocol` with the observation that supports them. Recorded evidence goes under `fixtures/observed/<date>-<topic>/`.
