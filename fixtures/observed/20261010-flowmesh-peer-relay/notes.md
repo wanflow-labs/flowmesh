@@ -1,6 +1,6 @@
 # flowmesh through the official peer relay
 
-flowmesh-dev (commit 229543c) as node `fmr` (172.29.0.61, tailnet 100.64.0.17) in a temporary lab
+flowmesh-dev (commit e4cfe30) as node `fmr` (172.29.0.61, tailnet 100.64.0.17) in a temporary lab
 container; ts2 (official 1.94.2) drops all UDP to and from 172.29.0.61, so the pair has no direct path;
 tsr serves as relay. fmr pings ts2 every second.
 
