@@ -65,7 +65,12 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 - 作为出口节点：`--advertise-exit-node`（同样需要开启转发，并在控制服务器上批准 `0.0.0.0/0,::/0`）。出口节点只转发到公网，本机所在的局域网和私网地址不经出口节点开放（需要的话另外以子网路由宣告）。`--stateful-filtering` 可阻止从外部新建到组网内的连接。
 - 使用出口节点：`--exit-node=<IP 或节点名>`，此后全部上网流量（包括 DNS）经出口节点；出口节点离线时上网流量被丢弃而不会绕开。需要直接访问本机局域网时加 `--exit-node-allow-lan-access`。`--exit-node=` 取消。
 - `--shields-up`：拒绝所有入站连接（本机主动发起的连接不受影响）。`--advertise-tags=tag:xxx`：向控制服务器申请标签（是否授予由服务器决定）。
-- `--ssh`：开启 SSH 服务端，组网内的对端按组网的 SSH 策略以本机用户身份登录，凭组网身份认证，不需要密码或密钥。详见 [ssh.md](protocol/ssh.md)。
+- `--ssh`：开启 SSH 服务端，组网内的对端按组网的 SSH 策略以本机用户身份登录，凭组网身份认证，不需要密码或密钥。详见 [ssh.md](protocol/ssh.md)。SSH 会话会继承服务的沙箱，所以用安装包时先换成专门为它准备的单元：
+
+  ```bash
+  sudo install -m 0644 /usr/share/flowmesh/flowmeshd-ssh.service /etc/systemd/system/flowmeshd.service
+  sudo systemctl daemon-reload && sudo systemctl restart flowmeshd
+  ```
 - `--operator=<用户>`：允许该本地用户不用 sudo 修改设置、使用 `serve`。
 
 常用命令：
@@ -107,7 +112,7 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 | `/var/lib/flowmesh/resolv.conf.backup` | 接管 DNS 期间的原 resolv.conf |
 | `/run/flowmesh/flowmeshd.sock` | 本地 API（所有本地用户可读状态，修改需 root 或 operator） |
 
-systemd 单元以 root 运行，但只保留 `CAP_NET_ADMIN` 与 `CAP_NET_RAW`，文件系统除上述目录和 `/etc/resolv.conf` 外全部只读（`systemd-analyze security flowmeshd` 评分 2.4）。
+systemd 单元以 root 运行，但只保留 `CAP_NET_ADMIN` 与 `CAP_NET_RAW`，文件系统除上述目录和 `/etc/resolv.conf` 外全部只读（`systemd-analyze security flowmeshd` 评分 2.4）。SSH 服务端需要改用不带沙箱的 `flowmeshd-ssh.service`（见第 3 节）。
 
 ## 6. 卸载
 

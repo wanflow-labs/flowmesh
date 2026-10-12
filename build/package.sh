@@ -22,6 +22,7 @@ for arch in x86_64 aarch64; do
   install -Dm0755 "$src/flowmeshd" "$root/usr/sbin/flowmeshd"
   install -Dm0755 "$src/flowmesh" "$root/usr/bin/flowmesh"
   install -Dm0644 "$src/flowmeshd.service" "$root/lib/systemd/system/flowmeshd.service"
+  install -Dm0644 "$src/flowmeshd-ssh.service" "$root/usr/share/flowmesh/flowmeshd-ssh.service"
   install -Dm0644 "$src/LICENSE" "$root/usr/share/doc/flowmesh/copyright"
   install -Dm0644 "$src/NOTICE" "$root/usr/share/doc/flowmesh/NOTICE"
   mkdir -p "$root/DEBIAN"
@@ -58,7 +59,7 @@ SH
   # --- rpm ---
   top=$(mktemp -d)
   mkdir -p "$top/SOURCES" "$top/SPECS"
-  cp "$src/flowmeshd" "$src/flowmesh" "$src/flowmeshd.service" "$src/LICENSE" "$src/NOTICE" "$top/SOURCES/"
+  cp "$src/flowmeshd" "$src/flowmesh" "$src/flowmeshd.service" "$src/flowmeshd-ssh.service" "$src/LICENSE" "$src/NOTICE" "$top/SOURCES/"
   cat > "$top/SPECS/flowmesh.spec" <<SPEC
 Name: flowmesh
 Version: $version
@@ -71,12 +72,14 @@ Statically linked; no dependencies. The flowmeshd service is installed but not e
 install -Dm0755 %{_sourcedir}/flowmeshd %{buildroot}/usr/sbin/flowmeshd
 install -Dm0755 %{_sourcedir}/flowmesh %{buildroot}/usr/bin/flowmesh
 install -Dm0644 %{_sourcedir}/flowmeshd.service %{buildroot}/usr/lib/systemd/system/flowmeshd.service
+install -Dm0644 %{_sourcedir}/flowmeshd-ssh.service %{buildroot}/usr/share/flowmesh/flowmeshd-ssh.service
 install -Dm0644 %{_sourcedir}/LICENSE %{buildroot}/usr/share/licenses/flowmesh/LICENSE
 install -Dm0644 %{_sourcedir}/NOTICE %{buildroot}/usr/share/doc/flowmesh/NOTICE
 %files
 /usr/sbin/flowmeshd
 /usr/bin/flowmesh
 /usr/lib/systemd/system/flowmeshd.service
+/usr/share/flowmesh/flowmeshd-ssh.service
 %license /usr/share/licenses/flowmesh/LICENSE
 %doc /usr/share/doc/flowmesh/NOTICE
 %post

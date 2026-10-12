@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# flowmeshd for hosts that run the SSH server (--ssh). SSH sessions are started by the daemon and
+# inherit its sandbox: under flowmeshd.service they could not switch users, would see a read-only
+# system and no home directories, and could not use sudo. This variant has no sandbox, like the
+# official client's unit. Use it instead of flowmeshd.service:
+#   sudo install -m 0644 /usr/share/flowmesh/flowmeshd-ssh.service /etc/systemd/system/flowmeshd.service
+#   sudo systemctl daemon-reload && sudo systemctl restart flowmeshd
+# (A unit in /etc/systemd/system takes precedence over the packaged one and survives upgrades.)
+[Unit]
+Description=flowmesh mesh networking daemon
+Wants=network-pre.target
+After=network-pre.target NetworkManager.service systemd-resolved.service
+
+[Service]
+ExecStart=/usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock
+Restart=on-failure
+RestartSec=2
+# The daemon restores resolv.conf and routes on SIGTERM; give the engine time to do it.
+TimeoutStopSec=15
+
+RuntimeDirectory=flowmesh
+RuntimeDirectoryMode=0755
+StateDirectory=flowmesh
+StateDirectoryMode=0700
+
+[Install]
+WantedBy=multi-user.target

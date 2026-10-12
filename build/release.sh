@@ -39,9 +39,9 @@ for t in $targets; do
   stage="$out/flowmesh-$version-linux-$arch"
   mkdir -p "$stage"
   cp "$CARGO_TARGET_DIR/$t/release/flowmeshd" "$CARGO_TARGET_DIR/$t/release/flowmesh" "$stage/"
-  cp LICENSE NOTICE packaging/systemd/flowmeshd.service "$stage/"
+  cp LICENSE NOTICE packaging/systemd/flowmeshd.service packaging/systemd/flowmeshd-ssh.service "$stage/"
   chmod 0755 "$stage" "$stage/flowmeshd" "$stage/flowmesh"
-  chmod 0644 "$stage/LICENSE" "$stage/NOTICE" "$stage/flowmeshd.service"
+  chmod 0644 "$stage/LICENSE" "$stage/NOTICE" "$stage/flowmeshd.service" "$stage/flowmeshd-ssh.service"
   find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
   tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
       -C "$out" -cf - "$(basename "$stage")" | gzip -n -9 > "$stage.tar.gz"

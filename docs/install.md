@@ -64,7 +64,12 @@ sudo flowmesh up --login-server=http://<control server>:<port> --auth-key=file:/
 - Exit node: `--advertise-exit-node` (forwarding must be on as well, and the control server must approve `0.0.0.0/0,::/0`). An exit node forwards to the internet only; its own LAN and private addresses are not opened through it (advertise them as subnet routes if needed). `--stateful-filtering` blocks new connections from outside into the mesh.
 - Using an exit node: `--exit-node=<IP or node name>`. From then on all internet traffic, DNS included, goes through the exit node; while it is offline that traffic is dropped rather than sent around it. `--exit-node-allow-lan-access` keeps the local LAN directly reachable. `--exit-node=` clears it.
 - `--shields-up` refuses all incoming connections (connections this machine opens are not affected). `--advertise-tags=tag:xxx` asks the control server for tags (the server decides).
-- `--ssh` runs the SSH server: peers log in as the local users the mesh's SSH policy allows, with their mesh identity, no passwords or keys. See [ssh.md](protocol/ssh.md).
+- `--ssh` runs the SSH server: peers log in as the local users the mesh's SSH policy allows, with their mesh identity, no passwords or keys. See [ssh.md](protocol/ssh.md). SSH sessions inherit the service's sandbox, so with a package install switch to the unit made for it first:
+
+  ```bash
+  sudo install -m 0644 /usr/share/flowmesh/flowmeshd-ssh.service /etc/systemd/system/flowmeshd.service
+  sudo systemctl daemon-reload && sudo systemctl restart flowmeshd
+  ```
 - `--operator=<user>` lets that local user change settings and use `serve` without sudo.
 
 Common commands:
@@ -106,7 +111,7 @@ If `/etc/resolv.conf` is a symbolic link (managed by systemd-resolved, resolvcon
 | `/var/lib/flowmesh/resolv.conf.backup` | The original resolv.conf while DNS is taken over |
 | `/run/flowmesh/flowmeshd.sock` | Local API (every local user may read the state; changes need root or the operator) |
 
-The systemd unit runs as root but keeps only `CAP_NET_ADMIN` and `CAP_NET_RAW`, and the file system is read-only apart from the directories above and `/etc/resolv.conf` (`systemd-analyze security flowmeshd` scores 2.4).
+The systemd unit runs as root but keeps only `CAP_NET_ADMIN` and `CAP_NET_RAW`, and the file system is read-only apart from the directories above and `/etc/resolv.conf` (`systemd-analyze security flowmeshd` scores 2.4). The SSH server needs `flowmeshd-ssh.service` instead, which has no sandbox (section 3).
 
 ## 6. Uninstall
 

@@ -1,4 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
+# Sandboxed. The SSH server's sessions would inherit the sandbox, so hosts that use --ssh run
+# flowmeshd-ssh.service instead (see that file).
 [Unit]
 Description=flowmesh mesh networking daemon
 Wants=network-pre.target

@@ -42,6 +42,7 @@ check() { # name image ip package install-cmd remove-cmd
   ok=""
   for _ in $(seq 1 10); do docker exec "$c" ping -c 1 -W 2 "$target" >/dev/null 2>&1 && { ok=1; break; }; done
   [ -n "$ok" ] || fail "$name: ping fm1 ($target)"
+  docker exec "$c" test -f /usr/share/flowmesh/flowmeshd-ssh.service || fail "$name: flowmeshd-ssh.service not installed"
   echo "ok: installed (not enabled), joined, reached fm1"
   docker exec "$c" sh -c "$remove" >/dev/null 2>&1 || fail "$name: remove"
   docker exec "$c" systemctl is-active flowmeshd >/dev/null 2>&1 && fail "$name: service still active after removal"

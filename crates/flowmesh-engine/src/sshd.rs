@@ -60,6 +60,9 @@ mod imp {
         nm: &flowmesh_control::netmap::NetMap,
         admissions: &flowmesh_dataplane::plane::Admissions,
     ) -> Result<(SshServer, u16), String> {
+        if let Ok(status) = std::fs::read_to_string("/proc/self/status") {
+            flowmesh_ssh::privileges::check(&status)?;
+        }
         let dir = cfg
             .state_file
             .parent()

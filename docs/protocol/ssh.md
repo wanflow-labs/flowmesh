@@ -30,6 +30,7 @@ flowmesh additionally refuses (deviation #15): actions with `holdAndDelegate` (t
 - **Session duration.** A rule's `sessionDuration` ends the connection when it is up.
 - **Logs.** One line per accepted or refused login (`ssh: login of <node> (<ip>) as "<user>" accepted|refused: <reason>`), an audit line (`ssh: audit: login user=… uid=… from=… node=…`), one per started program.
 - **Optional in the build.** The server is the `ssh` cargo feature of `flowmesh-daemon` (on by default). `--no-default-features` leaves the SSH stack out — `flowmeshd` is about 2 MB smaller (aarch64: 7.48 → 5.51 MB) — and such a daemon refuses `--ssh` with `this flowmeshd was built without SSH support` instead of storing a setting it cannot honor.
+- **Under systemd.** Sessions are children of flowmeshd and inherit its sandbox. The packaged `flowmeshd.service` keeps only `CAP_NET_ADMIN` and `CAP_NET_RAW`: switching users fails (`setgroups: EPERM`, seen in a package install), and sessions would also get a read-only system, no home directories and no `sudo`. So the server does not start without `CAP_SETUID` and `CAP_SETGID` (read from `/proc/self/status`) and Health names the unit to use instead: `flowmeshd-ssh.service`, installed to `/usr/share/flowmesh/`, without a sandbox like the official client's unit.
 - **Turning it on and off** (`set --ssh`, `set --ssh=false`) needs no engine restart: listeners, host keys in Hostinfo and the port 22 redirect follow the setting.
 
 ## 4. The client

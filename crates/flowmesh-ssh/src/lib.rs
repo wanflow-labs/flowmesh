@@ -6,6 +6,7 @@
 pub mod child;
 pub mod hostkeys;
 pub mod policy;
+pub mod privileges;
 #[cfg(target_os = "linux")]
 pub mod proc;
 #[cfg(target_os = "linux")]
