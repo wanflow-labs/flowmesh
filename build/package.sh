@@ -101,5 +101,6 @@ SPEC
   cp "$top/RPMS/$arch/flowmesh-$version-1.$arch.rpm" "$out/"
   rm -rf "$top"
 done
-(cd "$out" && sha256sum flowmesh-*.tar.gz *.deb *.rpm */flowmeshd */flowmesh > SHA256SUMS)
+# Rewrites release.sh's list with the packages added: every artifact, SBOMs included.
+(cd "$out" && sha256sum flowmesh-*.tar.gz *.deb *.rpm *.cdx.json */flowmeshd */flowmesh > SHA256SUMS)
 cat "$out/SHA256SUMS"

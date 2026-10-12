@@ -51,4 +51,4 @@ release:
 
 # Rebuild and compare with published checksums: make reproduce SUMS=path/to/SHA256SUMS
 reproduce: release
-	cd dist && sha256sum -c "$(abspath $(SUMS))"
+	cd dist && sha256sum -c --ignore-missing "$(abspath $(SUMS))"

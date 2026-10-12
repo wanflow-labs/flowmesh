@@ -19,7 +19,7 @@ export PATH="$HOME/.local/zig-0.13.0:$HOME/.cargo/bin:$PATH"
 build/release.sh dist
 ```
 
-`dist/SHA256SUMS` lists the tarballs, the four binaries and the four SBOMs.
+`dist/SHA256SUMS` lists the tarballs, the four binaries and the four SBOMs; `build/package.sh dist` then builds the deb and rpm packages and adds them to the list. A rebuild without the packages checks the rest (`make reproduce` skips files it did not build).
 
 ## SBOM
 
