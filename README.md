@@ -1,10 +1,10 @@
 # FlowMesh
 
-**万联组网（WanFlow Mesh）的 Linux 客户端：更快、更轻。** 开源，Rust 编写。
+**Wanflow FlowMesh 的 Linux 客户端：更快、更轻。** 开源，Rust 编写。
 
 [English](README.en.md) · [官网](https://www.wanflow.com) · [下载万联客户端](https://www.wanflow.com/downloads) · [安装 FlowMesh](docs/install.zh-CN.md)
 
-FlowMesh 把你的 Linux 服务器、网关和路由器接入万联组网：总部、分支、云服务器、笔记本和手机，无论身在何处，都在同一张加密的私有网络里。网络条件允许时设备之间直接互连，不允许时自动经万联的中继转发。不需要开放端口，也不需要自建 VPN 网关。
+FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh：总部、分支、云服务器、笔记本和手机，无论身在何处，都在同一张加密的私有网络里。网络条件允许时设备之间直接互连，不允许时自动经万联的中继转发。不需要开放端口，也不需要自建 VPN 网关。
 
 ## 为什么选 FlowMesh
 
@@ -26,7 +26,7 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入万联组网：总�
 
 ## 快速开始
 
-1. **创建组网。** 万联组网提供永久免费的免费版。在 [wanflow.com](https://www.wanflow.com) 注册，控制台会给出组网地址和接入密钥。
+1. **创建组网。** Wanflow FlowMesh 提供永久免费的免费版。在 [wanflow.com](https://www.wanflow.com) 注册，控制台会给出组网地址和接入密钥。
 2. **在每台 Linux 机器上安装 FlowMesh**（[安装包与说明](docs/install.zh-CN.md)），然后加入：
 
    ```bash
@@ -57,9 +57,9 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入万联组网：总�
 
 FlowMesh 实现了 Tailscale 的协调协议，因此也能加入由 [headscale](https://github.com/juanfont/headscale) 管理的网络，并与官方 Tailscale 客户端互通；命令行参数与输出遵循官方客户端（[详情](docs/protocol/cli.md)）。它是独立实现，不包含 Tailscale 或 headscale 的代码。有意为之的差异列在 [deviations.md](docs/deviations.md)。
 
-## 关于万联
+## 关于 Wanflow
 
-万联SD-WAN（WanFlow）为跨境经营的企业提供网络基础设施：连接办公室、服务器和员工的组网；面向 AI 服务、跨境电商和开发者的应用加速；部署到每个站点的托管 CPE 网关；以及海外基础设施——全部在一个控制台里管理。了解更多请访问 [wanflow.com](https://www.wanflow.com)。
+万联云网关 Wanflow 提供全新的站点互联组网服务。了解更多请访问 [wanflow.com](https://www.wanflow.com)。
 
 ## 开发
 
