@@ -103,13 +103,30 @@ else
   init=none
 fi
 
+# Without an init system: stop flowmeshd by its /proc entry (minimal systems may lack pkill/pgrep)
+# and wait until it has exited, since a stopping flowmeshd first restores routes and DNS (up to 20 s).
+daemon_pids() {
+  for p in /proc/[0-9]*; do
+    [ "$(cat "$p/comm" 2>/dev/null)" = flowmeshd ] && echo "${p#/proc/}"
+  done
+  return 0
+}
+stop_daemon() {
+  pids=$(daemon_pids)
+  [ -n "$pids" ] || return 0
+  # shellcheck disable=SC2086 # one argument per pid
+  run kill $pids 2>/dev/null || true
+  i=0
+  while [ -n "$(daemon_pids)" ] && [ $i -lt 40 ]; do sleep 0.5; i=$((i + 1)); done
+}
+
 # --- uninstall ------------------------------------------------------------------------------------
 if [ -n "$uninstall" ]; then
   if command -v flowmesh >/dev/null 2>&1; then run flowmesh logout >/dev/null 2>&1 || true; fi
   case $init in
     systemd) run systemctl disable --now flowmeshd >/dev/null 2>&1 || true ;;
     openrc) run rc-service flowmeshd stop >/dev/null 2>&1 || true; run rc-update del flowmeshd >/dev/null 2>&1 || true ;;
-    none) run pkill -x flowmeshd >/dev/null 2>&1 || true ;;
+    none) stop_daemon ;;
   esac
   if command -v dpkg >/dev/null 2>&1 && dpkg -s flowmesh >/dev/null 2>&1; then
     run dpkg -r flowmesh >/dev/null
@@ -276,7 +293,8 @@ RC
     say "no systemd or OpenRC found: starting flowmeshd in the background (it will not start at boot)"
     run mkdir -p /run/flowmesh /var/lib/flowmesh
     run chmod 0700 /var/lib/flowmesh
-    run sh -c 'pkill -x flowmeshd 2>/dev/null; sleep 1; nohup /usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock >>/var/log/flowmeshd.log 2>&1 &'
+    stop_daemon
+    run sh -c 'nohup /usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock >>/var/log/flowmeshd.log 2>&1 &'
     ;;
 esac
 i=0
@@ -288,7 +306,18 @@ done
 
 # --- join -----------------------------------------------------------------------------------------
 if [ -z "$login_server" ]; then
-  say "installed. Join a mesh with: sudo flowmesh up --login-server=<your mesh address> --auth-key=<key>"
+  # An upgrade keeps the node logged in: the daemon reconnects by itself.
+  state() { run flowmesh status --json 2>/dev/null | sed -n 's/.*"BackendState": *"\([A-Za-z]*\)".*/\1/p' | head -1; }
+  i=0
+  while [ $i -lt 20 ]; do
+    case "$(state)" in Running|NeedsLogin|Stopped) break ;; esac
+    i=$((i + 1)); sleep 0.5
+  done
+  if [ "$(state)" = Running ]; then
+    say "done: this machine is still on the mesh as $(run flowmesh ip -4 2>/dev/null || echo before)"
+  else
+    say "installed. Join a mesh with: sudo flowmesh up --login-server=<your mesh address> --auth-key=<key>"
+  fi
   exit 0
 fi
 [ -n "$auth_key" ] || die "--login-server needs --auth-key"

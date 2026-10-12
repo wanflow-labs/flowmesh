@@ -82,6 +82,7 @@ while read -r name image ip want sysd flags; do
   echo "ok: $name installed ($want${flags:+, $flags}), joined, reached fm1, Health clear"
   again=$(docker exec "$c" sh /tmp/install.sh --mirror=http://172.29.0.190 2>&1) || { echo "$again"; fail "$name: second run"; }
   echo "$again" | grep -q "already installed" || { echo "$again"; fail "$name: second run reinstalled"; }
+  echo "$again" | grep -q "still on the mesh" || { echo "$again"; fail "$name: second run does not see the node on the mesh"; }
   docker exec "$c" sh /tmp/install.sh --uninstall >/dev/null 2>&1 || fail "$name: uninstall"
   docker exec "$c" sh -c 'test ! -e /usr/sbin/flowmeshd && test ! -e /usr/bin/flowmesh' || fail "$name: binaries left after uninstall"
   echo "ok: $name second run is a no-op, uninstall removes it"
