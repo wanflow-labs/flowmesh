@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Curve25519 密钥及其文本形式。
+//! Curve25519 keys and their text form.
 //!
-//! 公钥文本形式为 `<前缀>:<64 位小写十六进制>`，前缀区分用途
-//! （docs/protocol/control.md §1；machine 密钥前缀 `mkey:` 已观测）。
+//! The text form of a public key is `<prefix>:<64 lowercase hex digits>`; the prefix tells the key's purpose
+//! (docs/protocol/control.md §1; the machine key prefix `mkey:` is observed).
 
 use std::fmt;
 use std::str::FromStr;
@@ -73,17 +73,17 @@ macro_rules! public_key {
 public_key!(
     MachinePublic,
     "mkey:",
-    "设备（machine）公钥，用于控制通道 Noise 握手。"
+    "Machine public key, used for the control channel Noise handshake."
 );
 public_key!(
     NodePublic,
     "nodekey:",
-    "节点公钥，即该节点的 WireGuard 公钥。"
+    "Node public key, i.e. the node's WireGuard public key."
 );
 public_key!(
     DiscoPublic,
     "discokey:",
-    "disco 公钥，用于对端之间的路径探测消息。"
+    "Disco public key, used for path discovery messages between peers."
 );
 
 macro_rules! private_key {
@@ -93,7 +93,7 @@ macro_rules! private_key {
         pub struct $name([u8; 32]);
 
         impl $name {
-            /// 用系统随机源生成新私钥。
+            /// Generates a new private key from the system random source.
             pub fn generate() -> Result<Self, KeyError> {
                 let mut b = [0u8; 32];
                 getrandom::fill(&mut b).map_err(|_| KeyError::Random)?;
@@ -130,9 +130,9 @@ macro_rules! private_key {
     };
 }
 
-private_key!(MachinePrivate, MachinePublic, "设备私钥。");
-private_key!(NodePrivate, NodePublic, "节点私钥。");
-private_key!(DiscoPrivate, DiscoPublic, "disco 私钥。");
+private_key!(MachinePrivate, MachinePublic, "Machine private key.");
+private_key!(NodePrivate, NodePublic, "Node private key.");
+private_key!(DiscoPrivate, DiscoPublic, "Disco private key.");
 
 fn decode_hex32(s: &str) -> Result<[u8; 32], KeyError> {
     if s.len() != 64 {
@@ -208,7 +208,7 @@ mod tests {
         assert_ne!(p.public(), MachinePrivate::generate().unwrap().public());
     }
 
-    /// RFC 7748 §6.1 测试向量：Alice 的私钥对应的公钥。
+    /// RFC 7748 §6.1 test vector: the public key for Alice's private key.
     #[test]
     fn public_derivation_matches_rfc7748() {
         let mut sk = [0u8; 32];

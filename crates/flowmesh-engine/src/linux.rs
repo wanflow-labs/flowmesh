@@ -168,7 +168,7 @@ fn local_endpoints(tun: &str, port: u16) -> Vec<SocketAddr> {
         .collect()
 }
 
-/// DERP connections, driven by `RelayPlan` (design §7.2): reconnect when a relay drops, back off on
+/// DERP connections, driven by `RelayPlan`: reconnect when a relay drops, back off on
 /// failures, fail home over to another region. Connections after start-up are made in background
 /// tasks whose results come back on `ready`, so a dead relay cannot stall the event loop.
 struct Relays {
@@ -555,7 +555,7 @@ impl Drop for AbortOnDrop {
     }
 }
 
-/// Design §7.2: an expired node key ends the run as "not authorized", so the daemon shows NeedsLogin
+/// An expired node key ends the run as "not authorized", so the daemon shows NeedsLogin
 /// with the reason instead of carrying on with a key the mesh no longer accepts.
 fn check_key(nm: &NetMap, control_time: Option<&str>) -> Result<(), EngineError> {
     let now = crate::logic::unix_now();
@@ -1063,7 +1063,7 @@ pub async fn run(
     };
     relays.connect_home(home, &nm.derp_map).await;
 
-    // The netmap stream is kept alive by the reconnect loop (design §7.2): a redial opens a new
+    // The netmap stream is kept alive by the reconnect loop: a redial opens a new
     // Noise connection, which `report` then uses too, and streams with the latest host info.
     let (client_tx, client_rx) = watch::channel(client.clone());
     let (stream_req_tx, stream_req_rx) = watch::channel(MapRequest {

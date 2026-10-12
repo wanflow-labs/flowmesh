@@ -1,23 +1,28 @@
 // SPDX-License-Identifier: Apache-2.0
-//! flowmesh 协议探测程序：用预授权 key 注册，接收网络地图，并把原始报文写入目录，
-//! 作为协议规范的观测出处（docs/protocol/control.md）。
+//! flowmesh protocol probe: registers with a pre-auth key, receives the netmap, and writes the raw
+//! messages to a directory as observation sources for the protocol specification (docs/protocol/control.md).
 //!
-//! 用法：flowmesh-probe --login-server <url> --authkey-file <path> --state <path>
-//!       --hostname <name> --dump <dir> [--duration <秒>]
-//!       [--derp-region <id> [--disco-to <tailnet IP> --disco-payload <hex> ... [--disco-delay <秒>]]]
+//! Usage: flowmesh-probe --login-server <url> --authkey-file <path> --state <path>
+//!        --hostname <name> --dump <dir> [--duration <seconds>]
+//!        [--derp-region <id> [--disco-to <tailnet IP> --disco-payload <hex> ... [--disco-delay <seconds>]]]
 //!
-//! disco 模式（--derp-region）：连上该区域的 DERP 并把它报为本节点的 home，记录对端经 DERP 发来的
-//! disco 消息（用本次运行的 disco 私钥解密，写入 disco.tsv；私钥存为 disco.key，不得放进 fixtures）。
-//! 给了 --disco-to 时，连上 DERP 后等 --disco-delay（默认 5 秒，让对端先拿到本次的新 disco 公钥），
-//! 再把每个 --disco-payload（类型字节 + 版本字节 + 正文）封装后发给该对端。payload 是十六进制，可含占位符
-//! `{self}`（本次的 disco 公钥）和 `{disco:<IP>}`（该节点当前的 disco 公钥），发送时按最新网络地图展开。
+//! Disco mode (--derp-region): connects to that region's DERP and reports it as this node's home, and records
+//! the disco messages peers send over DERP (decrypted with this run's disco private key and written to
+//! disco.tsv; the private key is saved as disco.key and must not go into fixtures).
+//! With --disco-to, after connecting to DERP it waits --disco-delay (default 5 seconds, so the peer first gets
+//! this run's new disco public key), then seals each --disco-payload (type byte + version byte + body) and sends
+//! it to that peer. A payload is hex and may contain the placeholders `{self}` (this run's disco public key) and
+//! `{disco:<IP>}` (that node's current disco public key), expanded from the latest netmap when sending.
 //!
-//! peer relay 握手实验（--udp-payload，可重复）：程序记住最近收到的分配（0x09 或 0x07），--udp-delay
-//! （默认 12 秒）后把每个 payload 用分配里的服务器密钥封装、加 Geneve 头（--udp-control 置 O 位，VNI 取自
-//! 分配），经 UDP 发到分配的中继地址；UDP 回包解密后同样记入 disco.tsv。占位符另有 `{alloc.server}`、
-//! `{alloc.pair}`、`{alloc.gen}`、`{alloc.vni}`，以及 `{node}`（本节点的 node 公钥）。--udp-answer：收到服务器的
-//! Challenge（0x05）时回 Answer（0x06，原样带回正文）。--relay-peer/--relay-payload：Answer 发出 1 秒后，把每个
-//! payload 用该对端的 disco 公钥封装、不置 O 位，经中继发出（验证中继转发）。
+//! Peer relay handshake experiments (--udp-payload, repeatable): the program remembers the most recent
+//! allocation it received (0x09 or 0x07). After --udp-delay (default 12 seconds) it seals each payload with the
+//! server key from the allocation, adds a Geneve header (--udp-control sets the O bit; the VNI comes from the
+//! allocation), and sends it over UDP to the allocated relay address; UDP replies are decrypted and also
+//! recorded in disco.tsv. Additional placeholders are `{alloc.server}`, `{alloc.pair}`, `{alloc.gen}`,
+//! `{alloc.vni}`, and `{node}` (this node's node public key). --udp-answer: when the server sends a Challenge
+//! (0x05), reply with an Answer (0x06, echoing the body). --relay-peer/--relay-payload: 1 second after the
+//! Answer is sent, seal each payload with that peer's disco public key, without the O bit, and send it through
+//! the relay (verifies relay forwarding).
 
 mod disco;
 
@@ -129,7 +134,7 @@ fn parse_args() -> Result<Args, String> {
     })
 }
 
-/// 与官方客户端的取值方式一致：linux / macOS / windows。
+/// Same values as the official client: linux / macOS / windows.
 fn os_name() -> &'static str {
     match std::env::consts::OS {
         "macos" => "macOS",

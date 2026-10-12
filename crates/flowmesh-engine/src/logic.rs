@@ -410,7 +410,7 @@ pub(crate) fn apply_netmap(
         dp.set_filter_rules(Vec::new());
         return Ok(());
     }
-    // fail-closed: on a compile error the previous valid rules stay (design doc §7.2).
+    // fail-closed: on a compile error the previous valid rules stay.
     let rules = flowmesh_filter::compile::compile(&nm.filter_rules())
         .map_err(|e| format!("filter rules rejected, keeping previous: {e}"))?;
     dp.set_filter_rules(rules);

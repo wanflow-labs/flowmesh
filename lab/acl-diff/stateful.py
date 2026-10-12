@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Black-box collection of the official client's stateful filtering (M3 Task 3).
+"""Black-box collection of the official client's stateful filtering.
 
 Policy: only ts2 → ts1 is allowed; ts1 may not initiate to ts2. Observes whether ts1's replies to connections ts2 initiated reach ts2,
 each with a control: the same kind of packet that belongs to no connection.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Performance baseline (design §5.1 ⑥): TCP throughput both ways and latency through the tunnel to
+# Performance baseline: TCP throughput both ways and latency through the tunnel to
 # the same peer (ts1, official client), from flowmesh (fm1, flowmeshd, userspace WireGuard) and from
 # wanflow-mesh (wm1), with the daemon's CPU use during each run. Numbers come from the Docker Desktop
 # lab: compare them with each other, not with real hardware.

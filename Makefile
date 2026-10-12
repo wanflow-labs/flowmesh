@@ -42,7 +42,7 @@ fuzz:
 	python3 fuzz/seed.py
 	fuzz/run_all.sh $(FUZZ_SECONDS)
 
-# Reproducible static release build in the pinned container (design §6.2). Always linux/amd64: the
+# Reproducible static release build in the pinned container. Always linux/amd64: the
 # build host's architecture changes the output (docs/reproducible-builds.md), so on an arm64 machine
 # this runs emulated (slow, same bytes).
 release:

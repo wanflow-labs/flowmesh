@@ -18,7 +18,7 @@ unsafe_code = "forbid"
 unwrap_used = "deny"
 expect_used = "deny"
 
-# Release binaries (design §6): one codegen unit and LTO for deterministic, compact output.
+# Release binaries: one codegen unit and LTO for deterministic, compact output.
 [profile.release]
 codegen-units = 1
 lto = "fat"

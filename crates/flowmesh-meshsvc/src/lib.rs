@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! Mesh services: TCP services bound to this node's mesh addresses that learn the caller's identity
-//! from the netmap. This is where v4's SSH, Serve and the web client attach (design doc §3).
+//! from the netmap. SSH and Serve attach here.
 //!
 //! Access control is not done here: the packet filter already decided whether the caller may reach
 //! this port (filter.md). This layer only answers "who is it", and refuses callers it cannot name.

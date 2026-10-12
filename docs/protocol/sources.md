@@ -1,26 +1,26 @@
-# 出处索引
+# Source index
 
-| 编号 | 类型 | 内容 |
+| ID | Type | Content |
 |---|---|---|
-| PUB-1 | 规范 | The Noise Protocol Framework, revision 34 — https://noiseprotocol.org/noise.html |
-| PUB-2 | 论文 | WireGuard: Next Generation Kernel Network Tunnel — https://www.wireguard.com/papers/wireguard.pdf |
+| PUB-1 | Specification | The Noise Protocol Framework, revision 34 — https://noiseprotocol.org/noise.html |
+| PUB-2 | Paper | WireGuard: Next Generation Kernel Network Tunnel — https://www.wireguard.com/papers/wireguard.pdf |
 | PUB-3 | RFC | RFC 5389 Session Traversal Utilities for NAT (STUN) |
-| PUB-4 | 官方博客 | How NAT traversal works — https://tailscale.com/blog/how-nat-traversal-works |
-| PUB-5 | 官方知识库 | DERP servers — https://tailscale.com/kb/1232/derp-servers |
-| OBS-20261010-baseline | 观测 | 实验环境基线：两个官方 v1.94.2 客户端经实验环境控制服务器入网后的状态、偏好、网络地图，以及 headscale 侧的节点和策略（已脱敏） |
-| OBS-20261010-official-http-control | 观测 | 官方 v1.94.2 客户端在 `http://` 控制地址使用非 80 端口时强制改用 TLS 443；解析控制主机名时还会向 `*.tailscale.com` 发起 bootstrap DNS 查询 |
-| OBS-20261010-peer-relay-official | 观测 | 官方 v1.94.2 客户端 tsr 作 peer relay 服务器（`--relay-server-port=40000`），ts1↔ts2 的直连 UDP 被丢弃后，ts1 经 `peer-relay(172.29.0.23:40000:vni:1)` 到达 ts2；`status --json` 的 `PeerRelay` 为同一字符串 |
-| OBS-20261010-probe-disco-mode | 观测 | flowmesh-probe disco 模式经 DERP 向 ts1 发 Ping 并收到 Pong；只发流式 MapRequest 时 ts1 看不到探针的 DiscoKey；DERP 只投递给连在同一中继上的客户端（否则回 PeerGone） |
-| OBS-20261010-peer-relay-alloc-request | 观测 | 官方客户端发给候选中继服务器的分配请求 0x08：正文、重发与轮次、发送条件 |
-| OBS-20261010-peer-relay-alloc-response | 观测 | 中继服务器对 0x08 的回复 0x09：逐字段解码与变体实验 |
-| OBS-20261010-peer-relay-forward | 观测 | 客户端把分配转给对端的 0x07 |
-| OBS-20261010-peer-relay-datapath | 观测 | 中继端口抓包：Geneve 头、握手时序、数据路径 |
-| OBS-20261010-peer-relay-handshake | 观测 | 以探针为客户端尝试与中继服务器握手（尚无回复） |
-| OBS-20261010-peer-relay-behavior | 观测 | 中继失效与恢复、闲置、与 prefer/strict 模式的配合 |
-| OBS-20261011-subnet-router-official | 观测 | 官方客户端作子网路由器（`lab/scripts/subnet_router_observe.sh`）：转发开关下的 `up` 警告、netfilter 规则（ts-forward / ts-postrouting，fwmark 0x40000）、NoSNAT 默认 false；健康信息为空 |
-| OBS-20261011-exit-node-official | 观测 | 官方客户端的出口节点（提供与使用）、`--exit-node-allow-lan-access`、`--shields-up`、`--stateful-filtering`、`--advertise-tags`（`lab/scripts/exit_node_observe.sh`，经 `lab/scripts/tls_proxy.sh` 的 https 地址避开"强制 TLS"）：策略路由（规则 5210/5230/5250/5270、表 52、fwmark 0x80000/0xff0000）、允许局域网时表 52 里 `throw` 本地网段、出口节点不转发到私网/本地网段（回 TSMP reject）、有状态过滤的 conntrack 规则、标签格式校验 |
-| OBS-20261012-cli-more-official | 观测 | 官方客户端的查询与运维命令（`lab/scripts/cli_more_observe.sh`）：`ip`、`netcheck`（文本/JSON，停止状态下会向厂商控制面取默认中继图）、`exit-node list`、`dns status [--all]`、`metrics print`、`--operator` 的访问规则与拒绝提示；样本中实验室的公网出口地址已替换为文档地址 198.51.100.1 |
-| OBS-20261012-ssh-official | 观测 | 官方客户端的 SSH 服务端与 `tailscale ssh`/`nc`（`lab/scripts/ssh_observe.sh`，策略临时加 `ssh` 段后还原）：headscale 下发的 SSHPolicy 形态、`Hostinfo.sshHostKeys`、按用户的接受/拒绝及拒绝输出（`autogroup:nonroot` 不展开）、会话环境变量、退出码、pty、内置 SFTP、本地转发、known_hosts 布局、`--ssh=false` 后 22 端口回到主机 |
-| OBS-20261012-dns-query-official | 观测 | 官方 `tailscale dns query` 的输出布局（`lab/scripts/dns_query_observe.sh`），`--accept-dns` 开/关两组各 14 例：关时 100.100.100.100 只答本地记录、其余一律 SERVFAIL 且不转发；额外记录有反向 PTR；“上游解析器”一行对本地名字同样显示 |
-| OBS-20261012-serve-official | 观测 | 官方 `tailscale serve`（`lab/scripts/serve_observe.sh`，服务端打标签、请求端不打标签）：配置 JSON、列表文本、按 Host 匹配（IP 访问 404）、挂载路径剥离、身份头与 X-Forwarded-* 覆盖、文本/目录/Unix 后端/502、TCP 转发与 PROXY v1 头、前台模式、HTTPS 与 services 在 headscale 下不可用；`SERVER=flowmesh` 跑同一组用例供 `serve_compare.py` 对比 |
-| PUB-6 | 公开标准 | RFC 8926 Geneve — https://www.rfc-editor.org/rfc/rfc8926 |
+| PUB-4 | Official blog | How NAT traversal works — https://tailscale.com/blog/how-nat-traversal-works |
+| PUB-5 | Official knowledge base | DERP servers — https://tailscale.com/kb/1232/derp-servers |
+| OBS-20261010-baseline | Observation | Lab baseline: state, prefs and netmaps of two official v1.94.2 clients after joining through the lab control server, plus the nodes and policy on the headscale side (redacted) |
+| OBS-20261010-official-http-control | Observation | The official v1.94.2 client forces TLS on 443 when an `http://` control URL uses a port other than 80; when resolving the control host name it also sends bootstrap DNS queries to `*.tailscale.com` |
+| OBS-20261010-peer-relay-official | Observation | Official v1.94.2 client tsr acts as a peer relay server (`--relay-server-port=40000`); with direct UDP between ts1 and ts2 dropped, ts1 reaches ts2 via `peer-relay(172.29.0.23:40000:vni:1)`; `PeerRelay` in `status --json` is the same string |
+| OBS-20261010-probe-disco-mode | Observation | flowmesh-probe in disco mode sends a Ping to ts1 over DERP and gets a Pong; when the probe only sends a streaming MapRequest, ts1 does not see its DiscoKey; DERP only delivers to clients connected to the same relay (otherwise it answers PeerGone) |
+| OBS-20261010-peer-relay-alloc-request | Observation | Allocation request 0x08 that the official client sends to candidate relay servers: body, retransmission and rounds, sending conditions |
+| OBS-20261010-peer-relay-alloc-response | Observation | The relay server's reply 0x09 to 0x08: field-by-field decoding and variant experiments |
+| OBS-20261010-peer-relay-forward | Observation | 0x07, which the client uses to forward an allocation to its peer |
+| OBS-20261010-peer-relay-datapath | Observation | Captures on the relay port: Geneve header, handshake timing, data path |
+| OBS-20261010-peer-relay-handshake | Observation | Attempted handshake with the relay server using the probe as client (no reply yet) |
+| OBS-20261010-peer-relay-behavior | Observation | Relay failure and recovery, idling, interaction with prefer/strict modes |
+| OBS-20261011-subnet-router-official | Observation | Official client as a subnet router (`lab/scripts/subnet_router_observe.sh`): the `up` warning depending on the forwarding switch, netfilter rules (ts-forward / ts-postrouting, fwmark 0x40000), NoSNAT defaults to false; health is empty |
+| OBS-20261011-exit-node-official | Observation | Official client exit node (offering and using), `--exit-node-allow-lan-access`, `--shields-up`, `--stateful-filtering`, `--advertise-tags` (`lab/scripts/exit_node_observe.sh`, using the https URL from `lab/scripts/tls_proxy.sh` to avoid the "forced TLS" mode): policy routing (rules 5210/5230/5250/5270, table 52, fwmark 0x80000/0xff0000), `throw` routes for local subnets in table 52 when LAN access is allowed, the exit node does not forward to private/local subnets (answers with TSMP reject), conntrack rules for stateful filtering, tag format validation |
+| OBS-20261012-cli-more-official | Observation | Official client query and operations commands (`lab/scripts/cli_more_observe.sh`): `ip`, `netcheck` (text/JSON; when stopped it fetches the default relay map from the vendor control plane), `exit-node list`, `dns status [--all]`, `metrics print`, `--operator` access rules and denial messages; the lab's public egress address in the captures is replaced with the documentation address 198.51.100.1 |
+| OBS-20261012-ssh-official | Observation | Official client SSH server and `tailscale ssh`/`nc` (`lab/scripts/ssh_observe.sh`; an `ssh` section is added to the policy temporarily and then reverted): the shape of the SSHPolicy headscale sends, `Hostinfo.sshHostKeys`, per-user accept/reject and the rejection output (`autogroup:nonroot` is not expanded), session environment variables, exit codes, pty, built-in SFTP, local forwarding, known_hosts layout, port 22 returning to the host after `--ssh=false` |
+| OBS-20261012-dns-query-official | Observation | Output layout of the official `tailscale dns query` (`lab/scripts/dns_query_observe.sh`), 14 cases each with `--accept-dns` on and off: when off, 100.100.100.100 only answers local records, everything else gets SERVFAIL and is not forwarded; extra records have reverse PTRs; the "upstream resolvers" line is shown for local names too |
+| OBS-20261012-serve-official | Observation | Official `tailscale serve` (`lab/scripts/serve_observe.sh`; the serving node is tagged, the requesting node is not): config JSON, list text, matching by Host (access by IP gives 404), mount path stripping, identity headers and X-Forwarded-* overrides, text/directory/Unix backends/502, TCP forwarding and the PROXY v1 header, foreground mode, HTTPS and services unavailable under headscale; `SERVER=flowmesh` runs the same cases for comparison by `serve_compare.py` |
+| PUB-6 | Public standard | RFC 8926 Geneve — https://www.rfc-editor.org/rfc/rfc8926 |

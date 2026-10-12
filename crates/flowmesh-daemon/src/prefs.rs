@@ -2,7 +2,7 @@
 //! Preferences and the merge semantics of `up` / `set` (cli.md §1).
 //!
 //! There is deliberately **no default control server**: the first `up` must give `--login-server`
-//! (zero-telemetry promise, design doc §7.4).
+//! (zero-telemetry promise).
 
 use ipnet::IpNet;
 use serde::{Deserialize, Serialize};

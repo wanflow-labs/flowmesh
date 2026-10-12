@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Throughput gate (M11): two flowmeshd nodes (fmA/fmB) and two wanflow-mesh nodes (wmA/wmB) as
+# Throughput gate: two flowmeshd nodes (fmA/fmB) and two wanflow-mesh nodes (wmA/wmB) as
 # temporary containers on the lab network, direct path. iperf3 TCP both ways per pair, ping, and the
 # sending daemon's CPU. The containers are removed at the end. Lab numbers (Docker Desktop): compare
 # the two pairs with each other in the same run, not with real hardware.

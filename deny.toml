@@ -5,8 +5,8 @@ all-features = true
 version = 2
 ignore = [
     # paste is a compile-time proc macro that does not run in the shipped binary; this is an "unmaintained" notice, not a vulnerability.
-    # Pulled in by tun-rs → netlink-packet-core. Revisit when M6 re-evaluates the TUN/netlink dependencies.
-    { id = "RUSTSEC-2024-0436", reason = "paste: build-time proc macro via tun-rs, unmaintained notice only; revisit in M6" },
+    # Pulled in by tun-rs → netlink-packet-core. Revisit when tun-rs drops it.
+    { id = "RUSTSEC-2024-0436", reason = "paste: build-time proc macro via tun-rs, unmaintained notice only; revisit when tun-rs drops it" },
 ]
 
 [licenses]

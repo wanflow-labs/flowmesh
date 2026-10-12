@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 发起方握手（control.md §4）。
+//! Initiator handshake (control.md §4).
 
 use crate::Error;
 use crate::frame::{self, Frame, FrameType};
 use crate::transport::Transport;
 use flowmesh_proto::key::{MachinePrivate, MachinePublic};
 
-/// Noise 参数（control.md §4）。
+/// Noise parameters (control.md §4).
 pub const NOISE_PARAMS: &str = "Noise_IK_25519_ChaChaPoly_BLAKE2s";
 
-/// 握手 prologue，与协议版本绑定（control.md §4）。
+/// Handshake prologue, bound to the protocol version (control.md §4).
 pub fn prologue(version: u16) -> Vec<u8> {
     format!("Tailscale Control Protocol v{version}").into_bytes()
 }
@@ -19,8 +19,8 @@ pub struct Initiator {
 }
 
 impl Initiator {
-    /// 返回发起方状态，以及要放进 `X-Tailscale-Handshake` 头的完整发起消息
-    /// （2 字节大端版本 + 类型 1 的帧）。
+    /// Returns the initiator state and the complete initiation message for the `X-Tailscale-Handshake` header
+    /// (2-byte big-endian version + a type 1 frame).
     pub fn new(
         machine: &MachinePrivate,
         server: &MachinePublic,
@@ -38,7 +38,7 @@ impl Initiator {
         Ok((Self { state }, msg))
     }
 
-    /// 处理服务端的响应帧，得到加密记录层。
+    /// Processes the server's response frame and yields the encrypted record layer.
     pub fn finish(mut self, response: Frame) -> Result<Transport, Error> {
         if response.ty != FrameType::Response {
             return Err(Error::UnexpectedFrame(response.ty));
@@ -48,7 +48,7 @@ impl Initiator {
         if !self.state.is_handshake_finished() {
             return Err(Error::Protocol("handshake not finished after response"));
         }
-        // 发起方：split 的第一把密钥用于发送，第二把用于接收。
+        // Initiator: the first split key sends, the second receives.
         let (send, recv) = self.state.dangerously_get_raw_split();
         Ok(Transport::from_raw_split(send, recv))
     }
@@ -72,7 +72,7 @@ mod tests {
         Responder { state }
     }
 
-    /// 按观测到的格式拆开发起消息：2 字节版本 + 帧。
+    /// Splits the initiation message in the observed format: 2-byte version + frame.
     fn split_initiation(msg: &[u8]) -> (u16, Frame) {
         let version = u16::from_be_bytes([msg[0], msg[1]]);
         let mut dec = FrameDecoder::default();
@@ -80,7 +80,7 @@ mod tests {
         (version, dec.next_frame().unwrap().unwrap())
     }
 
-    /// 响应方的记录层：split 的两把密钥方向与发起方相反。
+    /// Responder record layer: the two split keys are used in the opposite direction from the initiator.
     fn responder_transport(r: &mut Responder) -> Transport {
         let (i2r, r2i) = r.state.dangerously_get_raw_split();
         Transport::from_raw_split(r2i, i2r)
@@ -97,7 +97,7 @@ mod tests {
     fn initiation_matches_observed_layout() {
         let (client, server) = keys();
         let (_, msg) = Initiator::new(&client, &server.public(), 131).unwrap();
-        // 观测值：总长 101，前 5 字节 00 83 01 00 60（framing-summary.json）。
+        // Observed: total length 101, first 5 bytes 00 83 01 00 60 (framing-summary.json).
         assert_eq!(msg.len(), 101);
         assert_eq!(&msg[..5], &[0x00, 0x83, 0x01, 0x00, 0x60]);
     }
@@ -113,7 +113,7 @@ mod tests {
         let mut r = responder(&server, &prologue(131));
         let mut scratch = [0u8; 1024];
         r.state.read_message(&frame.payload, &mut scratch).unwrap();
-        // 响应方确认对端静态公钥就是客户端的 machine key。
+        // The responder confirms that the peer static public key is the client's machine key.
         assert_eq!(
             r.state.get_remote_static().unwrap(),
             client.public().0.as_slice()
@@ -128,7 +128,7 @@ mod tests {
         let mut client_t = init.finish(response).unwrap();
         let mut server_t = responder_transport(&mut r);
 
-        // 客户端 → 服务端：超过单帧上限的明文必须被切成多帧。
+        // Client → server: plaintext over the single-frame limit must be split into several frames.
         let big: Vec<u8> = (0..10_000u32).map(|i| (i % 251) as u8).collect();
         let wire = client_t.seal(&big).unwrap();
         let mut dec = FrameDecoder::default();
@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(got, big);
         assert_eq!(frames, 3);
 
-        // 服务端 → 客户端，连续多条，覆盖 nonce 递增。
+        // Server → client, several in a row, covering nonce increments.
         for msg in [&b"hello"[..], b"world", b"third"] {
             let wire = server_t.seal(msg).unwrap();
             let mut dec = FrameDecoder::default();

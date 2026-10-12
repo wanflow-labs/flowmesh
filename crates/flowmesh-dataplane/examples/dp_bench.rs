@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! In-process data path benchmark (M11): two dataplanes peered with each other, handshake, then N
+//! In-process data path benchmark: two dataplanes peered with each other, handshake, then N
 //! IPv4/UDP packets of 1280 bytes from A's TUN side through encrypt (A) and decrypt (B). No sockets:
 //! this is the ceiling the I/O paths can approach.
 //! Usage: cargo run --release -p flowmesh-dataplane --example dp_bench [-- PACKETS]

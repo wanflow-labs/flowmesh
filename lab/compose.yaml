@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# flowmesh 互操作实验环境：只在本机运行，不连接任何生产主机。
+# flowmesh interoperability lab: runs only on this machine and connects to no production host.
 name: flowmesh-lab
 
 x-official-client: &official-client

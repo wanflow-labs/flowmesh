@@ -1,4 +1,4 @@
-# flowmesh through the official peer relay (M10 Task 4)
+# flowmesh through the official peer relay
 
 flowmesh-dev (commit a4dcee9) as node `fmr` (172.29.0.61, tailnet 100.64.0.17) in a temporary lab
 container; ts2 (official 1.94.2) drops all UDP to and from 172.29.0.61, so the pair has no direct path;

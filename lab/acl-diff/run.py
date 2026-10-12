@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-"""Black-box collection of the official client's filtering behavior (M3 Task 1).
+"""Black-box collection of the official client's filtering behavior.
 
 For each policy: apply it on headscale → wait for ts2's rules to change → capture on ts2's tailscale0 →
 send the probe packets from ts1 → record which probes reached ts2.

@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 网络地图流的分帧：每条消息前缀 4 字节小端长度，可选 zstd 压缩（control.md §5）。
+//! Framing of the map stream: each message is prefixed with a 4-byte little-endian length, optionally zstd-compressed (control.md §5).
 
 use crate::Error;
 use bytes::BytesMut;
 
-/// 单条消息上限（解压前），防止恶意服务端耗尽内存。
+/// Maximum size of one message (before decompression), so a malicious server cannot exhaust memory.
 pub const MAX_MESSAGE: usize = 32 * 1024 * 1024;
 
-/// 从缓冲头部取出一条完整消息并返回解压后的 JSON 字节；不足一条时返回 `None`。
+/// Takes one complete message from the front of the buffer and returns the decompressed JSON bytes; returns `None` when less than one message is buffered.
 pub fn decode_frame(buf: &mut BytesMut, compressed: bool) -> Result<Option<Vec<u8>>, Error> {
     let Some(prefix) = buf.get(..4) else {
         return Ok(None);
@@ -32,7 +32,7 @@ pub fn decode_frame(buf: &mut BytesMut, compressed: bool) -> Result<Option<Vec<u
     let mut out = Vec::new();
     let mut decoder = ruzstd::decoding::StreamingDecoder::new(&body[..])
         .map_err(|e| Error::Protocol(format!("zstd: {e}")))?;
-    // 先限流再读，避免"解压炸弹"在长度检查之前耗尽内存。
+    // Limit before reading, so a "decompression bomb" cannot exhaust memory before the length check.
     let limit = u64::try_from(MAX_MESSAGE)
         .unwrap_or(u64::MAX)
         .saturating_add(1);

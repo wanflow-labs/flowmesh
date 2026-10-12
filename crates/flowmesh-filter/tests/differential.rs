@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Differential test: every judgment must match the official client's observed result (design doc §5.2).
+//! Differential test: every judgment must match the official client's observed result.
 #![allow(clippy::unwrap_used)]
 
 use flowmesh_filter::compile::compile;

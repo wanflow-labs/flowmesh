@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 注释、字符串层面的雷同检测：任意连续 `min_tokens` 个词元与参考语料相同即判为雷同。
+//! Similarity detection on comments and strings: any run of `min_tokens` consecutive tokens that matches the reference corpus counts as similar.
 
 use crate::extract::{Lang, extract};
 use std::collections::HashMap;

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 检查区间内每个 commit 都带有 Signed-off-by:（DCO）。用法：scripts/check-dco.sh origin/main..HEAD
+# Checks that every commit in the range carries Signed-off-by: (DCO). Usage: scripts/check-dco.sh origin/main..HEAD
 set -euo pipefail
 range="${1:?usage: check-dco.sh <rev-range>}"
 bad=0

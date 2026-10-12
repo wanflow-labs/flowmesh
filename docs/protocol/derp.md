@@ -1,7 +1,7 @@
 # DERP relay
 
 Status notation is the same as control.md: **observed** / **interop-verified** / **pending**.
-Evidence for "interop-verified": `crates/flowmesh-derp/tests/lab_relay.rs` passes against the lab relay (OBS-20261010-derp-handshake), and in M4 Task 3 traffic is exchanged end to end with the official client.
+Evidence for "interop-verified": `crates/flowmesh-derp/tests/lab_relay.rs` passes against the lab relay (OBS-20261010-derp-handshake), and traffic is exchanged end to end with the official client.
 
 ## 1. Connection
 
@@ -29,7 +29,7 @@ Evidence for "interop-verified": `crates/flowmesh-derp/tests/lab_relay.rs` passe
 | 0x14 | Health | UTF-8 text |
 | 0x15 | Restarting | — |
 
-All entries above are interop-verified for 0x01–0x05 (handshake and relay round trip). 0x06–0x15 are pending: they are sent by the server or depend on server-side scenarios, and will be recorded when they show up in the long-running M4 Task 3 connection.
+All entries above are interop-verified for 0x01–0x05 (handshake and relay round trip). 0x06–0x15 are pending: they are sent by the server or depend on server-side scenarios, and will be recorded when they show up in a long-running connection.
 
 ## 3. Handshake
 
@@ -40,7 +40,7 @@ All entries above are interop-verified for 0x01–0x05 (handshake and relay roun
 | ClientInfo JSON: `{"version":2,"canAckPings":true}` | Interop-verified (server accepted it) |
 | The identity key on DERP is the node key: when A sends to B's node key, B sees src = A's node key | Interop-verified |
 
-## Connection liveness (M8)
+## Connection liveness
 
 Source: OBS-20261010-derp-liveness (`FLOWMESH_DERP_TRACE=1` frame trace; `crates/flowmesh-derp/tests/lab_relay.rs::server_echoes_client_ping`; `lab/scripts/fault_derp_restart.sh`, `fault_derp_failover.sh`).
 

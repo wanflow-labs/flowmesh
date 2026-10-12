@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 控制客户端：取服务端公钥 → 协议升级 → 握手 → 前置载荷 → HTTP/2。
+//! Control client: fetch server public key → protocol upgrade → handshake → early payload → HTTP/2.
 
 use crate::Error;
 use crate::conn::NoiseStream;
@@ -22,19 +22,19 @@ use hyper_util::rt::{TokioExecutor, TokioIo};
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-/// 等待服务端前置载荷的时间上限；超时则认为服务端不发送前置载荷。
+/// How long to wait for the server's early payload; on timeout the server is assumed not to send one.
 const EARLY_WAIT: Duration = Duration::from_secs(3);
-/// 升级响应头的长度上限。
+/// Maximum length of the upgrade response headers.
 const MAX_UPGRADE_HEAD: usize = 16 * 1024;
 
-/// 控制服务器地址。`http://` 在任何端口都走明文（偏差清单 #2，Noise 照样加密）；`https://` 先建 TLS。
+/// Control server address. `http://` uses plaintext on any port (deviation #2; Noise still encrypts); `https://` sets up TLS first.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServerUrl {
     pub host: String,
     pub port: u16,
     /// `https://`: TLS to the server (default port 443) before the key fetch and the upgrade.
     pub tls: bool,
-    /// 用于 Host 头和请求 URI 的 authority，保持用户给定的写法。
+    /// Authority for the Host header and the request URI, kept exactly as the user wrote it.
     pub authority: String,
 }
 
@@ -71,7 +71,7 @@ pub struct ControlClient {
     early: Option<serde_json::Value>,
 }
 
-/// 网络地图流中的一条消息：解压后的原始 JSON 和解析结果。
+/// One message in the map stream: the decompressed raw JSON and the parsed result.
 pub struct RawMapMessage {
     pub json: Vec<u8>,
     pub parsed: MapResponse,
@@ -237,7 +237,7 @@ impl ControlClient {
         Ok(resp)
     }
 
-    /// 注册；返回解析结果和原始响应 JSON。
+    /// Registers; returns the parsed result and the raw response JSON.
     pub async fn register(
         &self,
         req: &RegisterRequest,

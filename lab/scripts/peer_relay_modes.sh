@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Peer relay under the WanFlow relay modes (M10 Task 6): tag the flowmesh node fmr (container fm-relay)
+# Peer relay under the WanFlow relay modes: tag the flowmesh node fmr (container fm-relay)
 # strict, prefer, then auto, and record which path ts2 sees to it. prefer and strict rule out direct
 # paths, not the peer relay (OBS-20261010-peer-relay-behavior), so every mode should stay on the relay.
 set -uo pipefail

@@ -43,7 +43,7 @@ Fields **the WanFlow gateway agent actually reads** (inventory): top level `Back
 
 flowmesh-specific details of the output:
 
-- flowmesh additions (design §7.3), camelCase to set them apart from the official PascalCase fields: `backend` (`userspace`; the kernel backend comes in v2) and `relayMode` (`auto`, `prefer`, `strict`; `null` before the first netmap).
+- flowmesh additions, camelCase to set them apart from the official PascalCase fields: `backend` (`userspace`) and `relayMode` (`auto`, `prefer`, `strict`; `null` before the first netmap).
 - Logged out, the shape follows the official client: `Self.ID` is `""`, `Self.PublicKey` is the all-zero node key, `Self.HostName` is the configured hostname, `TailscaleIPs`/`Peer`/`CurrentTailnet` are `null`, and `HaveNodeKey` is omitted.
 - After `down`, the last netmap stays visible (`Peer` is still populated), as on the official client.
 - `Health` carries `"flowmesh is stopped."` while Stopped or NeedsLogin (the official text names its own product; the WanFlow gateway agent does not parse it), plus the latest engine error while one is pending.

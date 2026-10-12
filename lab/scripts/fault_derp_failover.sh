@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Design §7.2, DERP region unreachable: move home to another region of the map.
+# DERP region unreachable: move home to another region of the map.
 #   A. The home relay goes down for everyone (container stopped): fm1 (flowmeshd) and the official
 #      clients move to region 1001, and fm1 <-> ts1 works over the relay alone.
 #   B. Only fm1 loses its home relay, silently (blackhole, the connection never closes): flowmesh's

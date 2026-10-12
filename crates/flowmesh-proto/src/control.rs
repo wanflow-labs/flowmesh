@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 控制通道消息（docs/protocol/control.md）。
+//! Control channel messages (docs/protocol/control.md).
 //!
-//! 所有类型都按"宽容解析"处理：未知字段一律忽略，缺失字段取默认值（设计稿 §3.2）。
-//! 字段名全部显式写出，因为协议里有 `DERPMap`、`IPProto` 这类非常规大小写。
+//! All types are parsed leniently: unknown fields are ignored and missing fields take their default values.
+//! Every field name is spelled out explicitly, because the protocol uses irregular casing such as `DERPMap` and `IPProto`.
 
 use crate::derp::DerpMap;
 use crate::filter::FilterRule;
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
 
-/// `GET /key?v=<能力版本>` 的响应（control.md §1，已观测）。
+/// Response to `GET /key?v=<capability version>` (control.md §1, observed).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ServerKeyResponse {
@@ -44,7 +44,7 @@ pub const PEERAPI6: &str = "peerapi6";
 /// The exit node DNS proxy over peerapi; its Port is a version number (1).
 pub const PEERAPI_DNS: &str = "peerapi-dns-proxy";
 
-/// 节点自报的主机信息。
+/// Host information that a node reports about itself.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Hostinfo {
@@ -92,7 +92,7 @@ pub struct RegisterAuth {
     pub auth_key: String,
 }
 
-/// `POST /machine/register` 的请求体。
+/// Request body of `POST /machine/register`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct RegisterRequest {
@@ -113,7 +113,7 @@ pub struct RegisterRequest {
     pub expiry: Option<String>,
 }
 
-/// 用户信息。headscale 回送的字段远多于此，未建模的字段在 control.md "未建模字段"中列出。
+/// User information. headscale sends many more fields than these; the unmodeled ones are listed in control.md §7.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct UserProfile {
@@ -127,7 +127,7 @@ pub struct UserProfile {
     pub profile_pic_url: String,
 }
 
-/// 注册响应中的登录身份。用户名在这里，而不在 `User` 中（OBS-20261010-flowmesh-probe）。
+/// Login identity in the register response. The user name is here, not in `User` (OBS-20261010-flowmesh-probe).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Login {
@@ -158,13 +158,13 @@ pub struct RegisterResponse {
     pub error: String,
 }
 
-/// `POST /machine/map` 的请求体。
+/// Request body of `POST /machine/map`.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MapRequest {
     #[serde(rename = "Version")]
     pub version: u16,
-    /// `"zstd"` 或空字符串。
+    /// `"zstd"` or the empty string.
     #[serde(rename = "Compress", skip_serializing_if = "String::is_empty")]
     pub compress: String,
     #[serde(rename = "KeepAlive")]
@@ -183,7 +183,7 @@ pub struct MapRequest {
     pub omit_peers: bool,
 }
 
-/// 网络地图中的一个节点（自身或对端）。
+/// A node in the netmap (self or peer).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Node {
@@ -191,7 +191,7 @@ pub struct Node {
     pub id: i64,
     #[serde(rename = "StableID")]
     pub stable_id: String,
-    /// 完整的 MagicDNS 名，以点结尾。
+    /// Fully qualified MagicDNS name, ending with a dot.
     #[serde(rename = "Name")]
     pub name: String,
     #[serde(rename = "User")]
@@ -212,7 +212,7 @@ pub struct Node {
     pub endpoints: Vec<SocketAddr>,
     #[serde(rename = "HomeDERP")]
     pub home_derp: u32,
-    /// 旧格式的 home 区域，形如 `127.3.3.40:<区域号>`；新版本服务端使用 `HomeDERP`。
+    /// Home region in the legacy format `127.3.3.40:<region ID>`; newer servers use `HomeDERP`.
     #[serde(rename = "DERP", skip_serializing_if = "String::is_empty")]
     pub legacy_derp: String,
     #[serde(rename = "Hostinfo")]
@@ -231,14 +231,14 @@ pub struct Node {
     pub cap_map: Option<serde_json::Map<String, serde_json::Value>>,
     #[serde(rename = "Expired", skip_serializing_if = "std::ops::Not::not")]
     pub expired: bool,
-    /// 该节点的能力版本。
+    /// Capability version of this node.
     #[serde(rename = "Cap")]
     pub cap: u32,
     #[serde(rename = "Created", skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
 }
 
-/// 对已有对端的增量修改，只携带变化的字段（`PeersChangedPatch`）。
+/// Incremental change to an existing peer; carries only the changed fields (`PeersChangedPatch`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct PeerChange {
@@ -377,7 +377,7 @@ fn is_zero(v: &i64) -> bool {
     *v == 0
 }
 
-/// 网络地图流中的一条消息。除 `keep_alive` 外，其余字段只在本条消息带有对应变更时才出现。
+/// One message in the map stream. Apart from `keep_alive`, a field is present only when this message carries a change to it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct MapResponse {
@@ -387,7 +387,7 @@ pub struct MapResponse {
     pub node: Option<Node>,
     #[serde(rename = "DERPMap", skip_serializing_if = "Option::is_none")]
     pub derp_map: Option<DerpMap>,
-    /// 存在时为对端的完整列表（替换此前全部对端）。
+    /// When present, the full peer list (replaces all previous peers).
     #[serde(rename = "Peers", skip_serializing_if = "Option::is_none")]
     pub peers: Option<Vec<Node>>,
     #[serde(rename = "PeersChanged", skip_serializing_if = "Vec::is_empty")]
@@ -403,11 +403,11 @@ pub struct MapResponse {
     pub ssh_policy: Option<SshPolicy>,
     #[serde(rename = "Domain", skip_serializing_if = "String::is_empty")]
     pub domain: String,
-    /// 旧式的单一规则表；headscale 0.26 不发送，改用 `PacketFilters`。
+    /// Legacy single rule table; headscale 0.26 does not send it and uses `PacketFilters` instead.
     #[serde(rename = "PacketFilter", skip_serializing_if = "Option::is_none")]
     pub packet_filter: Option<Vec<FilterRule>>,
-    /// 按名称分组的规则表，headscale 只使用 `"base"` 一组（OBS-20261010-flowmesh-probe）。
-    /// 跨消息的合并语义（整体替换还是逐键更新、null 的含义）待 M3 用差分测试确认（control.md §6）。
+    /// Rule tables grouped by name; headscale only uses the `"base"` group (OBS-20261010-flowmesh-probe).
+    /// Merge semantics across messages (whole replacement or per-key update, and what null means) are to be confirmed by differential tests (control.md §6).
     #[serde(rename = "PacketFilters", skip_serializing_if = "Option::is_none")]
     pub packet_filters: Option<BTreeMap<String, Option<Vec<FilterRule>>>>,
     #[serde(rename = "UserProfiles", skip_serializing_if = "Vec::is_empty")]

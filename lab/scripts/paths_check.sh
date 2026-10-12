@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Data path regression (M11) on the temporary pair left by `KEEP=1 perf_ab.sh` or `KEEP=1 perf_pair.sh`
+# Data path regression on the temporary pair left by `KEEP=1 perf_ab.sh` or `KEEP=1 perf_pair.sh`
 # (fmA 172.29.0.71, fmB 172.29.0.72, flowmeshd from /target/m11/release): for each path — direct,
 # peer relay through tsr (direct UDP dropped; needs tsr up, see peer_relay_up.sh), DERP (tsr dropped
 # too) — the path flowmesh reports, and a 100 MB transfer whose SHA-256 must match on both ends.

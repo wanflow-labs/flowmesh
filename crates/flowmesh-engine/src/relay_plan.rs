@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Which DERP regions to (re)connect and which one is home (design §7.2), sans-IO: the event loop
+//! Which DERP regions to (re)connect and which one is home, sans-IO: the event loop
 //! reports connection outcomes and the time, and carries out the returned actions. Connecting never
 //! happens inline, so a dead relay cannot stall the loop.
 

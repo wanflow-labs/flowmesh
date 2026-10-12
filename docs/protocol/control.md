@@ -1,78 +1,78 @@
-# 控制通道
+# Control channel
 
-状态说明：
-- **已观测**：已由黑盒样本直接确认。
-- **已互通**：按既有了解实现，flowmesh 与 headscale 实际互通成功，可作为该事实成立的证据。
-- **待验证**：尚未确认。
+Status legend:
+- **Observed**: confirmed directly by black-box captures.
+- **Interoperates**: implemented from prior knowledge, and flowmesh interoperates with headscale; the successful interop is the evidence that the fact holds.
+- **Unverified**: not yet confirmed.
 
-## 1. 获取服务端公钥
+## 1. Fetching the server public key
 
-| 事实 | 状态 | 出处 |
+| Fact | Status | Source |
 |---|---|---|
-| `GET /key?v=<能力版本>`；官方 1.94.2 发送 `v=131` | 已观测 | OBS-20261010-control-handshake/ts1-register.pcap |
-| 响应 JSON 包含 `legacyPublicKey`、`publicKey`，值为 `mkey:` 加 64 位十六进制；headscale 0.26 的 `legacyPublicKey` 全为零 | 已观测 | OBS-20261010-control-handshake/key-response.json |
+| `GET /key?v=<capability version>`; official 1.94.2 sends `v=131` | Observed | OBS-20261010-control-handshake/ts1-register.pcap |
+| The response JSON contains `legacyPublicKey` and `publicKey`, each `mkey:` followed by 64 hex digits; headscale 0.26 sends an all-zero `legacyPublicKey` | Observed | OBS-20261010-control-handshake/key-response.json |
 
-## 2. 协议升级
+## 2. Protocol upgrade
 
-| 事实 | 状态 | 出处 |
+| Fact | Status | Source |
 |---|---|---|
-| `POST /ts2021 HTTP/1.1`，请求头 `Connection: upgrade`、`Upgrade: tailscale-control-protocol`、`X-Tailscale-Handshake: <base64>`、`Content-Length: 0` | 已观测 | OBS-20261010-control-handshake/framing-summary.json |
-| 服务端回 `101 Switching Protocols`，之后同一连接上双向传输二进制帧 | 已观测 | 同上 |
-| 官方客户端只在 80 端口上使用明文；flowmesh 对 `http://` 的任何端口都使用明文（偏差清单 #2），实测 18080 端口可以正常工作 | 已观测 / 已互通 | OBS-20261010-official-http-control；OBS-20261010-flowmesh-probe |
-| 官方客户端一旦 Noise 连接失败（例如服务端重启），会转入"强制 443 TLS"模式，此后无法再用明文 80 端口重连，只能重启客户端。flowmesh 不继承这一行为 | 已观测 | lab 日志 2026-10-09T23:21:45Z（见 lab/README.md） |
-| `https://` 地址：先在 TCP 上做 TLS（默认 443），`/key` 与升级请求在 TLS 内以 HTTP/1.1 发出，升级之后 Noise 记录层包在 TLS 之上；官方客户端与 flowmesh 经同一 TLS 终结器（socat，自签 CA）都能入网并互通，不信任的证书被拒（flowmesh 报 `invalid peer certificate: UnknownIssuer`） | 已互通 | `lab/scripts/https_control.sh` |
+| `POST /ts2021 HTTP/1.1` with request headers `Connection: upgrade`, `Upgrade: tailscale-control-protocol`, `X-Tailscale-Handshake: <base64>`, `Content-Length: 0` | Observed | OBS-20261010-control-handshake/framing-summary.json |
+| The server answers `101 Switching Protocols`; after that, binary frames flow in both directions on the same connection | Observed | Same as above |
+| The official client uses plaintext only on port 80; flowmesh uses plaintext on any port for `http://` (deviation #2), and port 18080 works in practice | Observed / Interoperates | OBS-20261010-official-http-control; OBS-20261010-flowmesh-probe |
+| Once a Noise connection fails (for example, the server restarts), the official client switches to a "force 443 TLS" mode and can no longer reconnect over plaintext port 80; only a client restart recovers. flowmesh does not inherit this behavior | Observed | lab log 2026-10-09T23:21:45Z (see lab/README.md) |
+| `https://` addresses: TLS runs over TCP first (default 443); `/key` and the upgrade request are sent as HTTP/1.1 inside TLS, and after the upgrade the Noise record layer is carried over TLS. The official client and flowmesh both join and interoperate through the same TLS terminator (socat, self-signed CA); an untrusted certificate is rejected (flowmesh reports `invalid peer certificate: UnknownIssuer`) | Interoperates | `lab/scripts/https_control.sh` |
 
-## 3. 帧格式
+## 3. Frame format
 
-帧头 3 字节：1 字节类型 + 2 字节大端长度，后接载荷。
+The frame header is 3 bytes: a 1-byte type and a 2-byte big-endian length, followed by the payload.
 
-| 类型 | 方向 | 载荷 | 状态 | 出处 |
+| Type | Direction | Payload | Status | Source |
 |---|---|---|---|---|
-| 1 发起 | 客户端，放在 `X-Tailscale-Handshake` 头中 | 帧前另加 2 字节大端协议版本（= 能力版本 131）；载荷 96 字节 | 已观测 | framing-summary.json |
-| 2 响应 | 服务端，101 之后的第一帧 | 48 字节 | 已观测 | 同上 |
-| 4 记录 | 双向 | 密文（明文 + 16 字节标签） | 已观测 | 同上 |
+| 1 initiation | Client, carried in the `X-Tailscale-Handshake` header | Preceded by a 2-byte big-endian protocol version (= capability version 131); payload is 96 bytes | Observed | framing-summary.json |
+| 2 response | Server, first frame after the 101 | 48 bytes | Observed | Same as above |
+| 4 record | Both | Ciphertext (plaintext + 16-byte tag) | Observed | Same as above |
 
-## 4. 握手与记录层
+## 4. Handshake and record layer
 
-| 事实 | 状态 | 出处 |
+| Fact | Status | Source |
 |---|---|---|
-| Noise `IK`，`25519`、`ChaChaPoly`、`BLAKE2s`；发起 96 = 32 + 48 + 16，响应 48 = 32 + 16 | 已观测（长度）/ 已互通（算法） | framing-summary.json；OBS-20261010-flowmesh-probe |
-| 发起方静态密钥是 machine key，响应方静态公钥是 §1 中的 `publicKey` | 已互通 | OBS-20261010-flowmesh-probe |
-| prologue 为 `Tailscale Control Protocol v<版本>` | 已互通 | 同上（prologue 错误时握手必然失败） |
-| 记录层密钥取自 Noise split（发起方：第一把用于发送，第二把用于接收），算法 ChaCha20-Poly1305 | 已互通 | 同上 |
-| **记录层 nonce = 4 字节零 + 8 字节大端计数器**，与 Noise 规范的小端不同 | 已观测 | 按 Noise 规范使用小端时，服务端连续发来的第 2 条记录解密失败（nonce 0 的两种编码相同，从 1 开始不同）；改成大端后互通成功 |
-| 服务端先发前置载荷：5 字节魔数 `ff ff ff 54 53` + 4 字节大端长度 + JSON；明文长度依次为 5、4、95 字节；JSON 只有一个键 `nodeKeyChallenge` | 已观测 | framing-summary.json（长度）；OBS-20261010-flowmesh-probe/early.json |
+| Noise `IK`, `25519`, `ChaChaPoly`, `BLAKE2s`; initiation 96 = 32 + 48 + 16, response 48 = 32 + 16 | Observed (lengths) / Interoperates (algorithms) | framing-summary.json; OBS-20261010-flowmesh-probe |
+| The initiator static key is the machine key; the responder static public key is the `publicKey` from §1 | Interoperates | OBS-20261010-flowmesh-probe |
+| The prologue is `Tailscale Control Protocol v<version>` | Interoperates | Same as above (a wrong prologue always fails the handshake) |
+| Record-layer keys come from the Noise split (initiator: the first key sends, the second receives); the cipher is ChaCha20-Poly1305 | Interoperates | Same as above |
+| **Record-layer nonce = 4 zero bytes + 8-byte big-endian counter**, unlike the little-endian encoding in the Noise spec | Observed | With the little-endian encoding from the Noise spec, the second consecutive record from the server failed to decrypt (both encodings agree for nonce 0 and differ from 1 on); switching to big-endian interoperates |
+| The server first sends an early payload: 5-byte magic `ff ff ff 54 53` + 4-byte big-endian length + JSON; the plaintext lengths are 5, 4 and 95 bytes in that order; the JSON has a single key, `nodeKeyChallenge` | Observed | framing-summary.json (lengths); OBS-20261010-flowmesh-probe/early.json |
 
-## 5. 加密通道之上（HTTP/2）
+## 5. Over the encrypted channel (HTTP/2)
 
-| 事实 | 状态 | 出处 |
+| Fact | Status | Source |
 |---|---|---|
-| 加密通道上运行 HTTP/2，客户端直接发连接前言 | 已互通 | OBS-20261010-flowmesh-probe |
-| `POST /machine/register`：请求见 register-request.json；响应键为 `AuthURL`、`Error`、`Login`、`MachineAuthorized`、`NodeKeyExpired`、`NodeKeySignature`、`User`。**用户名在 `Login.LoginName` 中**，`User` 里没有 | 已观测 | register-response.json |
-| `POST /machine/map`（`Stream: true`）：响应为连续消息，每条前缀 4 字节小端长度；请求 `Compress: "zstd"` 时消息体经 zstd 压缩 | 已互通 | map-0000.json … map-0004.json |
-| 首条消息包含 `Node`、`Peers`（完整列表）、`DERPMap`、`DNSConfig`、`PacketFilters`、`UserProfiles`、`Domain`、`Debug`、`CollectServices`、`ControlTime` | 已观测 | map-0000.json |
-| 后续消息是增量：`PeersChangedPatch`（如 `{"NodeID":3,"Online":true}`）、`PeersChanged`、`DERPMap`、`DNSConfig`、`Node` 等 | 已观测 | map-0001.json … map-0004.json |
-| **只发流式 `MapRequest` 的节点，在其他节点的网络地图里没有 `DiscoKey`，`Online` 为 false**，其他节点因此丢弃它的 disco 消息；再发一次非流式更新（`Stream:false`、`OmitPeers:true`，带相同的 Hostinfo 与 DiscoKey）之后，对端看到它的 DiscoKey 且 `Online` 为 true。flowmeshd 一直这样做（engine 的 lite 更新）；flowmesh-probe 起初没做 | 已观测 | OBS-20261010-probe-disco-mode |
-| 对端节点同时带有 `HomeDERP`（整数区域号）和旧式 `DERP`（`127.3.3.40:<区域号>`）；尚无 home 时自身节点的 `DERP` 为 `127.3.3.40:0` | 已观测 | map-0000.json |
-| headscale 发送的是 `PacketFilters`（`{"base":[...]}`），不发送 `PacketFilter`。`base` 组中除 ACL 规则外，还有 WanFlow 控制服务器无条件追加的 peer relay `CapGrant` 规则 | 已观测 | map-0000.json |
+| HTTP/2 runs over the encrypted channel; the client sends the connection preface directly | Interoperates | OBS-20261010-flowmesh-probe |
+| `POST /machine/register`: request as in register-request.json; response keys are `AuthURL`, `Error`, `Login`, `MachineAuthorized`, `NodeKeyExpired`, `NodeKeySignature`, `User`. **The user name is in `Login.LoginName`**, not in `User` | Observed | register-response.json |
+| `POST /machine/map` (`Stream: true`): the response is a sequence of messages, each prefixed with a 4-byte little-endian length; when the request sets `Compress: "zstd"`, message bodies are zstd-compressed | Interoperates | map-0000.json … map-0004.json |
+| The first message contains `Node`, `Peers` (full list), `DERPMap`, `DNSConfig`, `PacketFilters`, `UserProfiles`, `Domain`, `Debug`, `CollectServices`, `ControlTime` | Observed | map-0000.json |
+| Later messages are incremental: `PeersChangedPatch` (e.g. `{"NodeID":3,"Online":true}`), `PeersChanged`, `DERPMap`, `DNSConfig`, `Node`, and so on | Observed | map-0001.json … map-0004.json |
+| **A node that only sends a streaming `MapRequest` has no `DiscoKey` and `Online` false in other nodes' netmaps**, so other nodes drop its disco messages. After it also sends a non-streaming update (`Stream:false`, `OmitPeers:true`, with the same Hostinfo and DiscoKey), peers see its DiscoKey and `Online` true. flowmeshd always does this (the engine's lite update); flowmesh-probe did not at first | Observed | OBS-20261010-probe-disco-mode |
+| Peer nodes carry both `HomeDERP` (integer region ID) and the legacy `DERP` (`127.3.3.40:<region ID>`); the self node's `DERP` is `127.3.3.40:0` while it has no home region yet | Observed | map-0000.json |
+| headscale sends `PacketFilters` (`{"base":[...]}`), not `PacketFilter`. Besides the ACL rules, the `base` group also holds peer relay `CapGrant` rules that the lab's control server appends unconditionally | Observed | map-0000.json |
 
-## 6. 留待后续里程碑
+## 6. Open questions
 
-| 问题 | 里程碑 |
+| Question | Status |
 |---|---|
-| `PacketFilters` 的跨消息合并语义：整体替换还是逐键更新，null 的含义 | M3 |
-| `DNSConfig` 各字段的应用语义（Routes 的空列表、FallbackResolvers 等） | M6 |
-| `nodeKeyChallenge` 的用途 | M7（官方客户端在什么情况下使用它，需要差分观测） |
+| Merge semantics of `PacketFilters` across messages: whole replacement or per-key update, and what null means | Open; to be confirmed by differential tests |
+| How each `DNSConfig` field is applied (empty `Routes` lists, `FallbackResolvers`, etc.) | Partly answered; see dns.md |
+| What `nodeKeyChallenge` is for | Open; needs differential observation of when the official client uses it |
 
-## 7. 已观测但尚未建模的字段
+## 7. Observed but not yet modeled fields
 
-`Debug`（headscale 发送 `{"DisableLogTail":true}`）、`CollectServices`、`UserProfiles[].ProfilePicURL`、`Node.Hostinfo` 中的 `NetInfo`、`Services`、`GoArch` 等、`RegisterResponse.NodeKeySignature`。宽容解析会忽略这些字段；如果后续功能需要，再补建模和测试。
+`Debug` (headscale sends `{"DisableLogTail":true}`), `CollectServices`, `UserProfiles[].ProfilePicURL`, `NetInfo`, `Services`, `GoArch` and others in `Node.Hostinfo`, and `RegisterResponse.NodeKeySignature`. Lenient parsing ignores these fields; model and test them when a later feature needs them.
 
 ## 8. Node key expiry and the stream lifecycle
 
 Source: OBS-20261010-key-expiry (`lab/scripts/fault_key_expiry.sh`; map messages tapped with `flowmesh-dev --tap-dir`) and OBS-20261010-control-outage (`lab/scripts/fault_control.sh`).
 
-- **Expiry is pushed, not enforced by closing the stream.** After `headscale nodes expire`, the node receives a map message with a full `Node` whose `KeyExpiry` is in the past (with `ControlTime` alongside); the stream stays open and further messages keep arriving. The official client switches to `NeedsLogin` on that message (Health empty, no `AuthURL`). flowmesh does the same and puts `node key expired` in Health (design §7.2 asks for the reason).
+- **Expiry is pushed, not enforced by closing the stream.** After `headscale nodes expire`, the node receives a map message with a full `Node` whose `KeyExpiry` is in the past (with `ControlTime` alongside); the stream stays open and further messages keep arriving. The official client switches to `NeedsLogin` on that message (Health empty, no `AuthURL`). flowmesh does the same and puts `node key expired` in Health.
 - Expiry is judged against the message's `ControlTime` (server clock) when present, otherwise the local clock. The zero time `0001-01-01T00:00:00Z` means "never expires".
 - **An expired key cannot be renewed.** Registering again with the same node key and an auth key is accepted (`MachineAuthorized`) but the node stays expired, with `NodeKeyExpired: true` in the register response. Registering a **new** node key with `OldNodeKey` set to the expired one (same machine key, same auth key) moves the node to the new key: it keeps its node ID and addresses.
 - **Control server restart closes the stream** (EOF). The client must reopen it on a new Noise connection; the first message after reopening is a full netmap. Tunnels are unaffected meanwhile (0% loss over a 15 s outage).

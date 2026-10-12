@@ -1,5 +1,5 @@
-# 每行一段文本：落在这段文本内部的雷同窗口不报告。
-# 只用于协议规范要求逐字一致的内容（如能力名、错误码文案），每行都要在 docs/protocol/sources.md 中有出处。
+# One text per line: similarity windows that fall inside this text are not reported.
+# Only for content the protocol requires to match verbatim (such as capability names and error message text); every line must have a source in docs/protocol/sources.md.
 # Reverse lookup zone for the mesh IPv6 prefix fd7a:115c:a1e0::/48 (mechanically derived from the address prefix; a protocol fact).
 # Source: OBS-20261010-flowmesh-probe/map-0000.json, a key in DNSConfig.Routes (sent by headscale)
 0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa

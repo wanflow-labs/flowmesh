@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# Pinned release build environment (design §6.2). The toolchain inside is installed by the same
+# Pinned release build environment. The toolchain inside is installed by the same
 # build/setup-toolchain.sh a plain Linux builder uses, so both builders run identical versions.
 FROM debian:bookworm-slim@sha256:7c7b2c966bc9ee8cedfeef67e0e279108992c77681fa595db4a9d65c06ccc587
 RUN apt-get update \

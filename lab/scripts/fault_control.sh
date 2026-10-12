@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Design §7.2, control server unreachable: established tunnels keep working, Health says so, and after
+# Control server unreachable: established tunnels keep working, Health says so, and after
 # the server returns the netmap is live again (a rename made on the server reaches fm1).
 # Needs flowmeshd Running in fm1 (cli_diff.sh / ping_diff.sh leave it so).
 set -euo pipefail

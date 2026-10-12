@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 为本机架构构建控制服务器镜像（源码位置在 lab/.env，模板见 lab/.env.example）。
-# 原因：在 arm64 主机上模拟运行 amd64 的 headscale 镜像时，Noise 握手会报
-# "chacha20poly1305: message authentication failed"（模拟器下加密运算出错），所以必须使用原生镜像。
+# Builds the control server image for the host architecture (source location in lab/.env, template in lab/.env.example).
+# Reason: when an amd64 headscale image runs under emulation on an arm64 host, the Noise handshake fails with
+# "chacha20poly1305: message authentication failed" (crypto goes wrong under the emulator), so a native image is required.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 [ -f .env ] || { echo "lab/.env missing: copy lab/.env.example and fill it in"; exit 1; }

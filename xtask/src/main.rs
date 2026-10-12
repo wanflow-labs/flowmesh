@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! flowmesh 的开发辅助任务，用法：`cargo xtask <子命令>`。
+//! Development helper tasks for flowmesh. Usage: `cargo xtask <subcommand>`.
 
 mod extract;
 mod similarity;

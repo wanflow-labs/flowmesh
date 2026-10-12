@@ -72,7 +72,7 @@ pub(crate) fn parse_set<'a>(
     Ok(AddrSet::Nets(nets))
 }
 
-/// Any unrecognized rule content makes the whole compile fail; the caller then keeps the previous valid rules (fail-closed, design doc §7.2).
+/// Any unrecognized rule content makes the whole compile fail; the caller then keeps the previous valid rules (fail-closed).
 pub fn compile(rules: &[FilterRule]) -> Result<Vec<CompiledRule>, CompileError> {
     let mut out = Vec::new();
     for rule in rules {

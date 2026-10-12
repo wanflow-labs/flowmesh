@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Reproducible release build (design §6.2): static musl binaries for x86_64 and aarch64, packed into
+# Reproducible release build: static musl binaries for x86_64 and aarch64, packed into
 # deterministic tarballs with SHA256SUMS. Same script in the pinned container (make release) and on a
 # plain Linux host with the toolchain installed by build/setup-toolchain.sh (the second builder).
 #   build/release.sh [OUT_DIR]   (default dist/)

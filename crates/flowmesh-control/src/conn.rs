@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 把"TCP（或 TLS）+ Noise 记录层"适配成 `AsyncRead`/`AsyncWrite`，供 HTTP/2 使用。
-//! 协议逻辑都在 sans-IO 的 flowmesh-noise 里，这里只搬运字节。
+//! Adapts "TCP (or TLS) + Noise record layer" to `AsyncRead`/`AsyncWrite` for HTTP/2.
+//! All protocol logic lives in the sans-IO flowmesh-noise crate; this module only moves bytes.
 
 use crate::dial::BoxIo;
 use flowmesh_noise::frame::FrameDecoder;
@@ -16,9 +16,9 @@ pub struct NoiseStream {
     tcp: BoxIo,
     transport: Transport,
     decoder: FrameDecoder,
-    /// 已解密、尚未被上层读走的明文。
+    /// Decrypted plaintext not yet read by the upper layer.
     plain: Vec<u8>,
-    /// 已加密、尚未写进 socket 的密文。
+    /// Encrypted ciphertext not yet written to the socket.
     pending: Vec<u8>,
     scratch: Vec<u8>,
 }
@@ -28,7 +28,7 @@ fn io_err(e: impl std::error::Error + Send + Sync + 'static) -> io::Error {
 }
 
 impl NoiseStream {
-    /// `decoder` 中可能已有握手时多读到的记录帧。
+    /// `decoder` may already hold record frames that were read past the handshake.
     pub fn new(tcp: BoxIo, transport: Transport, decoder: FrameDecoder) -> io::Result<Self> {
         let mut s = Self {
             tcp,
@@ -46,7 +46,7 @@ impl NoiseStream {
         &mut self.plain
     }
 
-    /// 从 socket 读一次并解密；返回 false 表示对端已关闭。可安全取消。
+    /// Reads once from the socket and decrypts; returns false when the peer has closed. Cancel-safe.
     pub async fn read_more(&mut self) -> io::Result<bool> {
         let n = self.tcp.read(&mut self.scratch).await?;
         if n == 0 {
@@ -112,7 +112,7 @@ impl AsyncWrite for NoiseStream {
         let this = self.get_mut();
         ready!(this.poll_drain(cx))?;
         this.pending = this.transport.seal(buf).map_err(io_err)?;
-        // 尽量立即写出；没写完的部分由下一次 write/flush 继续。
+        // Write out immediately if possible; whatever is left is continued by the next write/flush.
         if let Poll::Ready(Err(e)) = this.poll_drain(cx) {
             return Poll::Ready(Err(e));
         }

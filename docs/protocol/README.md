@@ -1,20 +1,26 @@
-# flowmesh 协议规范
+# flowmesh protocol specification
 
-本目录用我们自己的语言，描述 flowmesh 实现的、与 Tailscale 兼容的协议。
+This directory describes, in our own words, the Tailscale-compatible protocols that flowmesh implements.
 
-## 规则
+## Rules
 
-1. 每一条协议事实都必须标注出处，编号见 [sources.md](sources.md)：
-   - `PUB-<n>`：公开文档，包括规范、论文、官方博客和知识库。
-   - `OBS-<目录>/<文件>`：`fixtures/observed/` 中的黑盒观测样本。
-2. 编写本规范和 flowmesh 代码时，不参考 Tailscale、headscale 及其衍生项目的源码。
-3. 魔数、帧类型编号、能力版本号等互操作常量可以直接使用，但必须注明出处。
+1. Every protocol fact must cite a source; the IDs are listed in [sources.md](sources.md):
+   - `PUB-<n>`: public documents, including specifications, papers, the official blog and knowledge base.
+   - `OBS-<directory>/<file>`: black-box observation captures under `fixtures/observed/`.
+2. Neither this specification nor the flowmesh code is written with reference to the source code of Tailscale, headscale, or projects derived from them.
+3. Interoperability constants such as magic numbers, frame type numbers and capability versions may be used directly, but their source must be cited.
 
-## 章节（随里程碑补充）
+## Chapters
 
-| 文件 | 内容 | 里程碑 |
-|---|---|---|
-| control.md | 控制通道握手、注册、网络地图 | M2 |
-| filter.md | 过滤规则格式与判定语义 | M3 |
-| derp.md | DERP 帧格式 | M4 |
-| disco.md | disco 与 STUN | M5 |
+| File | Content |
+|---|---|
+| control.md | Control channel handshake, registration, netmap |
+| filter.md | Filter rule format and matching semantics |
+| derp.md | DERP frame format |
+| disco.md | disco and STUN |
+| dns.md | MagicDNS |
+| routes.md | Subnet routes and host routing |
+| peer-relay.md | Peer relay |
+| cli.md | CLI and status semantics |
+| ssh.md | SSH server and client |
+| serve.md | `flowmesh serve` |

@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: Apache-2.0
-# 结构与生产环境的控制服务器配置一致
+# Same structure as a production control server configuration
 server_url: http://headscale.lab
 listen_addr: 0.0.0.0:80
 metrics_listen_addr: 127.0.0.1:9090

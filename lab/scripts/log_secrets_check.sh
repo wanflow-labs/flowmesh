@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Design §7.3: logs never contain secrets. Looks for the lab auth key and fm1's private keys (from
+# Logs never contain secrets. Looks for the lab auth key and fm1's private keys (from
 # its state files) in every flowmesh log inside fm1. The secrets are only compared, never printed.
 #   log_secrets_check.sh [extra log file inside fm1 ...]
 set -euo pipefail

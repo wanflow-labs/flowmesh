@@ -637,7 +637,7 @@ impl PathSock {
             .collect()
     }
 
-    /// Why the peer is on its current path, for `flowmesh debug paths` (design §7.3). Read-only.
+    /// Why the peer is on its current path, for `flowmesh debug paths`. Read-only.
     pub fn explain(&self, peer: NodePublic, now: Duration) -> Option<PathExplain> {
         let p = self.peers.get(&peer)?;
         let route = self.current_route(peer, now);

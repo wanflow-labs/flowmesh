@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 //! `flowmesh bugreport`: a local diagnostic bundle. It is written to a file the user hands over (or
-//! not); nothing is ever uploaded (design doc §7.4). Keys are shortened so the bundle identifies
+//! not); nothing is ever uploaded. Keys are shortened so the bundle identifies
 //! nodes for debugging without carrying full key material.
 
 use serde_json::{Map, Value, json};

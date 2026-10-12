@@ -83,7 +83,7 @@ pub fn render(i: &Input<'_>) -> Value {
         "MagicDNSSuffix": i.snap.magic_dns_suffix,
         "CurrentTailnet": tailnet,
         "Peer": peers,
-        // flowmesh additions (design §7.3), camelCase to set them apart from the official fields.
+        // flowmesh additions, camelCase to set them apart from the official fields.
         "backend": "userspace",
         "relayMode": if i.snap.relay_mode.is_empty() { Value::Null } else { i.snap.relay_mode.as_str().into() },
     });

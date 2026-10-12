@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# M7 differential: the same command sequence against the official client (ts2) and flowmeshd (fm1).
+# CLI differential: the same command sequence against the official client (ts2) and flowmeshd (fm1).
 # Compares, per step, the command's exit code, BackendState, and the exit code of `status`
 # (cli.md §1), then checks that fm1's status JSON carries every agent-read field with the official type.
 #   cli_diff.sh [out-dir]  run the differential (flowmeshd is left running in fm1 afterwards);

@@ -1,23 +1,23 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 服务端在握手后先发的"前置载荷"：5 字节魔数 + 4 字节大端长度 + JSON（control.md §4）。
+//! The "early payload" the server sends first after the handshake: 5-byte magic + 4-byte big-endian length + JSON (control.md §4).
 
 use crate::Error;
 
 pub const EARLY_MAGIC: [u8; 5] = [0xff, 0xff, 0xff, b'T', b'S'];
-/// 前置载荷 JSON 的长度上限，防止恶意服务端让我们分配超大缓冲。
+/// Maximum length of the early payload JSON, so a malicious server cannot make us allocate a huge buffer.
 pub const MAX_EARLY_JSON: usize = 64 * 1024;
 
 #[derive(Debug, PartialEq)]
 pub enum Early {
-    /// 还需要更多明文才能判断。
+    /// More plaintext is needed to decide.
     NeedMore,
-    /// 不是前置载荷，缓冲保持原样交给 HTTP/2。
+    /// Not an early payload; the buffer is passed to HTTP/2 unchanged.
     Absent,
-    /// 已从缓冲头部剥离前置载荷。
+    /// The early payload has been stripped from the front of the buffer.
     Present(serde_json::Value),
 }
 
-/// 检查明文缓冲头部是否为前置载荷；若是，就把它从缓冲中移除。
+/// Checks whether the plaintext buffer starts with an early payload; if so, removes it from the buffer.
 pub fn take_early(buf: &mut Vec<u8>) -> Result<Early, Error> {
     let seen = buf.len().min(EARLY_MAGIC.len());
     if buf[..seen] != EARLY_MAGIC[..seen] {

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Design §7.2: a DERP server that restarts must be reconnected. After restarting the lab DERP, fm1
+# A DERP server that restarts must be reconnected. After restarting the lab DERP, fm1
 # (flowmeshd) must reach ts1 over the relay alone (direct path blackholed), and ts1 must reach fm1.
 set -euo pipefail
 cd "$(dirname "$0")/.."

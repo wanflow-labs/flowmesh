@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 冒烟测试：ts1 能用系统 ping 通 ts2；两端都把实验 DERP 选为 home 区域。
+# Smoke test: ts1 can reach ts2 with the system ping; both ends choose the lab DERP as their home region.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -15,7 +15,7 @@ for c in ts1 ts2; do
   echo "ok: $c home relay $relay"
 done
 
-# 阻断 ts1 与 ts2 之间的直连 UDP，验证流量能经 DERP 中继；结束时恢复。
+# Block direct UDP between ts1 and ts2 and check that traffic is relayed through DERP; restore at the end.
 block() { docker compose exec -T ts1 iptables "$1" OUTPUT -d 172.29.0.22 -p udp -j DROP; docker compose exec -T ts2 iptables "$1" OUTPUT -d 172.29.0.21 -p udp -j DROP; }
 trap 'block -D 2>/dev/null || true' EXIT
 block -I

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Interop matrix (design §5.3) plus the outbound connection audit (design §7.4):
+# Interop matrix plus the outbound connection audit:
 #   flowmesh <-> flowmesh (fm1 and fmsd, both flowmeshd): direct, then relay only
 #   flowmesh <-> wanflow-mesh (wm1)
 #   flowmesh <-> official client 1.94.2: ping_diff.sh and whois_diff.sh
@@ -74,7 +74,7 @@ echo "== flowmesh <-> official client"
 scripts/ping_diff.sh 2>&1 | tail -1 | grep -q "^ok" && row "ok   flowmesh <-> official 1.94.2: ping_diff" || row "FAIL flowmesh <-> official 1.94.2: ping_diff"
 scripts/whois_diff.sh 2>&1 | tail -1 | grep -q "^ok" && row "ok   flowmesh <-> official 1.94.2: whois_diff" || row "FAIL flowmesh <-> official 1.94.2: whois_diff"
 
-echo "== outbound audit (design §7.4)"
+echo "== outbound audit"
 # AUDIT_SELFTEST=1 sends one packet to an address no one allowed, to prove the audit catches it.
 # (A real host on an unexpected port: an unknown address would only produce ARP, no IP packet.)
 if [ "${AUDIT_SELFTEST:-}" = 1 ]; then dc fm1 sh -c 'timeout 2 bash -c "echo > /dev/tcp/172.29.0.10/81"' >/dev/null 2>&1 || true; fi

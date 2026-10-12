@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Keeping the netmap stream alive (design §7.2): when the control server goes away the data plane
+//! Keeping the netmap stream alive: when the control server goes away the data plane
 //! keeps running on the last netmap, and this loop redials with exponential backoff until a stream
 //! delivers again. Dialing is injected, so the loop is tested without a server.
 

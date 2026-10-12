@@ -26,4 +26,4 @@ Official 1.94.2 clients ts1 and ts2, direct UDP between them dropped, tsr as rel
 | auto | peer relay | peer relay | Observed |
 
 The peer relay is used in every mode: prefer and strict rule out direct paths, not the relay server.
-M10 must keep the peer relay available to flowmesh in its prefer and strict modes.
+flowmesh must keep the peer relay available to flowmesh in its prefer and strict modes.

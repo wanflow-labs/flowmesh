@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Batched UDP I/O on the shared socket (M11): one recvmmsg returns up to [`RECV_BATCH`] datagrams,
+//! Batched UDP I/O on the shared socket: one recvmmsg returns up to [`RECV_BATCH`] datagrams,
 //! each possibly a GRO run of same-size segments, and datagrams to one destination leave in one
 //! sendmsg with a UDP_SEGMENT (GSO) size when the kernel supports it. The socket options flowmesh
 //! already relies on are left as they are (no path-MTU or don't-fragment changes).

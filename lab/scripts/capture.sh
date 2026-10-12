@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 采集黑盒观测样本：官方客户端视角的状态和偏好设置，以及 headscale 视角的节点和策略。
-# 用法：lab/scripts/capture.sh [label]，默认 label 为 baseline。
+# Collects black-box observation captures: status and prefs as seen by the official clients, and nodes and policy as seen by headscale.
+# Usage: lab/scripts/capture.sh [label]; the default label is baseline.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 label="${1:-baseline}"

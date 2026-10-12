@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Design §7.2, node key expired by the server: NeedsLogin with the reason, and an `up` with an auth
+# Node key expired by the server: NeedsLogin with the reason, and an `up` with an auth
 # key brings the node back. The official client (ts2) goes through the same steps as the reference.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -46,7 +46,7 @@ for side in fm1 ts2; do
   echo "ok: $side -> $got (status exit $rc)"
   [ "$rc" = 1 ] || fail "$side status exit $rc"
 done
-case "$(state fm1)" in *"node key expired"*) echo "ok: fm1 Health gives the reason (design §7.2)" ;; *) fail "fm1 Health lacks the reason" ;; esac
+case "$(state fm1)" in *"node key expired"*) echo "ok: fm1 Health gives the reason" ;; *) fail "fm1 Health lacks the reason" ;; esac
 
 echo "== log in again with an auth key"
 join fm1 fm1 || fail "fm1 re-login failed: $(state fm1)"

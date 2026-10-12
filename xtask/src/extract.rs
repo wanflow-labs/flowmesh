@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 从 Rust/Go 源码中抽取注释和字符串字面量，供相似度比对使用。
+//! Extracts comments and string literals from Rust/Go source for similarity checks.
 
 use std::path::Path;
 
-/// 抽取出的一段文本及其起始行号（从 1 开始）。
+/// An extracted piece of text and its starting line number (1-based).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Fragment {
     pub line: usize,
@@ -166,7 +166,7 @@ impl Lexer {
         self.push(line, text);
     }
 
-    /// 字符字面量直接跳过；Rust 的生命周期标记（`'a`）只前进一个字符。
+    /// Character literals are skipped; a Rust lifetime marker (`'a`) advances only one character.
     fn char_literal(&mut self, lang: Lang) {
         if self.peek(1) == Some('\\') {
             self.bump_n(2);
@@ -184,7 +184,7 @@ impl Lexer {
         self.bump();
     }
 
-    /// `r"`、`r#"`、`br#"` 开头的原始字符串；`for"` 这类标识符结尾的 r 不算。
+    /// Raw strings starting with `r"`, `r#"` or `br#"`; an r that ends an identifier, as in `for"`, does not count.
     fn raw_string_ahead(&self) -> bool {
         if let Some(p) = self.prev() {
             if (p.is_alphanumeric() || p == '_') && p != 'b' {

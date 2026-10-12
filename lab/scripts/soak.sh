@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Soak test (design §5.5): flowmeshd in fm1 runs for HOURS (default 72) with steady traffic to a
+# Soak test: flowmeshd in fm1 runs for HOURS (default 72) with steady traffic to a
 # flowmesh peer (fmsd) and a wanflow-mesh peer (wm1), and with faults injected on a schedule:
 #   every 3 h  the control server is unreachable from fm1 for 60 s
 #   every 4 h  the DERP relay (region 1000) restarts

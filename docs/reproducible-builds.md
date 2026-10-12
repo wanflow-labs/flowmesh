@@ -1,6 +1,6 @@
 # Reproducible builds
 
-flowmesh release binaries can be rebuilt byte for byte from the source (design §6.2). This page says how, and records the comparisons made.
+flowmesh release binaries can be rebuilt byte for byte from the source. This page says how, and records the comparisons made.
 
 ## Rebuilding
 
@@ -58,7 +58,7 @@ Rebuilding (`make reproduce SUMS=SHA256SUMS`) checks the same file without trust
 
 ## Comparisons
 
-### 2026-10-10, commit cb34de5 (`SOURCE_DATE_EPOCH=1791636167`)
+### 2026-10-10 (`SOURCE_DATE_EPOCH=1791636167`)
 
 Two builders that share nothing but the source and the pinned versions:
 
@@ -85,7 +85,7 @@ All ten entries of `SHA256SUMS` are identical:
 
 ### What it took
 
-The first comparisons (commit a43a0aa) failed in two ways, both fixed:
+The first comparisons failed in two ways, both fixed:
 
 - **Directory mode in the tarballs.** Builder A's login umask (002) gave the staging directory mode 0775, the container's gave 0755: same binaries, different tarballs. `release.sh` now sets `umask 022` and chmods the directory.
 - **Host architecture.** Built on an aarch64 host, every binary differed from the x86_64 builds, by 16 bytes of code and a handful of 64-bit constants. The dependency file names already differed (`libserde-5884d124…` on aarch64, `libserde-7f069d4d…` on both x86_64 builders): cargo hashes `rustc -vV`, which names the host, into each crate's metadata, and that hash reaches type ids, symbol names and then code generation. An emulated amd64 container and the bare x86_64 machine agreed byte for byte, so the host architecture is treated as a build input.

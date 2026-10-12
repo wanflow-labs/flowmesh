@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Peer relay differential (M10 Task 6): flowmesh (container fm-relay, node fmr) and the official client
+# Peer relay differential: flowmesh (container fm-relay, node fmr) and the official client
 # (ts1), each with direct UDP to ts2 dropped and pinging ts2 every second, both through tsr. Seen from
 # ts2: when tsr stops, seconds until each falls back to DERP; when tsr returns, seconds until each is on
 # the peer relay again. Same observer and same event for both: only the implementation differs.
-#   peer_relay_diff.sh [RUNS]   (default 3; needs fm-relay running flowmesh-dev, see the M10 notes)
+#   peer_relay_diff.sh [RUNS]   (default 3; needs fm-relay running flowmesh-dev, see docs/protocol/peer-relay.md)
 set -uo pipefail
 cd "$(dirname "$0")/.."
 runs=${1:-3}

@@ -46,10 +46,10 @@ Source: `OBS-20261010-acl-stateful/cases.json`. Policy allows only ts2 → ts1; 
 
 | Question | Plan |
 |---|---|
-| **Lifetime of a UDP flow record**: not observed; flowmesh provisionally uses 120 seconds (`UDP_FLOW_TTL`) | Observe once there is a long-running test environment (M8 soak test) |
-| ~~Attribution~~ **Resolved (M4)**: with flowmesh as the sender (no outbound filtering) and the official ts1 as the receiver, the full matrix (OBS-20261010-acl-diff-receiver) is **exactly identical** to the M3 combined result, so every semantic above belongs to the receiver's inbound filtering, which is consistent with flowmesh's implementation | — |
-| Packets whose destination is a subnet route (not this node's address) | M6 (subnet routes) |
-| IP fragments | M5 (once the data plane can carry fragments) |
+| **Lifetime of a UDP flow record**: not observed; flowmesh provisionally uses 120 seconds (`UDP_FLOW_TTL`) | Observe once there is a long-running test environment (soak test) |
+| ~~Attribution~~ **Resolved**: with flowmesh as the sender (no outbound filtering) and the official ts1 as the receiver, the full matrix (OBS-20261010-acl-diff-receiver) is **exactly identical** to the combined result above, so every semantic above belongs to the receiver's inbound filtering, which is consistent with flowmesh's implementation | — |
+| Packets whose destination is a subnet route (not this node's address) | Open (relevant to subnet routers) |
+| IP fragments | Open |
 
 ## 5. Measurement error record
 
@@ -57,6 +57,6 @@ The first version of F7 read "ICMPv4 errors are always dropped", and F12 read "d
 
 - **Cause**: tshark parses the payload of an ICMPv4 error as an embedded packet. The text payload starts with `i` (0x69), so it was read as an IPv6 header and `ipv6.nxt` was filled with a garbage value. The classification code checked for IPv6 fields first, so these IPv4 packets were treated as IPv6 and discarded, i.e. counted as "not delivered". The stateful script did not handle multi-valued fields such as `ip.proto` = `1,17`.
 - **Consequence**: the first implementation dropped ICMPv4 destination unreachable / time exceeded. That would break path MTU discovery (fragmentation needed is type 3 code 4).
-- **How it was found**: an attribution experiment in M4 hand-built an ICMP error that was delivered, which contradicted the record. Inspecting the raw pcaps showed these packets had in fact arrived.
+- **How it was found**: an attribution experiment hand-built an ICMP error that was delivered, which contradicted the record. Inspecting the raw pcaps showed these packets had in fact arrived.
 - **Fix**: classify by the outer IP version and take only the first value of multi-valued fields. All the original pcaps were saved, so `run.py --reparse` re-derived the results without rerunning the lab. The "v4/v6 asymmetry" finding that mutation testing had prompted was likewise an artifact of this bug.
 - **Lesson**: "not delivered" observations need control evidence of the same kind. When an observation contradicts intuition, first check the measurement pipeline (raw pcap), then build an explanation.

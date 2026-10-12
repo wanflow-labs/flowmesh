@@ -1,6 +1,6 @@
 # Equivalent-mutant allowlist
 
-Mutants that `cargo mutants` reports as surviving but that change no behavior. Each entry gives its reason. Anything not on this list that survives counts as a gap in tests or observations (design doc §5.2).
+Mutants that `cargo mutants` reports as surviving but that change no behavior. Each entry gives its reason. Anything not on this list that survives counts as a gap in tests or observations.
 
 | crate | Location | Mutation | Why it is equivalent |
 |---|---|---|---|
@@ -9,4 +9,4 @@ Mutants that `cargo mutants` reports as surviving but that change no behavior. E
 
 ## Excluded files
 
-`.cargo/mutants.toml` excludes binary entry points (`crates/*/src/main.rs`) and the engine's Linux event loop (`crates/flowmesh-engine/src/linux.rs`). They are `cfg(target_os = "linux")` glue that the development machine never compiles, so their mutants would be reported as surviving without having been built. Their behavior is checked end to end by the lab acceptance scripts (`lab/scripts/fm1.sh smoke|acl|direct`, `dns_diff.sh`, `subnet_diff.sh`, and the M7 CLI differential). Logic that can be tested in isolation is kept out of these files.
+`.cargo/mutants.toml` excludes binary entry points (`crates/*/src/main.rs`) and the engine's Linux event loop (`crates/flowmesh-engine/src/linux.rs`). They are `cfg(target_os = "linux")` glue that the development machine never compiles, so their mutants would be reported as surviving without having been built. Their behavior is checked end to end by the lab acceptance scripts (`lab/scripts/fm1.sh smoke|acl|direct`, `dns_diff.sh`, `subnet_diff.sh`, and the CLI differential `cli_diff.sh`). Logic that can be tested in isolation is kept out of these files.

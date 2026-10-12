@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! `flowmesh debug netmap|paths|filter|derp` (design §7.3): read-only views of the engine's state as
+//! `flowmesh debug netmap|paths|filter|derp`: read-only views of the engine's state as
 //! JSON, local only. They carry peers' keys and endpoints, so the daemon serves them to root only.
 
 use crate::command::short_name;
@@ -72,7 +72,7 @@ fn secs(d: Option<Duration>) -> Value {
     d.map_or(Value::Null, |d| json!(d.as_secs_f64()))
 }
 
-/// For every peer: the path in use and why (design §7.3).
+/// For every peer: the path in use and why.
 pub fn paths(nm: &NetMap, ps: &PathSock, now: Duration) -> Value {
     let reachable: Vec<i64> = live_peers(nm, unix_now()).map(|n| n.id).collect();
     Value::Array(

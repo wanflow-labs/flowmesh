@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 控制通道客户端：取服务端公钥 → 协议升级 → Noise 握手 → HTTP/2 → 注册与网络地图流。
-//! 协议见 docs/protocol/control.md。
+//! Control channel client: fetch server public key → protocol upgrade → Noise handshake → HTTP/2 → registration and map stream.
+//! The protocol is described in docs/protocol/control.md.
 
 pub mod client;
 pub mod conn;

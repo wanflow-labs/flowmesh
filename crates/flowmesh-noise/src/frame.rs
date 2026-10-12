@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 帧：1 字节类型 + 2 字节大端长度 + 载荷（control.md §3，已观测）。
+//! Frame: 1-byte type + 2-byte big-endian length + payload (control.md §3, observed).
 
 use crate::Error;
 
 pub const HEADER_LEN: usize = 3;
-/// 单帧载荷上限。
+/// Maximum payload of one frame.
 pub const MAX_FRAME_PAYLOAD: usize = 4096;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub struct Frame {
     pub payload: Vec<u8>,
 }
 
-/// 编码一帧。调用方保证载荷不超过 [`MAX_FRAME_PAYLOAD`]。
+/// Encodes one frame. The caller guarantees the payload is at most [`MAX_FRAME_PAYLOAD`].
 pub fn encode(ty: FrameType, payload: &[u8]) -> Result<Vec<u8>, Error> {
     if payload.len() > MAX_FRAME_PAYLOAD {
         return Err(Error::FrameTooLarge(payload.len()));
@@ -54,7 +54,7 @@ pub fn encode(ty: FrameType, payload: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(out)
 }
 
-/// 增量解码：喂入任意切分的字节，逐帧取出。
+/// Incremental decoder: feed bytes split at any point, take out whole frames one by one.
 #[derive(Debug, Default)]
 pub struct FrameDecoder {
     buf: Vec<u8>,
@@ -82,7 +82,7 @@ impl FrameDecoder {
         Ok(Some(Frame { ty, payload }))
     }
 
-    /// 尚未组成完整帧的剩余字节数。
+    /// Number of buffered bytes that do not yet form a complete frame.
     pub fn buffered(&self) -> usize {
         self.buf.len()
     }
@@ -107,7 +107,7 @@ mod tests {
         ));
     }
 
-    /// 观测到的服务端帧序列（framing-summary.json）：类型 2 长度 48，之后是类型 4 的 21、20、111 字节。
+    /// Observed server frame sequence (framing-summary.json): type 2 with length 48, then type 4 frames of 21, 20 and 111 bytes.
     #[test]
     fn decodes_observed_length_sequence_split_arbitrarily() {
         let mut wire = Vec::new();

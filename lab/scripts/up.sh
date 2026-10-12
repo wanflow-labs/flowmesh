@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# 启动实验环境：自签 DERP 证书 → 起容器 → 建用户、设策略、发 key → 两个官方客户端入网。
+# Starts the lab: self-signed DERP certificate → start containers → create user, set policy, issue key → join the two official clients.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 hs() { docker compose exec -T headscale headscale "$@"; }
 
-# Two relay regions: 1000 (derp.lab) and 1001 (derp2.lab), for region failover (design §7.2).
+# Two relay regions: 1000 (derp.lab) and 1001 (derp2.lab), for region failover.
 for host in derp.lab derp2.lab; do
   if [ ! -f "derp/certs/$host.crt" ]; then
     mkdir -p derp/certs

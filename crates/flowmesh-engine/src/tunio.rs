@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Batched TUN I/O (M11). With offload (IFF_VNET_HDR + TUNSETOFFLOAD) one read can return a TCP or
+//! Batched TUN I/O. With offload (IFF_VNET_HDR + TUNSETOFFLOAD) one read can return a TCP or
 //! UDP super-packet that tun-rs splits into MTU-sized packets, and the packets written in one batch
 //! are coalesced back (GRO) where possible; every read and write then carries a virtio header,
 //! which this module hides. Without offload it reads and writes one packet at a time, as before.

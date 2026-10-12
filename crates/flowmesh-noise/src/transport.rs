@@ -1,21 +1,22 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 握手完成后的加密记录层（control.md §4）。
+//! Encrypted record layer after the handshake completes (control.md §4).
 //!
-//! 密钥取自 Noise 握手的 split 结果，算法为 ChaCha20-Poly1305。nonce 为 4 字节零加上
-//! **8 字节大端**计数器，而不是 Noise 规范里的小端。依据：用小端编码时，真实服务端的第 2 条
-//! 记录就无法解密（nonce 0 的两种编码相同，从 1 开始才有差异），见 control.md §4 的观测记录。
+//! Keys come from the Noise handshake split; the cipher is ChaCha20-Poly1305. The nonce is 4 zero bytes
+//! followed by an **8-byte big-endian** counter, not the little-endian encoding of the Noise spec. Evidence:
+//! with little-endian encoding the real server's second record fails to decrypt (both encodings agree for
+//! nonce 0 and differ from 1 on); see the observation in control.md §4.
 
 use crate::Error;
 use crate::frame::{self, Frame, FrameType};
 use chacha20poly1305::aead::{Aead, KeyInit};
 use chacha20poly1305::{ChaCha20Poly1305, Key, Nonce};
 
-/// ChaChaPoly 认证标签长度。
+/// Length of the ChaChaPoly authentication tag.
 pub const TAG_LEN: usize = 16;
-/// 单帧可承载的明文上限。
+/// Maximum plaintext that fits in one frame.
 pub const MAX_PLAINTEXT_PER_FRAME: usize = frame::MAX_FRAME_PAYLOAD - TAG_LEN;
 
-/// 构造 12 字节 nonce：4 字节零 + 8 字节大端计数器。
+/// Builds the 12-byte nonce: 4 zero bytes + 8-byte big-endian counter.
 pub fn nonce_bytes(counter: u64) -> [u8; 12] {
     let mut n = [0u8; 12];
     n[4..].copy_from_slice(&counter.to_be_bytes());
@@ -37,7 +38,7 @@ impl CipherState {
 
     fn next_nonce(&mut self) -> Result<[u8; 12], Error> {
         let n = nonce_bytes(self.counter);
-        // 计数器用尽时拒绝继续，绝不重用 nonce。
+        // Refuse to continue once the counter is exhausted; never reuse a nonce.
         self.counter = self.counter.checked_add(1).ok_or(Error::NonceExhausted)?;
         Ok(n)
     }
@@ -49,7 +50,7 @@ pub struct Transport {
 }
 
 impl Transport {
-    /// 由 split 得到的两把密钥构造：`send` 用于本端发出，`recv` 用于解密对端。
+    /// Built from the two keys of the split: `send` encrypts what this side sends, `recv` decrypts the peer.
     pub fn from_raw_split(send: [u8; 32], recv: [u8; 32]) -> Self {
         Self {
             send: CipherState::new(send),
@@ -57,7 +58,7 @@ impl Transport {
         }
     }
 
-    /// 加密任意长度明文，按帧上限切片后输出连续的记录帧。
+    /// Encrypts plaintext of any length, slicing it at the frame limit into consecutive record frames.
     pub fn seal(&mut self, plaintext: &[u8]) -> Result<Vec<u8>, Error> {
         let mut out = Vec::with_capacity(plaintext.len() + plaintext.len() / 64 + 32);
         for chunk in plaintext.chunks(MAX_PLAINTEXT_PER_FRAME) {
@@ -72,7 +73,7 @@ impl Transport {
         Ok(out)
     }
 
-    /// 解密一条记录帧。
+    /// Decrypts one record frame.
     pub fn open(&mut self, frame: Frame) -> Result<Vec<u8>, Error> {
         if frame.ty != FrameType::Record {
             return Err(Error::UnexpectedFrame(frame.ty));
@@ -99,8 +100,9 @@ mod tests {
         );
     }
 
-    /// 第二条记录必须用计数器 1 的大端 nonce 才能解开：直接用独立构造的 nonce 加密，
-    /// 交给 Transport 解密，避免"两端用同一实现、同样写错也能通过"。
+    /// The second record only opens with the big-endian nonce for counter 1: encrypt with an independently
+    /// built nonce and let Transport decrypt it, so that "both ends share one implementation and the same
+    /// mistake" cannot pass.
     #[test]
     fn second_record_uses_big_endian_nonce_one() {
         let key = [7u8; 32];

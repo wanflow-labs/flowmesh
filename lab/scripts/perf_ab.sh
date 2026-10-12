@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# A/B throughput (M11): flowmeshd built from git REF against the working tree, on the same temporary
+# A/B throughput: flowmeshd built from git REF against the working tree, on the same temporary
 # pair (fmA 172.29.0.71, fmB 172.29.0.72), alternating ROUNDS times so lab drift hits both sides
 # alike. iperf3 TCP both ways per round. Use it to judge one change; perf_pair.sh is the gate
 # against wanflow-mesh.

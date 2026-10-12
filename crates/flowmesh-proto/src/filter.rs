@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! 包过滤规则的线上格式。判定语义在 M3 的 flowmesh-filter 中实现（docs/protocol/filter.md）。
+//! Wire format of packet filter rules. Matching semantics are implemented in flowmesh-filter (docs/protocol/filter.md).
 
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +10,7 @@ pub struct FilterRule {
     pub src_ips: Vec<String>,
     #[serde(rename = "DstPorts")]
     pub dst_ports: Vec<NetPortRange>,
-    /// 为空表示默认协议集合（M3 中确认具体语义）。
+    /// Empty means the default protocol set (TCP and UDP; see filter.md F4).
     #[serde(rename = "IPProto", skip_serializing_if = "Vec::is_empty")]
     pub ip_proto: Vec<i32>,
     #[serde(rename = "CapGrant", skip_serializing_if = "Vec::is_empty")]

@@ -6,7 +6,8 @@
 build/cache/
 /dist/
 __pycache__/
-# Internal planning notes stay out of the repository.
+# Internal planning notes, design drafts, audits and measurement logs stay out of the repository.
 /docs/superpowers/
+/docs/internal/
 /lab/.env
 /local.mk

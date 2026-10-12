@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: Apache-2.0
-//! Noticing a DERP connection that died without closing (design §7.2): after a quiet spell the client
+//! Noticing a DERP connection that died without closing: after a quiet spell the client
 //! pings the server (which echoes client pings, derp.md); no frame at all within the timeout means
 //! the connection is dead. The server's own keepalives (every ~62 s) would take minutes to notice.
 
