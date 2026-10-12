@@ -33,8 +33,9 @@ Architecture: $deb_arch
 Maintainer: flowmesh maintainers
 Section: net
 Priority: optional
+Depends: iproute2
 Description: $summary
- Statically linked; no dependencies. The flowmeshd service is installed but not enabled.
+ Statically linked; needs only iproute2 (the ip command). The flowmeshd service is installed but not enabled.
 CTL
   cat > "$root/DEBIAN/postinst" <<'SH'
 #!/bin/sh
@@ -66,8 +67,9 @@ Version: $version
 Release: 1
 Summary: $summary
 License: Apache-2.0
+Requires: iproute
 %description
-Statically linked; no dependencies. The flowmeshd service is installed but not enabled.
+Statically linked; needs only iproute2 (the ip command). The flowmeshd service is installed but not enabled.
 %install
 install -Dm0755 %{_sourcedir}/flowmeshd %{buildroot}/usr/sbin/flowmeshd
 install -Dm0755 %{_sourcedir}/flowmesh %{buildroot}/usr/bin/flowmesh

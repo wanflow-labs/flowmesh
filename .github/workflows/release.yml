@@ -1,0 +1,93 @@
+# SPDX-License-Identifier: Apache-2.0
+# Release: a tag vX.Y.Z builds the release twice — on the runner with build/setup-toolchain.sh, and in
+# the pinned container (build/Dockerfile) — and publishes only if both produce the same bytes
+# (docs/reproducible-builds.md). Run by hand (workflow_dispatch) it builds and compares, and does not
+# publish.
+name: release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: The tag names the version in Cargo.toml
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "tag $GITHUB_REF_NAME, but Cargo.toml says $v"; exit 1; }
+      - run: bash build/setup-toolchain.sh
+      - run: sudo apt-get update -qq && sudo apt-get install -y -qq rpm
+      - name: Build, package
+        run: |
+          export PATH="$HOME/.local/zig-0.13.0:$HOME/.cargo/bin:$PATH"
+          build/release.sh dist
+          build/package.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  reproduce:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - name: Build in the pinned container
+        run: |
+          mkdir -p build/cache
+          docker build -q -f build/Dockerfile -t flowmesh-build:ci build
+          # The container's builder user writes into the checkout.
+          chmod -R a+rwX .
+          docker run --rm -v "$PWD":/flowmesh -e SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" \
+            flowmesh-build:ci build/release.sh dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist-container
+          path: dist/SHA256SUMS
+
+  publish:
+    needs: [build, reproduce]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist-container
+          path: dist-container
+      - name: Both builders produced the same bytes
+        run: |
+          # The container build has no packages; every file it did build must match.
+          n=0
+          while read -r sum file; do
+            grep -qx "$sum  $file" dist/SHA256SUMS || { echo "differs: $file"; exit 1; }
+            n=$((n + 1))
+          done < dist-container/SHA256SUMS
+          [ "$n" -ge 10 ] || { echo "only $n files compared"; exit 1; }
+          echo "identical: $n files"
+          (cd dist && sha256sum -c SHA256SUMS)
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          cp packaging/install.sh dist/install.sh
+          cd dist
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "FlowMesh $v" --notes-from-tag \
+            flowmesh-*.tar.gz *.deb *.rpm *.cdx.json SHA256SUMS install.sh

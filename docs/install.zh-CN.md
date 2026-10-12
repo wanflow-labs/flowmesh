@@ -20,7 +20,22 @@ cargo build --release -p flowmesh-daemon -p flowmesh-cli --no-default-features
 
 ## 2. 安装
 
-### 用安装包（推荐）
+### 一条命令（推荐）
+
+```bash
+curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh
+```
+
+脚本会按系统自动选择 deb、rpm 安装包或静态二进制（x86_64 或 aarch64；Debian/Ubuntu、RHEL/Rocky/Alma/Oracle/Fedora、openSUSE、Alpine、Arch 等），按发布的 `SHA256SUMS` 校验下载内容，缺少 iproute2 时自动安装，并启动服务（systemd 或 OpenRC）。再运行一次即升级。带上参数可同时加入组网：
+
+```bash
+curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | \
+  sh -s -- --login-server=<你的组网地址> --auth-key=<密钥> [--hostname=名称] [--advertise-exit-node] [--ssh]
+```
+
+`--version=X.Y.Z` 指定版本，`--mirror=URL` 从镜像下载（`URL/latest/…`、`URL/vX.Y.Z/…`），`--uninstall` 卸载。万联控制台会为每个组网生成这条命令。
+
+### 用安装包
 
 Debian / Ubuntu：
 
@@ -36,7 +51,7 @@ sudo rpm -i flowmesh-<版本>-1.x86_64.rpm    # ARM 机器用 aarch64
 sudo systemctl enable --now flowmeshd
 ```
 
-安装包只安装文件，不会自动启用服务；卸载（`dpkg -r flowmesh` / `rpm -e flowmesh`）会先停止服务，但保留 `/var/lib/flowmesh` 里的节点身份，彻底清除需手动删除该目录。二进制为静态链接，没有任何依赖。每个发布都附带 `SHA256SUMS`，可按 [可复现构建](reproducible-builds.md) 自行重建核对。
+安装包只安装文件，不会自动启用服务；卸载（`dpkg -r flowmesh` / `rpm -e flowmesh`）会先停止服务，但保留 `/var/lib/flowmesh` 里的节点身份，彻底清除需手动删除该目录。二进制为静态链接，唯一的外部依赖是 iproute2（`ip` 命令），安装包已声明该依赖。每个发布都附带 `SHA256SUMS`，可按 [可复现构建](reproducible-builds.md) 自行重建核对。
 
 ### 从源码构建
 

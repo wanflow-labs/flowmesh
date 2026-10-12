@@ -20,7 +20,22 @@ Such a `flowmeshd` refuses `--ssh` (`this flowmeshd was built without SSH suppor
 
 ## 2. Install
 
-### From a package (recommended)
+### One command (recommended)
+
+```bash
+curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh
+```
+
+The script picks the deb or rpm package or the static binaries for your system (x86_64 or aarch64; Debian/Ubuntu, RHEL/Rocky/Alma/Oracle/Fedora, openSUSE, Alpine, Arch and others), checks the download against the release's `SHA256SUMS`, installs iproute2 if it is missing and starts the service (systemd or OpenRC). Run it again to upgrade. Options join the mesh at the same time:
+
+```bash
+curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | \
+  sh -s -- --login-server=<your mesh address> --auth-key=<key> [--hostname=NAME] [--advertise-exit-node] [--ssh]
+```
+
+`--version=X.Y.Z` pins a version, `--mirror=URL` downloads from a mirror (`URL/latest/…`, `URL/vX.Y.Z/…`), `--uninstall` removes FlowMesh. The Wanflow console generates this command for each mesh.
+
+### From a package
 
 Debian / Ubuntu:
 
@@ -36,7 +51,7 @@ sudo rpm -i flowmesh-<version>-1.x86_64.rpm    # aarch64 on ARM machines
 sudo systemctl enable --now flowmeshd
 ```
 
-The packages only install files; they do not enable the service. Removing the package (`dpkg -r flowmesh` / `rpm -e flowmesh`) stops the service but keeps the node identity in `/var/lib/flowmesh`; delete that directory to remove it too. The binaries are statically linked and have no dependencies. Every release comes with `SHA256SUMS`, and the binaries can be rebuilt from source and compared, see [reproducible builds](reproducible-builds.md).
+The packages only install files; they do not enable the service. Removing the package (`dpkg -r flowmesh` / `rpm -e flowmesh`) stops the service but keeps the node identity in `/var/lib/flowmesh`; delete that directory to remove it too. The binaries are statically linked; the only other thing they need is iproute2 (the `ip` command), which the packages depend on. Every release comes with `SHA256SUMS`, and the binaries can be rebuilt from source and compared, see [reproducible builds](reproducible-builds.md).
 
 ### From source
 

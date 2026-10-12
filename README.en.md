@@ -27,10 +27,10 @@ The same throughput class at **a third to a half of the CPU** and **a fifth of t
 ## Get started
 
 1. **Create a mesh.** Wanflow FlowMesh has a free plan that stays free. Sign up at [wanflow.com](https://www.wanflow.com); the console gives you your mesh's address and an auth key.
-2. **Install FlowMesh** on each Linux machine ([packages and instructions](docs/install.md)) and join:
+2. **Install and join** on each Linux machine: the console's "Add device → Linux server" generates one command to run there. By hand it is one line too ([other ways](docs/install.md)):
 
    ```bash
-   sudo flowmesh up --login-server=<your mesh address> --auth-key=file:/root/mesh.key
+   curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh -s -- --login-server=<your mesh address> --auth-key=<key>
    ```
 
 3. **Add your other devices** with the Wanflow app for [macOS, Windows, iOS and Android](https://www.wanflow.com/downloads). Every device in the mesh can now reach every other one by name.

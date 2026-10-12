@@ -27,10 +27,10 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh�
 ## 快速开始
 
 1. **创建组网。** Wanflow FlowMesh 提供永久免费的免费版。在 [wanflow.com](https://www.wanflow.com) 注册，控制台会给出组网地址和接入密钥。
-2. **在每台 Linux 机器上安装 FlowMesh**（[安装包与说明](docs/install.zh-CN.md)），然后加入：
+2. **在每台 Linux 机器上安装并加入**：控制台「添加设备 → Linux 服务器」会生成一条命令，复制到服务器上运行即可。手动安装也只要一行（[更多方式](docs/install.zh-CN.md)）：
 
    ```bash
-   sudo flowmesh up --login-server=<你的组网地址> --auth-key=file:/root/mesh.key
+   curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh -s -- --login-server=<你的组网地址> --auth-key=<密钥>
    ```
 
 3. **添加其他设备：** 下载万联客户端，支持 [macOS、Windows、iOS 和 Android](https://www.wanflow.com/downloads)。之后组网内的每台设备都可以按名称互相访问。
