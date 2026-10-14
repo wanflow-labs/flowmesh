@@ -7,14 +7,17 @@
 #   DEST/latest -> v0.1.2         switched only after every file of the new version checked out
 #
 # Each round reads the latest release's SHA256SUMS from GitHub; a version not mirrored yet is
-# downloaded into a temporary directory, every file is checked against SHA256SUMS (install.sh too),
+# downloaded into STAGING/vX.Y.Z, every file is checked against SHA256SUMS (install.sh too),
 # and only then the directory is renamed into place and `latest` repointed. A failed round changes
-# nothing that is served. A round also repairs a mirror whose files were removed.
+# nothing that is served; files already checked are kept and a partial download is resumed, so slow
+# links get there over several rounds. A round also repairs a mirror whose files were removed.
 #
 #   mirror-sync.sh DEST                 one round (cron)
 #   mirror-sync.sh --loop SECONDS DEST  rounds forever (supervisor); failures are logged and retried
 #
-# Environment: FLOWMESH_REPO (default wanflow-labs/flowmesh), KEEP (default 3).
+# Environment: FLOWMESH_REPO (default wanflow-labs/flowmesh), KEEP (default 3), STAGING (default
+# DEST/.staging; put it outside the web root so unchecked files are never served — it must be on the
+# same file system as DEST, since a finished version is moved into place by rename).
 set -eu
 
 REPO=${FLOWMESH_REPO:-wanflow-labs/flowmesh}
@@ -22,9 +25,12 @@ KEEP=${KEEP:-3}
 loop=
 if [ "${1:-}" = --loop ]; then loop=${2:?--loop needs SECONDS}; shift 2; fi
 DEST=${1:?usage: mirror-sync.sh [--loop SECONDS] DEST}
+STAGING=${STAGING:-$DEST/.staging}
 
 log() { printf '%s mirror-sync: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
-fetch() { curl -fsSL --retry 3 --connect-timeout 20 --max-time 900 -o "$2" "$1"; }
+fetch() { curl -fsSL --retry 3 --connect-timeout 20 --max-time 3600 -o "$2" "$1"; }
+# Resume a partial file (GitHub release assets honour ranges).
+fetch_resume() { curl -fsSL --retry 3 --connect-timeout 20 --max-time 3600 -C - -o "$2" "$1"; }
 sha256() { sha256sum "$1" | cut -d' ' -f1; }
 
 # Files a mirror serves: everything SHA256SUMS lists at top level (binaries inside the tarballs
@@ -40,39 +46,54 @@ is_complete() { # is_complete DIR: every listed file is there with the right che
 }
 
 sync_once() {
-  mkdir -p "$DEST"
+  # Every step returns on failure by itself: under `( sync_once ) || …` the shell's -e is off.
+  mkdir -p "$DEST" "$STAGING" || return 1
   base="https://github.com/$REPO/releases"
-  tmp=$(mktemp -d "$DEST/.incoming.XXXXXX")
-  trap 'rm -rf "$tmp"' EXIT
-  fetch "$base/latest/download/SHA256SUMS" "$tmp/SHA256SUMS"
-  version=$(sed -n 's/.*  flowmesh-\([0-9][0-9.]*\)-linux-x86_64\.tar\.gz$/\1/p' "$tmp/SHA256SUMS" | head -1)
+  sums=$(mktemp "$STAGING/sums.XXXXXX") || return 1
+  trap 'rm -f "$sums"' EXIT
+  fetch "$base/latest/download/SHA256SUMS" "$sums" || { log "cannot read the latest release from GitHub; retrying next round"; return 1; }
+  version=$(sed -n 's/.*  flowmesh-\([0-9][0-9.]*\)-linux-x86_64\.tar\.gz$/\1/p' "$sums" | head -1)
   [ -n "$version" ] || { log "cannot tell the version from SHA256SUMS"; return 1; }
   dir="$DEST/v$version"
+  tmp="$STAGING/v$version"
 
   if is_complete "$dir"; then
     :
   else
     log "mirroring v$version"
+    mkdir -p "$tmp" || return 1
+    # A changed SHA256SUMS (a re-published version) invalidates what was kept.
+    if [ -f "$tmp/SHA256SUMS" ] && ! cmp -s "$sums" "$tmp/SHA256SUMS"; then rm -rf "$tmp"; mkdir -p "$tmp" || return 1; fi
+    cp "$sums" "$tmp/SHA256SUMS" || return 1
     for f in $(release_files "$tmp/SHA256SUMS"); do
-      fetch "$base/download/v$version/$f" "$tmp/$f"
       want=$(sed -n "s/^\([0-9a-f]\{64\}\)  $f\$/\1/p" "$tmp/SHA256SUMS")
+      [ -f "$tmp/$f" ] && [ "$(sha256 "$tmp/$f")" = "$want" ] && continue
+      # Repairing a published version: reuse its files that still check out.
+      if [ -f "$dir/$f" ] && [ "$(sha256 "$dir/$f")" = "$want" ]; then cp "$dir/$f" "$tmp/$f" || return 1; continue; fi
+      fetch_resume "$base/download/v$version/$f" "$tmp/$f" || { log "download of $f interrupted; resuming next round"; return 1; }
       got=$(sha256 "$tmp/$f")
-      [ "$got" = "$want" ] || { log "checksum mismatch for $f (got $got, want $want): v$version not mirrored"; return 1; }
+      if [ "$got" != "$want" ]; then
+        rm -f "$tmp/$f"
+        log "checksum mismatch for $f (got $got, want $want): discarded, v$version not mirrored"
+        return 1
+      fi
+      log "  $f ok"
     done
-    chmod 0755 "$tmp"
-    chmod 0644 "$tmp"/*
+    is_complete "$tmp" || { log "v$version staging does not check out; retrying next round"; return 1; }
+    chmod 0755 "$tmp" && chmod 0644 "$tmp"/* || return 1
     rm -rf "$dir.old"
-    [ -d "$dir" ] && mv "$dir" "$dir.old"
-    mv "$tmp" "$dir"
+    if [ -d "$dir" ]; then mv "$dir" "$dir.old" || return 1; fi
+    mv "$tmp" "$dir" || { log "cannot move v$version into place"; return 1; }
     rm -rf "$dir.old"
     log "v$version mirrored ($(release_files "$dir/SHA256SUMS" | wc -l | tr -d ' ') files)"
   fi
-  rm -rf "$tmp"
+  rm -f "$sums"
   trap - EXIT
 
   if [ "$(readlink "$DEST/latest" 2>/dev/null)" != "v$version" ]; then
-    ln -sfn "v$version" "$DEST/.latest.new"
-    mv -T "$DEST/.latest.new" "$DEST/latest"
+    if ! { ln -sfn "v$version" "$DEST/.latest.new" && mv -T "$DEST/.latest.new" "$DEST/latest"; }; then
+      log "cannot repoint latest"; return 1
+    fi
     log "latest -> v$version"
   fi
 
@@ -84,6 +105,11 @@ sync_once() {
       rm -rf "${DEST:?}/v$old"
       log "removed v$old"
     done
+  # Staging left by versions that are no longer the latest.
+  for stale in "$STAGING"/v*; do
+    [ -d "$stale" ] && [ "$stale" != "$tmp" ] && rm -rf "$stale"
+  done
+  return 0
 }
 
 if [ -z "$loop" ]; then
