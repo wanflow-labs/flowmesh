@@ -48,6 +48,7 @@ is_complete() { # is_complete DIR: every listed file is there with the right che
 sync_once() {
   # Every step returns on failure by itself: under `( sync_once ) || …` the shell's -e is off.
   mkdir -p "$DEST" "$STAGING" || return 1
+  rm -f "$STAGING"/sums.* # left by a round that was killed
   base="https://github.com/$REPO/releases"
   sums=$(mktemp "$STAGING/sums.XXXXXX") || return 1
   trap 'rm -f "$sums"' EXIT
