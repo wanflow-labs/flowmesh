@@ -48,6 +48,9 @@ is_complete() { # is_complete DIR: every listed file is there with the right che
 sync_once() {
   # Every step returns on failure by itself: under `( sync_once ) || …` the shell's -e is off.
   mkdir -p "$DEST" "$STAGING" || return 1
+  # One round at a time (two rounds would write the same staging files).
+  exec 9>"$STAGING/.lock" || return 1
+  if command -v flock >/dev/null 2>&1 && ! flock -n 9; then log "another round is running; skipping"; return 0; fi
   rm -f "$STAGING"/sums.* # left by a round that was killed
   base="https://github.com/$REPO/releases"
   sums=$(mktemp "$STAGING/sums.XXXXXX") || return 1
@@ -80,12 +83,14 @@ sync_once() {
       fi
       log "  $f ok"
     done
-    is_complete "$tmp" || { log "v$version staging does not check out; retrying next round"; return 1; }
-    chmod 0755 "$tmp" && chmod 0644 "$tmp"/* || return 1
-    rm -rf "$dir.old"
+    # Publish copies, not the staged files themselves: a download left running by a killed round
+    # still holds a staged file open and would keep writing into whatever that file becomes.
+    rm -rf "$dir.new" "$dir.old"
+    cp -R "$tmp" "$dir.new" && chmod 0755 "$dir.new" && chmod 0644 "$dir.new"/* || return 1
+    is_complete "$dir.new" || { rm -rf "$dir.new"; log "v$version does not check out; retrying next round"; return 1; }
     if [ -d "$dir" ]; then mv "$dir" "$dir.old" || return 1; fi
-    mv "$tmp" "$dir" || { log "cannot move v$version into place"; return 1; }
-    rm -rf "$dir.old"
+    mv "$dir.new" "$dir" || { log "cannot move v$version into place"; return 1; }
+    rm -rf "$dir.old" "$tmp"
     log "v$version mirrored ($(release_files "$dir/SHA256SUMS" | wc -l | tr -d ' ') files)"
   fi
   rm -f "$sums"
