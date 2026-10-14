@@ -89,5 +89,7 @@ jobs:
           v=${GITHUB_REF_NAME#v}
           cp packaging/install.sh dist/install.sh
           cd dist
+          # Mirrors (packaging/mirror-sync.sh) check install.sh against this list too.
+          sha256sum install.sh >> SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "FlowMesh $v" --notes-from-tag \
             flowmesh-*.tar.gz *.deb *.rpm *.cdx.json SHA256SUMS install.sh
