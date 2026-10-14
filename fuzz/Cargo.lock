@@ -365,7 +365,7 @@ checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
 name = "flowmesh-control"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -387,7 +387,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-dataplane"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "boringtun",
  "flowmesh-filter",
@@ -398,7 +398,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-derp"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crypto_box",
  "flowmesh-net",
@@ -414,7 +414,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-disco"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crypto_box",
  "flowmesh-proto",
@@ -424,7 +424,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-dns"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "flowmesh-proto",
  "hickory-proto",
@@ -432,7 +432,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-filter"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "flowmesh-proto",
  "ipnet",
@@ -460,7 +460,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-net"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "nix",
  "tokio",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-noise"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "chacha20poly1305",
  "flowmesh-proto",
@@ -478,7 +478,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-proto"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "getrandom 0.3.4",
  "hex",
@@ -491,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-stun"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "thiserror",
 ]
