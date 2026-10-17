@@ -54,6 +54,14 @@ pub struct Hostinfo {
     pub os: String,
     #[serde(rename = "OSVersion", skip_serializing_if = "String::is_empty")]
     pub os_version: String,
+    /// os-release `ID`, `VERSION_ID`, `VERSION_CODENAME`, as the official client reports them
+    /// (observed: `"Distro":"alpine","DistroVersion":"3.22.3"`); OSVersion is the kernel release.
+    #[serde(rename = "Distro", skip_serializing_if = "String::is_empty")]
+    pub distro: String,
+    #[serde(rename = "DistroVersion", skip_serializing_if = "String::is_empty")]
+    pub distro_version: String,
+    #[serde(rename = "DistroCodeName", skip_serializing_if = "String::is_empty")]
+    pub distro_code_name: String,
     #[serde(rename = "Hostname", skip_serializing_if = "String::is_empty")]
     pub hostname: String,
     #[serde(rename = "Machine", skip_serializing_if = "String::is_empty")]

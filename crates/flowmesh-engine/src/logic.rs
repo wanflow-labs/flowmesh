@@ -478,6 +478,34 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
     expiry <= reference
 }
 
+/// `ID`, `VERSION_ID` and `VERSION_CODENAME` from an os-release file (os-release(5)): the Distro,
+/// DistroVersion and DistroCodeName the official client reports. Values may be quoted; missing
+/// keys are empty.
+pub fn os_release_fields(text: &str) -> (String, String, String) {
+    let mut id = String::new();
+    let mut version = String::new();
+    let mut codename = String::new();
+    for line in text.lines() {
+        let Some((key, value)) = line.trim().split_once('=') else {
+            continue;
+        };
+        let value = value.trim();
+        let value = value
+            .strip_prefix('"')
+            .and_then(|v| v.strip_suffix('"'))
+            .or_else(|| value.strip_prefix('\'').and_then(|v| v.strip_suffix('\'')))
+            .unwrap_or(value)
+            .to_string();
+        match key.trim() {
+            "ID" => id = value,
+            "VERSION_ID" => version = value,
+            "VERSION_CODENAME" => codename = value,
+            _ => {}
+        }
+    }
+    (id, version, codename)
+}
+
 /// Whether adding an IPv6 address failed because the host has IPv6 turned off, rather than for a
 /// reason that should stop the engine. With `net.ipv6.conf.*.disable_ipv6=1` (common on servers) the
 /// kernel refuses the address with EACCES; with the `ipv6.disable=1` boot option there is no IPv6
@@ -491,6 +519,24 @@ pub fn ipv6_unavailable(e: &std::io::Error) -> bool {
 
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn os_release_gives_distro_fields() {
+        let ubuntu = "PRETTY_NAME=\"Ubuntu 22.04.4 LTS\"\nNAME=\"Ubuntu\"\nVERSION_ID=\"22.04\"\nVERSION_CODENAME=jammy\nID=ubuntu\nID_LIKE=debian\n";
+        assert_eq!(
+            super::os_release_fields(ubuntu),
+            ("ubuntu".into(), "22.04".into(), "jammy".into())
+        );
+        // Alpine has no codename; single quotes and stray blanks are tolerated.
+        assert_eq!(
+            super::os_release_fields("ID=alpine\nVERSION_ID='3.22.3'\n# comment\n\n  BAD LINE\n"),
+            ("alpine".into(), "3.22.3".into(), String::new())
+        );
+        assert_eq!(
+            super::os_release_fields(""),
+            (String::new(), String::new(), String::new())
+        );
+    }
 
     #[test]
     fn ipv6_turned_off_is_not_an_engine_error() {

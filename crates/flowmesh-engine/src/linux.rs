@@ -883,9 +883,20 @@ pub async fn run(
     );
     // An exit node keeps this host's own networks out of the default route it offers.
     let mut exit_ifaces = args.advertise_exit_node.then(|| interfaces(&args.tun));
+    // Distribution and kernel, like the official client (consoles show "Ubuntu 22.04").
+    let os_release = std::fs::read_to_string("/etc/os-release")
+        .or_else(|_| std::fs::read_to_string("/usr/lib/os-release"))
+        .unwrap_or_default();
+    let (distro, distro_version, distro_code_name) = crate::logic::os_release_fields(&os_release);
     let mut hostinfo = Hostinfo {
         ipn_version: format!("flowmesh-{}", env!("CARGO_PKG_VERSION")),
         os: "linux".into(),
+        os_version: std::fs::read_to_string("/proc/sys/kernel/osrelease")
+            .map(|s| s.trim().to_string())
+            .unwrap_or_default(),
+        distro,
+        distro_version,
+        distro_code_name,
         machine: std::env::consts::ARCH.into(),
         ..Default::default()
     };

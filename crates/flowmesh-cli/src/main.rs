@@ -710,7 +710,8 @@ fn refused_message(health: &Value) -> String {
         .into_iter()
         .flatten()
         .filter_map(Value::as_str)
-        .filter(|r| !r.is_empty())
+        // "flowmesh is stopped." is the status line for the state itself, not a reason.
+        .filter(|r| !r.is_empty() && *r != "flowmesh is stopped.")
         .collect();
     if reasons.is_empty() {
         "flowmesh: the control server did not accept this node (missing or invalid --auth-key?)"
@@ -766,6 +767,11 @@ mod tests {
         assert_eq!(
             refused_message(&json!(["node key expired"])),
             "flowmesh: the control server did not accept this node: node key expired"
+        );
+        // As seen in the lab: the state line comes first and is not part of the reason.
+        assert_eq!(
+            refused_message(&json!(["flowmesh is stopped.", "authkey expired"])),
+            "flowmesh: the control server did not accept this node: authkey expired"
         );
         assert_eq!(
             refused_message(&json!(["a", "", "b"])),
