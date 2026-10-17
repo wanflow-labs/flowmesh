@@ -1028,27 +1028,54 @@ pub async fn run(
         .name(args.tun.clone())
         .mtu(MTU)
         .offload(true);
+    let mut v6_addrs = Vec::new();
     for a in &me.addresses {
         builder = match a.addr() {
             IpAddr::V4(v4) => builder.ipv4(v4, 32u8, None),
-            IpAddr::V6(v6) => builder.ipv6(v6, 128u8),
+            IpAddr::V6(v6) => {
+                v6_addrs.push(v6);
+                builder
+            }
         };
     }
-    let mut tun = crate::tunio::TunIo::new(builder.build_async().map_err(|e| format!("tun: {e}"))?);
+    let dev = builder.build_async().map_err(|e| format!("tun: {e}"))?;
+    // IPv6 addresses go on after the interface exists: a host with IPv6 turned off refuses them, and
+    // that must leave the IPv4 mesh running instead of failing the whole interface.
+    let mut ipv6_mesh = !v6_addrs.is_empty();
+    for v6 in &v6_addrs {
+        if let Err(e) = dev.add_address_v6(*v6, 128u8) {
+            if crate::logic::ipv6_unavailable(&e) {
+                log(format!(
+                    "IPv6 is disabled on this host ({e}): running IPv4-only, {v6} is not assigned"
+                ));
+                ipv6_mesh = false;
+                break;
+            }
+            return Err(format!("tun: {v6}: {e}").into());
+        }
+    }
+    let mut tun = crate::tunio::TunIo::new(dev);
     log(format!(
         "tun: offload {}",
         if tun.offload() { "on" } else { "unavailable" }
     ));
     ip(&["route", "replace", "100.64.0.0/10", "dev", &args.tun])?;
-    ip(&[
-        "-6",
-        "route",
-        "replace",
-        "fd7a:115c:a1e0::/48",
-        "dev",
-        &args.tun,
-    ])?;
-    log(format!("{} up as {:?}", args.tun, me.addresses));
+    if ipv6_mesh {
+        ip(&[
+            "-6",
+            "route",
+            "replace",
+            "fd7a:115c:a1e0::/48",
+            "dev",
+            &args.tun,
+        ])?;
+    }
+    let assigned: Vec<_> = me
+        .addresses
+        .iter()
+        .filter(|a| ipv6_mesh || a.addr().is_ipv4())
+        .collect();
+    log(format!("{} up as {:?}", args.tun, assigned));
 
     let (ev_tx, mut ev_rx) = mpsc::channel::<(u32, Event)>(1024);
     let (ready_tx, mut ready_rx) = mpsc::channel::<(u32, Result<DerpSender, String>)>(64);
@@ -1151,7 +1178,6 @@ pub async fn run(
     let health: Vec<String> = Vec::new();
     // Subnet router / exit node rules and exit node routing, kept in line with the settings.
     let mut features = crate::features::Features::default();
-    let ipv6_mesh = me.addresses.iter().any(|a| a.addr().is_ipv6());
     features.sync_forwarding(args, None);
     features.sync_exit_routing(args, None, ipv6_mesh);
     // resolv.conf: taken over with --accept-dns unless another service manages it.

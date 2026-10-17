@@ -702,6 +702,27 @@ fn write_private(path: &std::path::Path, data: &[u8]) -> std::io::Result<()> {
     f.write_all(data)
 }
 
+/// What `up` prints when the control server refused the node without a login URL: the reason the
+/// daemon recorded (in Health) when there is one, instead of guessing at the auth key.
+fn refused_message(health: &Value) -> String {
+    let reasons: Vec<&str> = health
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .filter(|r| !r.is_empty())
+        .collect();
+    if reasons.is_empty() {
+        "flowmesh: the control server did not accept this node (missing or invalid --auth-key?)"
+            .into()
+    } else {
+        format!(
+            "flowmesh: the control server did not accept this node: {}",
+            reasons.join("; ")
+        )
+    }
+}
+
 /// Block until Running (exit 0) or the control server refuses (exit 1), like the official `up`.
 async fn wait_running(client: &LocalClient, timeout: Option<Duration>) -> Result<u8, String> {
     let start = Instant::now();
@@ -713,9 +734,7 @@ async fn wait_running(client: &LocalClient, timeout: Option<Duration>) -> Result
             Some("NeedsLogin") => {
                 match s["AuthURL"].as_str().filter(|u| !u.is_empty()) {
                     Some(url) => eprintln!("To authenticate, visit:\n\n\t{url}\n"),
-                    None => eprintln!(
-                        "flowmesh: the control server did not accept this node (missing or invalid --auth-key?)"
-                    ),
+                    None => eprintln!("{}", refused_message(&s["Health"])),
                 }
                 return Ok(1);
             }
@@ -734,5 +753,33 @@ async fn wait_running(client: &LocalClient, timeout: Option<Duration>) -> Result
             return Ok(1);
         }
         tokio::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::refused_message;
+    use serde_json::json;
+
+    #[test]
+    fn refusal_shows_the_recorded_reason() {
+        assert_eq!(
+            refused_message(&json!(["node key expired"])),
+            "flowmesh: the control server did not accept this node: node key expired"
+        );
+        assert_eq!(
+            refused_message(&json!(["a", "", "b"])),
+            "flowmesh: the control server did not accept this node: a; b"
+        );
+    }
+
+    #[test]
+    fn refusal_without_a_reason_keeps_the_hint() {
+        for health in [json!([]), json!(null), json!([""])] {
+            assert_eq!(
+                refused_message(&health),
+                "flowmesh: the control server did not accept this node (missing or invalid --auth-key?)"
+            );
+        }
     }
 }

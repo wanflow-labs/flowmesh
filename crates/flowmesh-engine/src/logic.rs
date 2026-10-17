@@ -478,8 +478,34 @@ pub(crate) fn key_expired(self_node: &Node, control_time: Option<&str>, now_unix
     expiry <= reference
 }
 
+/// Whether adding an IPv6 address failed because the host has IPv6 turned off, rather than for a
+/// reason that should stop the engine. With `net.ipv6.conf.*.disable_ipv6=1` (common on servers) the
+/// kernel refuses the address with EACCES; with the `ipv6.disable=1` boot option there is no IPv6
+/// socket family at all (EAFNOSUPPORT). The mesh then runs IPv4-only instead of failing to bring the
+/// interface up and restarting forever. Linux errno values.
+pub fn ipv6_unavailable(e: &std::io::Error) -> bool {
+    const EACCES: i32 = 13;
+    const EAFNOSUPPORT: i32 = 97;
+    matches!(e.raw_os_error(), Some(EACCES | EAFNOSUPPORT))
+}
+
 #[cfg(test)]
 mod tests {
+
+    #[test]
+    fn ipv6_turned_off_is_not_an_engine_error() {
+        use std::io::Error;
+        assert!(super::ipv6_unavailable(&Error::from_raw_os_error(13)));
+        assert!(super::ipv6_unavailable(&Error::from_raw_os_error(97)));
+        // Anything else (no such device, address in use, out of memory) still stops the engine.
+        for errno in [1, 12, 17, 19] {
+            assert!(
+                !super::ipv6_unavailable(&Error::from_raw_os_error(errno)),
+                "errno {errno}"
+            );
+        }
+        assert!(!super::ipv6_unavailable(&Error::other("not an OS error")));
+    }
 
     #[test]
     fn exit_dns_goes_to_the_exit_nodes_peerapi_proxy() {

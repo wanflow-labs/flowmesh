@@ -634,6 +634,14 @@ async fn supervise<L: Launcher>(
         match result {
             Ok(()) => return,
             Err(EngineError::NotAuthorized { auth_url, error }) => {
+                eprintln!(
+                    "flowmeshd: the control server did not accept this node{}",
+                    if error.is_empty() {
+                        String::new()
+                    } else {
+                        format!(": {error}")
+                    }
+                );
                 sh.refused = Some(auth_url);
                 sh.errors = if error.is_empty() {
                     Vec::new()
@@ -649,7 +657,14 @@ async fn supervise<L: Launcher>(
                 }
                 return;
             }
-            Err(EngineError::Other(e)) => sh.errors = vec![e],
+            Err(EngineError::Other(e)) => {
+                // The reason otherwise only shows in `flowmesh status`: put it in the journal too,
+                // once per distinct error (the engine retries with backoff up to retry_max).
+                if sh.errors.first() != Some(&e) {
+                    eprintln!("flowmeshd: engine stopped: {e} (retrying)");
+                }
+                sh.errors = vec![e];
+            }
         }
         // Restart with the current preferences (they may have changed while the engine ran, see
         // `reconfigure`); a registered node key no longer needs the auth key.
