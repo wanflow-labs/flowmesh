@@ -862,7 +862,7 @@ checksum = "aedcfb3409746eddb02b9e19ebda1c3394f759a152e48ee875a0844d1b955484"
 
 [[package]]
 name = "flowmesh-cli"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-daemon",
  "flowmesh-proto",
@@ -878,7 +878,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-control"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -900,7 +900,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-daemon"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bytes",
  "flowmesh-engine",
@@ -922,7 +922,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-dataplane"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "boringtun",
  "flowmesh-filter",
@@ -933,7 +933,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-derp"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "crypto_box",
  "flowmesh-net",
@@ -949,7 +949,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-dev"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-engine",
  "tokio",
@@ -957,7 +957,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-disco"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "crypto_box",
  "flowmesh-proto",
@@ -968,7 +968,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-dns"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-proto",
  "hickory-proto",
@@ -977,7 +977,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-engine"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "base64 0.23.1",
  "bytes",
@@ -1012,7 +1012,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-filter"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-proto",
  "ipnet",
@@ -1023,7 +1023,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-meshsvc"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-proto",
  "serde_json",
@@ -1032,7 +1032,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-net"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "nix 0.31.3",
  "tokio",
@@ -1040,14 +1040,14 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-netcfg"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "ipnet",
 ]
 
 [[package]]
 name = "flowmesh-noise"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "chacha20poly1305",
  "flowmesh-proto",
@@ -1058,7 +1058,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-pathsock"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-disco",
  "flowmesh-proto",
@@ -1066,7 +1066,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-probe"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-control",
  "flowmesh-derp",
@@ -1082,7 +1082,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-proto"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "getrandom 0.3.4",
  "hex",
@@ -1095,7 +1095,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-serve"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bytes",
  "futures-util",
@@ -1112,7 +1112,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-ssh"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "bytes",
  "flowmesh-net",
@@ -1129,7 +1129,7 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-state"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-proto",
  "serde",
@@ -1139,14 +1139,14 @@ dependencies = [
 
 [[package]]
 name = "flowmesh-stun"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "thiserror",
 ]
 
 [[package]]
 name = "flowmesh-udprelay"
-version = "0.1.4"
+version = "0.1.5"
 dependencies = [
  "flowmesh-disco",
  "flowmesh-proto",
@@ -3762,7 +3762,7 @@ dependencies = [
 
 [[package]]
 name = "xtask"
-version = "0.1.4"
+version = "0.1.5"
 
 [[package]]
 name = "yoke"
