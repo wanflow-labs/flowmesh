@@ -23,3 +23,8 @@ expect_used = "deny"
 codegen-units = 1
 lto = "fat"
 strip = true
+
+# Router builds (build/release.sh, flowmesh-*-openwrt-*): the release profile optimised for size.
+[profile.release-openwrt]
+inherits = "release"
+opt-level = "z"

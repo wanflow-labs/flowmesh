@@ -14,16 +14,16 @@ make reproduce SUMS=path/to/published/SHA256SUMS
 or on any x86_64 Linux host, with nothing installed system-wide (`release.sh` refuses other hosts, see [Host architecture](#host-architecture)):
 
 ```
-build/setup-toolchain.sh        # Rust 1.88.0 + both musl targets, zig 0.13.0 (checksum-verified), cargo-zigbuild 0.19.8, in $HOME
+build/setup-toolchain.sh        # Rust 1.88.0 + the musl targets, zig 0.13.0 (checksum-verified), cargo-zigbuild 0.19.8, in $HOME
 export PATH="$HOME/.local/zig-0.13.0:$HOME/.cargo/bin:$PATH"
 build/release.sh dist
 ```
 
-`dist/SHA256SUMS` lists the tarballs, the four binaries and the four SBOMs; `build/package.sh dist` then builds the deb and rpm packages and adds them to the list. A rebuild without the packages checks the rest (`make reproduce` skips files it did not build).
+`dist/SHA256SUMS` lists the tarballs, their binaries and SBOMs: the `linux-{x86_64,aarch64}` set for servers and desktops, and the `openwrt-{x86_64,aarch64,armv7}` set for routers (built without the SSH server, with the size-optimised `release-openwrt` profile, no systemd units; `packaging/openwrt/arches.txt` maps OpenWrt architectures onto it); `build/package.sh dist` then builds the deb and rpm packages and adds them to the list. A rebuild without the packages checks the rest (`make reproduce` skips files it did not build).
 
 ## SBOM
 
-Each shipped binary gets a CycloneDX 1.5 SBOM per target (`dist/flowmeshd-<version>-linux-<arch>.cdx.json`, `dist/flowmesh-…`), made by cargo-cyclonedx 0.5.9 from `Cargo.lock`: every crate compiled into that binary for that target, with version, license and package URL. It is reproducible like the binaries: its timestamp is `SOURCE_DATE_EPOCH`, it has no random serial number, and workspace crates are referenced as `path+file:///flowmesh/crates/…` whatever the build directory (`release.sh` fails if the build directory still appears).
+Each shipped binary gets a CycloneDX 1.5 SBOM per target (`dist/flowmeshd-<version>-{linux,openwrt}-<arch>.cdx.json`, `dist/flowmesh-…`), made by cargo-cyclonedx 0.5.9 from `Cargo.lock`: every crate compiled into that binary for that target, with version, license and package URL. It is reproducible like the binaries: its timestamp is `SOURCE_DATE_EPOCH`, it has no random serial number, and workspace crates are referenced as `path+file:///flowmesh/crates/…` whatever the build directory (`release.sh` fails if the build directory still appears).
 
 ## Signing
 
@@ -92,4 +92,4 @@ The first comparisons failed in two ways, both fixed:
 
 ## Host architecture
 
-Release builds run on x86_64 hosts. `release.sh` refuses any other host, and `make release` always runs the `linux/amd64` image, emulated on arm64 machines (about 30 minutes on an Apple Silicon Mac instead of 5). Both target architectures (x86_64 and aarch64 binaries) are built on that host.
+Release builds run on x86_64 hosts. `release.sh` refuses any other host, and `make release` always runs the `linux/amd64` image, emulated on arm64 machines (about 30 minutes on an Apple Silicon Mac instead of 5). Every target architecture (x86_64, aarch64 and armv7 binaries) is built on that host.

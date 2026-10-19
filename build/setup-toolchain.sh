@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # Install the pinned release toolchain in the current user's home (no root, nothing system-wide):
-# rustup + Rust 1.88.0 with both musl targets, zig 0.13.0 (checksum-verified), cargo-zigbuild 0.19.8,
-# cargo-cyclonedx 0.5.9 (SBOM).
+# rustup + Rust 1.88.0 with the musl targets (x86_64, aarch64, armv7 hard-float), zig 0.13.0
+# (checksum-verified), cargo-zigbuild 0.19.8, cargo-cyclonedx 0.5.9 (SBOM).
 # Removing ~/.rustup, ~/.cargo and ~/.local/zig-0.13.0 undoes it.
 set -euo pipefail
 ZIG=0.13.0
@@ -18,7 +18,8 @@ export PATH="$HOME/.cargo/bin:$PATH"
 # Pinned versions only: never let rustup update itself (the check can also hang on slow networks).
 rustup set auto-self-update disable
 rustup toolchain install 1.88.0 --profile minimal --no-self-update \
-  --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl
+  --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl \
+  --target armv7-unknown-linux-musleabihf
 zig_dir="$HOME/.local/zig-$ZIG"
 if [ ! -x "$zig_dir/zig" ]; then
   tmp=$(mktemp -d)
