@@ -153,6 +153,7 @@ check "service is running" eventually 20 running
 check "/etc/flowmesh is a directory" r 'test -d /etc/flowmesh'
 check "keep.d lists the state dir and the UCI config" \
   r 'grep -qx /etc/flowmesh/ /lib/upgrade/keep.d/flowmesh && grep -qx /etc/config/flowmesh /lib/upgrade/keep.d/flowmesh'
+check "flock is available (flowmesh-fw serializes with it)" r 'command -v flock >/dev/null'
 check "kmod-tun and ip-full were pulled in" r 'test -e /dev/net/tun && test -x /usr/libexec/ip-full'
 
 after=$(fw_inventory)
@@ -178,6 +179,21 @@ r "uci set firewall.@defaults[0].owt_staged=1; FLOWMESH_FW_NORELOAD=1 /usr/libex
 check "flowmesh-fw leaves the user's staged firewall changes staged" \
   r 'test -x /usr/libexec/flowmesh-fw && uci -q changes firewall | grep -q owt_staged && ! grep -q owt_staged /etc/config/firewall'
 r 'uci revert firewall' >/dev/null 2>&1
+
+# Overlapping runs (the init's background apply, LuCI, a reload) must not interleave: from scratch,
+# "add" and "exitnode-on" at the same time, five rounds, with a user change staged throughout.
+race_ok=1
+for _ in 1 2 3 4 5; do
+  r 'uci set firewall.@defaults[0].owt_staged=1; F=/usr/libexec/flowmesh-fw; export FLOWMESH_FW_NORELOAD=1
+     $F remove; $F add & $F exitnode-on & $F add & $F exitnode-on & wait' >/dev/null 2>&1
+  inv=$(fw_inventory)
+  [ "$(grep -cxF "zone flowmesh" <<< "$inv")" = 1 ] && [ "$(grep -cxF "fwd lan>flowmesh" <<< "$inv")" = 1 ] &&
+    [ "$(grep -cxF "fwd flowmesh>lan" <<< "$inv")" = 1 ] && [ "$(grep -cxF "fwd flowmesh>wan" <<< "$inv")" = 1 ] &&
+    [ "$(r 'uci -q changes firewall')" = "$(r 'uci -q changes firewall | grep owt_staged')" ] &&
+    r 'uci -q changes firewall | grep -q owt_staged && ! grep -q owt_staged /etc/config/firewall' || { race_ok=0; echo "$inv" | sed 's/^/   | /'; r 'uci -q changes firewall' | sed 's/^/   | staged: /'; break; }
+done
+check "concurrent flowmesh-fw runs: one zone, each forwarding once, staged change kept" [ $race_ok = 1 ]
+r 'uci revert firewall; F=/usr/libexec/flowmesh-fw; FLOWMESH_FW_NORELOAD=1 $F add; FLOWMESH_FW_NORELOAD=1 $F exitnode-off; /etc/init.d/firewall reload' >/dev/null 2>&1
 
 # --- join, settings ---------------------------------------------------------------------------
 host="owt-$(tr -c 'a-z0-9\n' '-' <<< "$label")"
