@@ -12,7 +12,7 @@ Wants=network-pre.target
 After=network-pre.target NetworkManager.service systemd-resolved.service
 
 [Service]
-ExecStart=/usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock
+ExecStart=/usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /var/run/flowmesh/flowmeshd.sock
 Restart=on-failure
 RestartSec=2
 # The daemon restores resolv.conf and routes on SIGTERM; give the engine time to do it.

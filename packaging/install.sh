@@ -277,13 +277,13 @@ case $init in
 #!/sbin/openrc-run
 description="FlowMesh mesh networking daemon"
 command=/usr/sbin/flowmeshd
-command_args="--state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock"
+command_args="--state-dir /var/lib/flowmesh --socket /var/run/flowmesh/flowmeshd.sock"
 command_background=true
-pidfile=/run/flowmeshd.pid
+pidfile=/var/run/flowmeshd.pid
 output_log=/var/log/flowmeshd.log
 error_log=/var/log/flowmeshd.log
 depend() { need net; }
-start_pre() { checkpath -d -m 0755 /run/flowmesh; checkpath -d -m 0700 /var/lib/flowmesh; }
+start_pre() { checkpath -d -m 0755 /var/run/flowmesh; checkpath -d -m 0700 /var/lib/flowmesh; }
 RC
     run install -m 0755 "$tmp/flowmeshd.openrc" /etc/init.d/flowmeshd
     run rc-update add flowmeshd default >/dev/null 2>&1 || true
@@ -291,14 +291,14 @@ RC
     ;;
   none)
     say "no systemd or OpenRC found: starting flowmeshd in the background (it will not start at boot)"
-    run mkdir -p /run/flowmesh /var/lib/flowmesh
+    run mkdir -p /var/run/flowmesh /var/lib/flowmesh
     run chmod 0700 /var/lib/flowmesh
     stop_daemon
-    run sh -c 'nohup /usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /run/flowmesh/flowmeshd.sock >>/var/log/flowmeshd.log 2>&1 &'
+    run sh -c 'nohup /usr/sbin/flowmeshd --state-dir /var/lib/flowmesh --socket /var/run/flowmesh/flowmeshd.sock >>/var/log/flowmeshd.log 2>&1 &'
     ;;
 esac
 i=0
-until run flowmesh status >/dev/null 2>&1 || run test -S /run/flowmesh/flowmeshd.sock; do
+until run flowmesh status >/dev/null 2>&1 || run test -S /var/run/flowmesh/flowmeshd.sock; do
   i=$((i + 1))
   [ $i -lt 40 ] || die "flowmeshd did not start; see journalctl -u flowmeshd or /var/log/flowmeshd.log"
   sleep 0.5

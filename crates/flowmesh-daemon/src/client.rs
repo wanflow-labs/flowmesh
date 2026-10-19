@@ -9,7 +9,7 @@ use hyper_util::rt::TokioIo;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
-pub const DEFAULT_SOCKET: &str = "/run/flowmesh/flowmeshd.sock";
+pub const DEFAULT_SOCKET: &str = "/var/run/flowmesh/flowmeshd.sock";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {

@@ -35,7 +35,7 @@ check() { # name image ip package install-cmd remove-cmd
   docker exec "$c" sh -c "$install /tmp/$(basename "$pkg")" >/dev/null || fail "$name: install"
   docker exec "$c" systemctl is-enabled flowmeshd >/dev/null 2>&1 && fail "$name: service enabled by the package"
   docker exec "$c" systemctl enable --now flowmeshd >/dev/null 2>&1
-  for _ in $(seq 1 20); do docker exec "$c" test -S /run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
+  for _ in $(seq 1 20); do docker exec "$c" test -S /var/run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
   docker exec "$c" flowmesh up --login-server=http://headscale.lab --hostname="$c" --accept-dns=false \
     --authkey="$key" --timeout=30s || fail "$name: up"
   # A new node is reachable once the peer's netmap includes it (a few seconds after `up`).

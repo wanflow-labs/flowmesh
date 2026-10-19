@@ -33,8 +33,8 @@ echo "== install and start the unit"
 dc fmsd systemd-analyze verify /etc/systemd/system/flowmeshd.service
 dc fmsd systemctl daemon-reload
 dc fmsd systemctl enable --now flowmeshd >/dev/null 2>&1
-for _ in $(seq 1 20); do dc fmsd test -S /run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
-dc fmsd test -S /run/flowmesh/flowmeshd.sock || { dc fmsd journalctl -u flowmeshd --no-pager | tail -20; fail "no socket"; }
+for _ in $(seq 1 20); do dc fmsd test -S /var/run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
+dc fmsd test -S /var/run/flowmesh/flowmeshd.sock || { dc fmsd journalctl -u flowmeshd --no-pager | tail -20; fail "no socket"; }
 echo "ok: flowmeshd active, socket present"
 
 dc fmsd flowmesh up --login-server=http://headscale.lab --hostname=fmsd --authkey="$key" --timeout=30s \

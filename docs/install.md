@@ -124,7 +124,7 @@ If `/etc/resolv.conf` is a symbolic link (managed by systemd-resolved, resolvcon
 | `/var/lib/flowmesh/node.json` | Machine and node keys (0600) |
 | `/var/lib/flowmesh/prefs.json` | Settings and login state (0600) |
 | `/var/lib/flowmesh/resolv.conf.backup` | The original resolv.conf while DNS is taken over |
-| `/run/flowmesh/flowmeshd.sock` | Local API (every local user may read the state; changes need root or the operator) |
+| `/var/run/flowmesh/flowmeshd.sock` | Local API (every local user may read the state; changes need root or the operator) |
 
 The systemd unit runs as root but keeps only `CAP_NET_ADMIN` and `CAP_NET_RAW`, and the file system is read-only apart from the directories above and `/etc/resolv.conf` (`systemd-analyze security flowmeshd` scores 2.4). The SSH server needs `flowmeshd-ssh.service` instead, which has no sandbox (section 3).
 
