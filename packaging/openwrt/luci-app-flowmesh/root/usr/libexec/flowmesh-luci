@@ -1,0 +1,178 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Backend of the LuCI page, run through rpcd (`file exec`, allowed by the luci-app-flowmesh ACL).
+# Every call prints one JSON object and exits 0; failures are {"ok":false,"code":...,"detail":...}.
+#
+#   status                              `flowmesh status --json`, unchanged
+#   up <server_url> <auth_key> <hostname>
+#                                       join; the key reaches the CLI only through a 0600 file
+#   down | logout                       {"ok":true} or an error
+#   apply                               push /etc/config/flowmesh to the daemon (the init's reload)
+#   logs                                {"ok":true,"lines":[...]}: the last 200 flowmesh log lines
+#
+# Error codes: invalid_arg, daemon_down, key_invalid (used, expired or unknown key), site_limit (the
+# control server refuses more nodes), unreachable (the control server cannot be connected to),
+# timeout, unknown.
+
+# Older rpcd (21.02) lets the caller set the environment of `file exec`: depend on none of it.
+PATH=/usr/sbin:/usr/bin:/sbin:/bin
+export PATH
+INIT=/etc/init.d/flowmesh
+PREFS=/usr/share/flowmesh/prefs.sh
+UP_TIMEOUT=20      # seconds `flowmesh up` waits for the node to come up (under rpcd's exec timeout)
+UP_DEADLINE=25     # hard stop for the whole CLI call, in case the daemon does not answer at all
+LOG_LINES=200
+
+. /usr/share/libubox/jshn.sh
+
+ok() {
+	json_init
+	json_add_boolean ok 1
+	json_dump
+	exit 0
+}
+
+# fail <code> [detail]
+fail() {
+	json_init
+	json_add_boolean ok 0
+	json_add_string code "$1"
+	[ $# -ge 2 ] && json_add_string detail "$2"
+	json_dump
+	exit 0
+}
+
+# The error code for the CLI's output $1.
+classify() {
+	case "$1" in
+	*"cannot reach flowmeshd"*) echo daemon_down ;;
+	# A control server enforcing a node limit names it in the refusal reason. No such server was
+	# available to record the exact text (headscale has no limit), so this matches any refusal that
+	# mentions a limit or quota.
+	*"did not accept this node"*[Ll]imit* | *"did not accept this node"*[Qq]uota*) echo site_limit ;;
+	*"did not accept this node"*) echo key_invalid ;;
+	*"control connect:"*) echo unreachable ;;
+	*"timed out waiting"*) echo timeout ;;
+	*) echo unknown ;;
+	esac
+}
+
+# run_cli <args...>: run flowmesh, setting OUT (stdout and stderr) and RC.
+run_cli() {
+	OUT=$(flowmesh "$@" 2>&1)
+	RC=$?
+}
+
+# Fail with the classified error unless the last run_cli succeeded.
+check_cli() {
+	[ "$RC" = 0 ] && return 0
+	fail "$(classify "$OUT")" "$OUT"
+}
+
+# valid <value> <grep -E pattern>: the whole value matches (a newline never does).
+NL='
+'
+valid() {
+	case "$1" in *"$NL"*) return 1 ;; esac
+	printf '%s' "$1" | grep -Eq "$2"
+}
+
+cmd_status() {
+	run_cli status --json
+	# The CLI exits 1 whenever the node is not running (NeedsLogin, Stopped, ...) and still prints
+	# the status: what decides is whether a status came out.
+	if printf '%s' "$OUT" | jsonfilter -e '@.BackendState' > /dev/null 2>&1; then
+		printf '%s\n' "$OUT"
+		exit 0
+	fi
+	fail "$(classify "$OUT")" "$OUT"
+}
+
+cmd_up() {
+	[ $# -eq 3 ] || fail invalid_arg "usage: up <server_url> <auth_key> <hostname>"
+	local url="$1" key="$2" host="$3" keyfile flag outfile pid watchdog
+	# Stricter than a URL needs to be: no shell metacharacters, quotes or spaces anywhere.
+	valid "$url" '^https?://[][A-Za-z0-9.:-]+(/[A-Za-z0-9._~/?#@%+=,:-]*)?$' ||
+		fail invalid_arg "server_url"
+	valid "$key" '^[A-Za-z0-9_-]{8,128}$' || fail invalid_arg "auth_key"
+	valid "$host" '^[A-Za-z0-9-]{1,63}$' || fail invalid_arg "hostname"
+
+	. /lib/functions.sh
+	. "$PREFS"
+	flowmesh_load_prefs
+	FM_HOSTNAME=$host
+
+	umask 077
+	keyfile=$(mktemp /tmp/flowmesh-key.XXXXXX) || fail unknown "mktemp failed"
+	flag=$keyfile.timeout
+	outfile=$keyfile.out
+	trap 'rm -f "$keyfile" "$flag" "$outfile"' EXIT
+	printf '%s\n' "$key" > "$keyfile"
+
+	# `up` must repeat every setting the service applied, or the CLI refuses: --reset plus the full
+	# flag set from UCI, the same one the init's reload sends.
+	flowmesh_cli exec up --reset --login-server="$url" --auth-key="file:$keyfile" \
+		--timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 &
+	pid=$!
+	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep.)
+	( sleep "$UP_DEADLINE" && touch "$flag" && kill "$pid" ) < /dev/null > /dev/null 2>&1 &
+	watchdog=$!
+	wait "$pid" 2> /dev/null   # (the shell reports a killed job on stderr)
+	RC=$?
+	kill "$watchdog" 2>/dev/null
+	rm -f "$keyfile"
+	OUT=$(cat "$outfile")
+	[ -e "$flag" ] && fail timeout "$OUT"
+	check_cli
+
+	# Joined: keep the name for later reloads, and the exit-node firewall in line with the flags.
+	if [ "$(uci -q get flowmesh.main.hostname)" != "$host" ]; then
+		uci -q set flowmesh.main.hostname="$host" && uci -q commit flowmesh
+	fi
+	flowmesh_apply_fw > /dev/null 2>&1
+	ok
+}
+
+cmd_apply() {
+	local out
+	out=$("$INIT" reload 2>&1) || fail "$(classify "$out")" "$out"
+	ok
+}
+
+cmd_logs() {
+	local line tmp
+	tmp=$(mktemp /tmp/flowmesh-logs.XXXXXX) || fail unknown "mktemp failed"
+	trap 'rm -f "$tmp"' EXIT
+	# (Through a file: a pipe into the loop would run it in a subshell and lose the JSON state.)
+	logread -e flowmesh 2>/dev/null | tail -n "$LOG_LINES" > "$tmp"
+	json_init
+	json_add_boolean ok 1
+	json_add_array lines
+	while IFS= read -r line; do
+		json_add_string "" "$line"
+	done < "$tmp"
+	json_close_array
+	json_dump
+	exit 0
+}
+
+[ $# -ge 1 ] || fail invalid_arg "no command"
+cmd=$1
+shift
+case "$cmd" in
+status | down | logout | apply | logs)
+	[ $# -eq 0 ] || fail invalid_arg "$cmd takes no arguments"
+	;;
+esac
+case "$cmd" in
+status) cmd_status ;;
+up) cmd_up "$@" ;;
+down | logout)
+	run_cli "$cmd"
+	check_cli
+	ok
+	;;
+apply) cmd_apply ;;
+logs) cmd_logs ;;
+*) fail invalid_arg "unknown command" ;;
+esac

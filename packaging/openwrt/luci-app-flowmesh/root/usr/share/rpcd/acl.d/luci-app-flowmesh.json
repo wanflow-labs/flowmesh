@@ -1,0 +1,27 @@
+{
+	"luci-app-flowmesh": {
+		"description": "Grant access to FlowMesh",
+		"read": {
+			"file": {
+				"/usr/libexec/flowmesh-luci status": [ "exec" ],
+				"/usr/libexec/flowmesh-luci logs": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			},
+			"uci": [ "flowmesh" ]
+		},
+		"write": {
+			"file": {
+				"/usr/libexec/flowmesh-luci up *": [ "exec" ],
+				"/usr/libexec/flowmesh-luci down": [ "exec" ],
+				"/usr/libexec/flowmesh-luci logout": [ "exec" ],
+				"/usr/libexec/flowmesh-luci apply": [ "exec" ]
+			},
+			"ubus": {
+				"file": [ "exec" ]
+			},
+			"uci": [ "flowmesh" ]
+		}
+	}
+}

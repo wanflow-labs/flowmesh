@@ -13,10 +13,10 @@ STOP=10
 USE_PROCD=1
 
 PROG=/usr/sbin/flowmeshd
-CLI=/usr/bin/flowmesh
 STATE_DIR=/etc/flowmesh
 TUN=flowmesh0
 SOCKET=/var/run/flowmesh/flowmeshd.sock   # the CLI's and daemon's default
+PREFS=/usr/share/flowmesh/prefs.sh   # UCI -> flags, shared with the LuCI helper
 
 flowmesh_enabled() {
 	local enabled
@@ -25,52 +25,14 @@ flowmesh_enabled() {
 	[ "$enabled" = 1 ]
 }
 
-# IPv4 networks of the lan interface (e.g. 192.168.1.0/24), from netifd.
-lan_networks() {
-	local status i=0 addr mask n a b c d
-	status=$(ubus call network.interface.lan status 2>/dev/null) || return 0
-	while :; do
-		addr=$(echo "$status" | jsonfilter -e "@['ipv4-address'][$i].address" 2>/dev/null)
-		mask=$(echo "$status" | jsonfilter -e "@['ipv4-address'][$i].mask" 2>/dev/null)
-		[ -n "$addr" ] && [ -n "$mask" ] || break
-		local IFS=.
-		set -- $addr
-		unset IFS
-		a=$1 b=$2 c=$3 d=$4
-		n=$(( ((a << 24) | (b << 16) | (c << 8) | d) & ((0xffffffff << (32 - mask)) & 0xffffffff) ))
-		echo "$(( (n >> 24) & 255 )).$(( (n >> 16) & 255 )).$(( (n >> 8) & 255 )).$(( n & 255 ))/$mask"
-		i=$((i + 1))
-	done
-}
-
-append_route() {
-	routes="${routes:+$routes,}$1"
-}
-
 # Push the UCI intent to the daemon (waits up to $1 seconds for it to answer).
 apply_prefs() {
-	local wait=${1:-10} hostname advertise_lan exit_node accept_routes routes="" n
-	config_load flowmesh
-	config_get hostname main hostname
-	config_get_bool advertise_lan main advertise_lan 0
-	config_get_bool exit_node main exit_node 0
-	config_get_bool accept_routes main accept_routes 0
-	# The daemon does not fall back to the system hostname itself, and a node without a name is
-	# refused by the control server.
-	[ -n "$hostname" ] || hostname=$(cat /proc/sys/kernel/hostname)
-	if [ "$advertise_lan" = 1 ]; then
-		config_list_foreach main lan_routes append_route
-		if [ -z "$routes" ]; then
-			for n in $(lan_networks); do append_route "$n"; done
-		fi
-	fi
-
+	local wait=${1:-10} err
+	. "$PREFS"
+	flowmesh_load_prefs
 	# Retried until the daemon answers: right after a (re)start the socket may be missing or still
-	# the previous process's. The router's DNS belongs to dnsmasq: never let the daemon rewrite
-	# resolv.conf.
-	local err
-	until err=$("$CLI" set --accept-dns=false --hostname="$hostname" --accept-routes="$accept_routes" \
-		--advertise-routes="$routes" --advertise-exit-node="$exit_node" 2>&1); do
+	# the previous process's.
+	until err=$(flowmesh_cli set 2>&1); do
 		case "$err" in
 		*"cannot reach flowmeshd"*) ;;
 		*) echo "flowmesh: could not apply settings: $err" >&2; return 1 ;;
@@ -79,12 +41,7 @@ apply_prefs() {
 		sleep 1
 		wait=$((wait - 1))
 	done
-
-	if [ "$exit_node" = 1 ]; then
-		/usr/libexec/flowmesh-fw exitnode-on
-	else
-		/usr/libexec/flowmesh-fw exitnode-off
-	fi
+	flowmesh_apply_fw
 }
 
 start_service() {
