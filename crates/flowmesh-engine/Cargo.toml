@@ -38,6 +38,8 @@ http-body-util = "0.1.5"
 hyper = { version = "1.12.0", features = ["server", "client", "http1"] }
 hyper-util = { version = "0.1.21", features = ["tokio"] }
 ipnet = "2.12.2"
+# 64-bit atomics on every target: 32-bit MIPS has none in hardware (OpenWrt routers).
+portable-atomic = { version = "1.15.0", features = ["fallback"] }
 serde = "1.0.229"
 serde_json = "1.0.151"
 thiserror = "2.0.21"
