@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: Apache-2.0
+# OpenWrt package architecture -> release tarball family (flowmesh-<version>-openwrt-<family>.tar.gz).
+# One "<arch> <family>" per line; lines starting with # are comments. Checked against the package
+# architectures of OpenWrt 21.02, 22.03, 23.05, 24.10 and 25.12. armv7 builds are hard-float and need
+# VFP: the FPU-less arm_cortex-a7 and arm_cortex-a9 are not supported. No MIPS (yet).
+x86_64 x86_64
+aarch64_cortex-a53 aarch64
+aarch64_cortex-a72 aarch64
+aarch64_cortex-a76 aarch64
+aarch64_generic aarch64
+arm_cortex-a5_vfpv4 armv7
+arm_cortex-a7_neon-vfpv4 armv7
+arm_cortex-a7_vfpv4 armv7
+arm_cortex-a8_vfpv3 armv7
+arm_cortex-a9_neon armv7
+arm_cortex-a9_vfpv3-d16 armv7
+arm_cortex-a15_neon-vfpv4 armv7

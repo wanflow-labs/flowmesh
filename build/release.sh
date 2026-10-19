@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
-# Reproducible release build: static musl binaries for x86_64 and aarch64, packed into
-# deterministic tarballs with SHA256SUMS. Same script in the pinned container (make release) and on a
-# plain Linux host with the toolchain installed by build/setup-toolchain.sh (the second builder).
+# Reproducible release build: static musl binaries packed into deterministic tarballs with SHA256SUMS.
+#   flowmesh-$v-linux-{x86_64,aarch64}       servers and desktops: all features, systemd units
+#   flowmesh-$v-openwrt-{x86_64,aarch64,armv7}  routers: no SSH server, size-optimised profile
+# (packaging/openwrt/arches.txt maps OpenWrt architectures onto the openwrt-* families.)
+# Same script in the pinned container (make release) and on a plain Linux host with the toolchain
+# installed by build/setup-toolchain.sh (the second builder).
 #   build/release.sh [OUT_DIR]   (default dist/)
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=${1:-dist}
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 targets="x86_64-unknown-linux-musl aarch64-unknown-linux-musl"
+# armv7 is the hard-float target: it needs VFP (VFPv3-D16 or later; NEON is detected at run time),
+# so FPU-less boards are not covered and are left out of packaging/openwrt/arches.txt.
+openwrt_targets="x86_64-unknown-linux-musl aarch64-unknown-linux-musl armv7-unknown-linux-musleabihf"
 
 # Everything that could vary between builders is fixed here.
 export SOURCE_DATE_EPOCH=${SOURCE_DATE_EPOCH:-$(git log -1 --format=%ct 2>/dev/null || true)}
@@ -56,6 +62,29 @@ for t in $targets; do
     sed "s|path+file://$PWD/|path+file:///flowmesh/|g" "$f" > "$out/$b-$version-linux-$arch.cdx.json"
   done
   # Every workspace member gets one (xtask too, outside crates/): clean them all, not the output.
+  find . -path ./target -prune -o -path "./$out" -prune -o -name '*_bin.cdx.json' -type f -print0 | xargs -0 rm -f
+done
+# Router builds, separate from the linux-* set above (whose bytes must not change): no default
+# features (no SSH server), the size-optimised release-openwrt profile, no systemd units.
+for t in $openwrt_targets; do
+  cargo zigbuild --profile release-openwrt --locked --no-default-features --target "$t" -p flowmesh-daemon -p flowmesh-cli
+  arch=${t%%-*}
+  stage="$out/flowmesh-$version-openwrt-$arch"
+  mkdir -p "$stage"
+  cp "$CARGO_TARGET_DIR/$t/release-openwrt/flowmeshd" "$CARGO_TARGET_DIR/$t/release-openwrt/flowmesh" "$stage/"
+  cp LICENSE NOTICE "$stage/"
+  chmod 0755 "$stage" "$stage/flowmeshd" "$stage/flowmesh"
+  chmod 0644 "$stage/LICENSE" "$stage/NOTICE"
+  find "$stage" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+  tar --sort=name --mtime="@$SOURCE_DATE_EPOCH" --owner=0 --group=0 --numeric-owner \
+      -C "$out" -cf - "$(basename "$stage")" | gzip -n -9 > "$stage.tar.gz"
+
+  # Same SBOM step, with the same feature selection as the binaries (no SSH dependencies).
+  cargo cyclonedx -q -f json --spec-version 1.5 --describe binaries --no-default-features --target "$t"
+  for b in flowmeshd flowmesh; do
+    f=$(find crates -name "${b}_bin.cdx.json")
+    sed "s|path+file://$PWD/|path+file:///flowmesh/|g" "$f" > "$out/$b-$version-openwrt-$arch.cdx.json"
+  done
   find . -path ./target -prune -o -path "./$out" -prune -o -name '*_bin.cdx.json' -type f -print0 | xargs -0 rm -f
 done
 # Every workspace reference must be the mapped one (the build directory may itself be /flowmesh).
