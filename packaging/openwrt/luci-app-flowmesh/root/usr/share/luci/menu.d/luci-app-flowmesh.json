@@ -1,0 +1,14 @@
+{
+	"admin/services/flowmesh": {
+		"title": "FlowMesh",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "flowmesh/overview"
+		},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	}
+}

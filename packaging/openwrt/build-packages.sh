@@ -64,6 +64,7 @@ stage_root() {
   install -Dm0644 "$f/flowmesh.config" "$root/etc/config/flowmesh"
   install -Dm0755 "$f/flowmesh.defaults" "$root/etc/uci-defaults/90-flowmesh"
   install -Dm0755 "$f/flowmesh-fw.sh" "$root/usr/libexec/flowmesh-fw"
+  install -Dm0644 "$f/flowmesh-prefs.sh" "$root/usr/share/flowmesh/prefs.sh"
   install -Dm0644 "$f/flowmesh.keep" "$root/lib/upgrade/keep.d/flowmesh"
 }
 
