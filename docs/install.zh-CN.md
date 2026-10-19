@@ -125,7 +125,7 @@ sudo flowmesh up --login-server=http://<控制服务器地址>:<端口> --auth-k
 | `/var/lib/flowmesh/node.json` | 机器密钥与节点密钥（0600） |
 | `/var/lib/flowmesh/prefs.json` | 设置与登录状态（0600） |
 | `/var/lib/flowmesh/resolv.conf.backup` | 接管 DNS 期间的原 resolv.conf |
-| `/run/flowmesh/flowmeshd.sock` | 本地 API（所有本地用户可读状态，修改需 root 或 operator） |
+| `/var/run/flowmesh/flowmeshd.sock` | 本地 API（所有本地用户可读状态，修改需 root 或 operator） |
 
 systemd 单元以 root 运行，但只保留 `CAP_NET_ADMIN` 与 `CAP_NET_RAW`，文件系统除上述目录和 `/etc/resolv.conf` 外全部只读（`systemd-analyze security flowmeshd` 评分 2.4）。SSH 服务端需要改用不带沙箱的 `flowmeshd-ssh.service`（见第 3 节）。
 

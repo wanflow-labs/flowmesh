@@ -33,6 +33,9 @@ pub struct PeerStatus {
     pub key_expiry: Option<String>,
     /// The node key has expired (the peer is listed but not reachable).
     pub expired: bool,
+    /// Subnets the node advertises and the server approved (AllowedIPs minus the mesh address ranges
+    /// and default routes).
+    pub primary_routes: Vec<ipnet::IpNet>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]

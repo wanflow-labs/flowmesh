@@ -53,7 +53,7 @@ if [ -n "$unit" ]; then
 fi
 docker exec "$c" useradd -m -s /bin/sh alice
 docker exec "$c" systemctl enable --now flowmeshd >/dev/null 2>&1
-for _ in $(seq 1 20); do docker exec "$c" test -S /run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
+for _ in $(seq 1 20); do docker exec "$c" test -S /var/run/flowmesh/flowmeshd.sock && break; sleep 0.5; done
 docker exec "$c" flowmesh up --login-server=http://headscale.lab --hostname="$c" --accept-dns=false \
   --authkey="$key" --ssh --timeout=30s
 ip=$(docker exec "$c" flowmesh ip -4)

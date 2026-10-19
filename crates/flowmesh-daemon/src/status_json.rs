@@ -132,6 +132,7 @@ fn node(n: &PeerStatus) -> Value {
         "ExitNodeOption": n.exit_node_option,
         "ExitNode": n.exit_node,
         "Active": n.active,
+        "PrimaryRoutes": n.primary_routes.iter().map(ToString::to_string).collect::<Vec<_>>(),
     });
     // Official shape: present only when set / true.
     if let Some(obj) = v.as_object_mut() {
@@ -206,6 +207,7 @@ mod tests {
             ssh_host_keys: Vec::new(),
             key_expiry: None,
             expired: false,
+            primary_routes: Vec::new(),
         }
     }
 
@@ -441,5 +443,27 @@ mod tests {
         let v = node(&p);
         assert_eq!(v["PeerRelay"], "172.29.0.23:40000:vni:5");
         assert_eq!(v["CurAddr"], "");
+    }
+
+    /// The official field: the subnets a node advertises and the server approved. `Self` and every
+    /// peer carry it; default routes are not part of it (they show as `ExitNodeOption`).
+    #[test]
+    fn self_and_peers_report_primary_routes() {
+        let mut snap = running();
+        snap.self_node.as_mut().unwrap().primary_routes = vec!["192.168.1.0/24".parse().unwrap()];
+        snap.peers[0].primary_routes = vec!["10.0.0.0/24".parse().unwrap()];
+        let v = out(BackendState::Running, true, &snap);
+        assert_eq!(v["Self"]["PrimaryRoutes"], json!(["192.168.1.0/24"]));
+        assert_eq!(
+            v["Peer"]["nodekey:bb"]["PrimaryRoutes"],
+            json!(["10.0.0.0/24"])
+        );
+    }
+
+    #[test]
+    fn primary_routes_is_empty_array_not_null() {
+        let v = out(BackendState::Running, true, &running());
+        assert_eq!(v["Self"]["PrimaryRoutes"], json!([]));
+        assert_eq!(v["Peer"]["nodekey:bb"]["PrimaryRoutes"], json!([]));
     }
 }
