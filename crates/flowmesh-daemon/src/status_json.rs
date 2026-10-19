@@ -132,7 +132,8 @@ fn node(n: &PeerStatus) -> Value {
         "ExitNodeOption": n.exit_node_option,
         "ExitNode": n.exit_node,
         "Active": n.active,
-        "PrimaryRoutes": n.primary_routes.iter().map(ToString::to_string).collect::<Vec<_>>(),
+        // Official: null (not []) when the server reports none.
+        "PrimaryRoutes": if n.primary_routes.is_empty() { Value::Null } else { n.primary_routes.iter().map(ToString::to_string).collect() },
     });
     // Official shape: present only when set / true.
     if let Some(obj) = v.as_object_mut() {
@@ -445,8 +446,8 @@ mod tests {
         assert_eq!(v["CurAddr"], "");
     }
 
-    /// The official field: the subnets a node advertises and the server approved. `Self` and every
-    /// peer carry it; default routes are not part of it (they show as `ExitNodeOption`).
+    /// The official field: the routes the control server reports a node as primary for. `Self` and
+    /// every peer carry it; the official client prints null when there are none.
     #[test]
     fn self_and_peers_report_primary_routes() {
         let mut snap = running();
@@ -461,9 +462,9 @@ mod tests {
     }
 
     #[test]
-    fn primary_routes_is_empty_array_not_null() {
+    fn primary_routes_is_null_when_empty_like_official() {
         let v = out(BackendState::Running, true, &running());
-        assert_eq!(v["Self"]["PrimaryRoutes"], json!([]));
-        assert_eq!(v["Peer"]["nodekey:bb"]["PrimaryRoutes"], json!([]));
+        assert_eq!(v["Self"]["PrimaryRoutes"], Value::Null);
+        assert_eq!(v["Peer"]["nodekey:bb"]["PrimaryRoutes"], Value::Null);
     }
 }

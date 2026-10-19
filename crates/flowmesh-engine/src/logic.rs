@@ -165,19 +165,15 @@ pub(crate) fn dns_upstreams(nm: &NetMap, host: &[IpAddr]) -> Vec<IpAddr> {
     }
 }
 
-/// The subnet routes in a node's AllowedIPs: prefixes outside the mesh address ranges, excluding default routes (exit nodes are a separate feature).
-pub(crate) fn node_subnet_routes(n: &Node) -> impl Iterator<Item = ipnet::IpNet> + '_ {
+/// Subnet routes advertised by peers: prefixes in AllowedIPs outside the mesh address ranges, excluding default routes (exit nodes are a separate feature).
+pub(crate) fn subnet_routes(nm: &NetMap) -> std::collections::BTreeSet<ipnet::IpNet> {
     let mesh4: ipnet::IpNet = "100.64.0.0/10".parse().unwrap_or_default();
     let mesh6: ipnet::IpNet = "fd7a:115c:a1e0::/48".parse().unwrap_or_default();
-    n.allowed_ips
-        .iter()
-        .copied()
-        .filter(move |p| p.prefix_len() != 0 && !mesh4.contains(p) && !mesh6.contains(p))
-}
-
-/// Subnet routes advertised by peers.
-pub(crate) fn subnet_routes(nm: &NetMap) -> std::collections::BTreeSet<ipnet::IpNet> {
-    nm.peers.values().flat_map(node_subnet_routes).collect()
+    nm.peers
+        .values()
+        .flat_map(|n| n.allowed_ips.iter().copied())
+        .filter(|p| p.prefix_len() != 0 && !mesh4.contains(p) && !mesh6.contains(p))
+        .collect()
 }
 
 pub(crate) fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
@@ -203,7 +199,7 @@ pub(crate) fn peer_status(n: &Node, nm: &NetMap) -> PeerStatus {
             .clone()
             .filter(|e| parse_rfc3339_utc(e) > parse_rfc3339_utc("0001-01-01T00:00:00Z")),
         expired: key_expired(n, nm.control_time.as_deref(), unix_now()),
-        primary_routes: node_subnet_routes(n).collect(),
+        primary_routes: n.primary_routes.clone(),
         ..Default::default()
     }
 }
@@ -1136,6 +1132,7 @@ mod tests {
         n.hostinfo.os = "linux".into();
         n.last_seen = Some("2026-10-10T02:26:22Z".into());
         n.addresses.push("fd7a:115c:a1e0::1/128".parse().unwrap());
+        n.primary_routes = vec!["192.168.1.0/24".parse().unwrap()];
         assert_eq!(
             peer_status(&n, &nm),
             PeerStatus {
@@ -1152,21 +1149,9 @@ mod tests {
                 last_seen: Some("2026-10-10T02:26:22Z".into()),
                 relay: "wanflow-relay-1000".into(),
                 exit_node_option: true,
-                primary_routes: vec!["10.99.0.0/24".parse().unwrap()],
+                primary_routes: vec!["192.168.1.0/24".parse().unwrap()],
                 ..Default::default()
             }
-        );
-        let mut routed = n.clone();
-        routed.allowed_ips = vec![
-            "100.64.0.1/32".parse().unwrap(),
-            "192.168.1.0/24".parse().unwrap(),
-            "0.0.0.0/0".parse().unwrap(),
-            "::/0".parse().unwrap(),
-        ];
-        assert_eq!(
-            peer_status(&routed, &nm).primary_routes,
-            vec!["192.168.1.0/24".parse::<ipnet::IpNet>().unwrap()],
-            "mesh addresses and default routes are not primary routes"
         );
         let mut unknown = nm.peers[&2].clone();
         unknown.allowed_ips.retain(|p| p.prefix_len() != 0);
