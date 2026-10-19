@@ -6,8 +6,8 @@ use crate::frame::{Frame, FrameDecoder, FrameType, encode};
 use crate::handshake::{self, NONCE_LEN};
 use flowmesh_proto::derp::DerpNode;
 use flowmesh_proto::key::{NodePrivate, NodePublic};
+use portable_atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::sync::mpsc;
 

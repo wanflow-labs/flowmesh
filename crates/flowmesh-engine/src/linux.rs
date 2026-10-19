@@ -524,7 +524,7 @@ const STATUS_INTERVAL: Duration = Duration::from_secs(1);
 /// only, `flowmesh-dev --tap-dir`) every message's JSON is saved as `map-<n>.json`.
 struct Live {
     stream: flowmesh_control::client::MapStream,
-    tap: Option<(std::path::PathBuf, Arc<std::sync::atomic::AtomicU64>)>,
+    tap: Option<(std::path::PathBuf, Arc<portable_atomic::AtomicU64>)>,
 }
 
 impl MessageStream for Live {
@@ -536,7 +536,7 @@ impl MessageStream for Live {
                 .await
                 .map_err(|e| format!("map stream: {e}"))?;
             if let (Some(m), Some((dir, seq))) = (&m, &self.tap) {
-                let n = seq.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let n = seq.fetch_add(1, portable_atomic::Ordering::Relaxed);
                 if let Err(e) = std::fs::write(dir.join(format!("map-{n:05}.json")), &m.json) {
                     log(format!("tap write: {e}"));
                 }
@@ -1113,7 +1113,7 @@ pub async fn run(
     let map_tap = args
         .tap_dir
         .clone()
-        .map(|d| (d, Arc::new(std::sync::atomic::AtomicU64::new(0))));
+        .map(|d| (d, Arc::new(portable_atomic::AtomicU64::new(0))));
     let dial = {
         let map_tap = map_tap.clone();
         let server = args.login_server.clone();
