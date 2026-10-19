@@ -33,8 +33,7 @@ pub struct PeerStatus {
     pub key_expiry: Option<String>,
     /// The node key has expired (the peer is listed but not reachable).
     pub expired: bool,
-    /// Subnets the node advertises and the server approved (AllowedIPs minus the mesh address ranges
-    /// and default routes).
+    /// Routes the control server reports this node as primary for (the node's `PrimaryRoutes`).
     pub primary_routes: Vec<ipnet::IpNet>,
 }
 
