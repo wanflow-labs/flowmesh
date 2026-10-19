@@ -15,6 +15,12 @@
 ZONE=flowmesh
 DEVICE=flowmesh0
 
+# One run at a time: the init's background apply, a reload and LuCI can overlap, and the staged-change
+# shuffle below (and uci's own add-then-set) is not safe against a concurrent run.
+mkdir -p /var/lock
+exec 9> /var/lock/flowmesh-fw.lock || exit 1
+flock 9 || exit 1
+
 # uci always reads the default delta directory (-t only moves where new changes are written), so the
 # user's staged firewall changes are moved out of the way for the duration.
 STAGED=/tmp/.uci/firewall
@@ -107,5 +113,6 @@ esac
 
 [ "$changed" = 1 ] || exit 0
 u commit firewall || exit 1
-[ "$FLOWMESH_FW_NORELOAD" = 1 ] || /etc/init.d/firewall reload >/dev/null 2>&1
+# (Lock fd closed for the reload: nothing it starts may hold the lock.)
+[ "$FLOWMESH_FW_NORELOAD" = 1 ] || /etc/init.d/firewall reload >/dev/null 2>&1 9>&-
 exit 0
