@@ -11,3 +11,5 @@ __pycache__/
 /docs/internal/
 /lab/.env
 /local.mk
+/owt-work/
+/pkgs/

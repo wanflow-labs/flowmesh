@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# First boot (or package install): the flowmesh firewall zone. The firewall is (re)loaded by the
+# caller: at boot it starts after uci-defaults; the package's postinst reloads it.
+FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw add
+exit 0

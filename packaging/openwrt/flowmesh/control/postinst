@@ -1,0 +1,24 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# Install and upgrade (opkg: postinst; apk: post-install and post-upgrade).
+[ "$IPKG_NO_SCRIPT" = 1 ] && exit 0
+if [ -n "$IPKG_INSTROOT" ]; then
+	# Building an image: enable the service there; uci-defaults run on its first boot.
+	# (rc.common reads IPKG_INSTROOT from the environment, as OpenWrt's default_postinst relies on.)
+	export IPKG_INSTROOT
+	sh "$IPKG_INSTROOT/etc/rc.common" "$IPKG_INSTROOT/etc/init.d/flowmesh" enable
+	exit 0
+fi
+d=/etc/uci-defaults/90-flowmesh
+if [ -f "$d" ]; then
+	( . "$d" ) && rm -f "$d"
+fi
+/etc/init.d/firewall reload >/dev/null 2>&1
+/etc/init.d/flowmesh enable
+# Upgrades replace the binary under a running daemon: restart it; a fresh install just starts.
+if /etc/init.d/flowmesh running; then
+	/etc/init.d/flowmesh restart
+else
+	/etc/init.d/flowmesh start
+fi
+exit 0
