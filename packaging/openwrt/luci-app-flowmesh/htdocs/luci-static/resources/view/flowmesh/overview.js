@@ -9,9 +9,21 @@
 'require network';
 'require flowmesh.joincode as joincode';
 'require flowmesh.state as fmstate';
+'require flowmesh.text as fmtext';
 
 // Services -> FlowMesh. Everything goes through /usr/libexec/flowmesh-luci (rpcd `file exec`, see
 // the luci-app-flowmesh ACL); settings are written to /etc/config/flowmesh and pushed with `apply`.
+
+// Every element and every content change goes through these two: untrusted strings (peer names,
+// server messages, log lines) must become text nodes, never markup (see flowmesh/text.js). The
+// node test tests/overview-static.test.mjs rejects any other E(), dom.content() or innerHTML here.
+function el(tag, attrs, children) {
+	return E(tag, attrs, fmtext.children(children));
+}
+
+function setContent(node, children) {
+	return dom.content(node, fmtext.children(children));
+}
 
 var HELPER = '/usr/libexec/flowmesh-luci';
 var SIGNUP_URL = 'https://www.wanflow.com';
@@ -92,7 +104,7 @@ function helper(args, long) {
 }
 
 function consoleLink() {
-	return E('a', { href: CONSOLE_URL, target: '_blank', rel: 'noopener' }, _('Open the console'));
+	return el('a', { href: CONSOLE_URL, target: '_blank', rel: 'noopener' }, _('Open the console'));
 }
 
 // The user-facing text for a helper error code.
@@ -126,15 +138,15 @@ function errorText(res) {
 // An alert box for a failed helper call: the text, the server's own words where they matter, and a
 // console link where the fix is made there.
 function errorBox(res) {
-	var body = [ E('p', {}, errorText(res)) ];
+	var body = [ el('p', {}, errorText(res)) ];
 
 	if ((res.code == 'site_limit' || res.code == 'unknown') && res.detail)
-		body.push(E('pre', { 'class': 'flowmesh-detail' }, res.detail));
+		body.push(el('pre', { 'class': 'flowmesh-detail' }, res.detail));
 
 	if (res.code == 'key_invalid' || res.code == 'site_limit')
-		body.push(E('p', {}, consoleLink()));
+		body.push(el('p', {}, consoleLink()));
 
-	return E('div', { 'class': 'alert-message warning' }, body);
+	return el('div', { 'class': 'alert-message warning' }, body);
 }
 
 function notifyError(res) {
@@ -147,7 +159,7 @@ function cleanHostname(name) {
 }
 
 function busy(text) {
-	ui.showModal(null, [ E('p', { 'class': 'spinning' }, text) ]);
+	ui.showModal(null, [ el('p', { 'class': 'spinning' }, text) ]);
 }
 
 return view.extend({
@@ -162,7 +174,7 @@ return view.extend({
 
 	render: function(data) {
 		this.lan = data[3];
-		this.root = E('div', { 'class': 'flowmesh' });
+		this.root = el('div', { 'class': 'flowmesh' });
 		this.mode = null;
 		this.update(data[0]);
 
@@ -170,8 +182,8 @@ return view.extend({
 			return helper([ 'status' ]).then(L.bind(this.update, this));
 		}, this), 5);
 
-		return E([], [
-			E('style', {}, [
+		return el([], [
+			el('style', {}, [
 				'.flowmesh .flowmesh-pending { color: #b8860b; }',
 				'.flowmesh .flowmesh-active { color: #3c763d; }',
 				'.flowmesh .flowmesh-muted { opacity: .7; }',
@@ -183,8 +195,8 @@ return view.extend({
 				'.flowmesh label.flowmesh-check { display: block; margin: .3em 0; }',
 				'.flowmesh .flowmesh-sub { margin: .2em 0 .8em 1.8em; }'
 			].join('\n')),
-			E('h2', {}, _('FlowMesh')),
-			E('div', { 'class': 'cbi-map-descr' }, _('Join this router to a Wanflow FlowMesh mesh network.')),
+			el('h2', {}, _('FlowMesh')),
+			el('div', { 'class': 'cbi-map-descr' }, _('Join this router to a Wanflow FlowMesh mesh network.')),
 			this.root
 		]);
 	},
@@ -199,9 +211,9 @@ return view.extend({
 		this.sum = sum;
 
 		if (mode == 'down')
-			dom.content(this.root, this.renderDown(status));
+			setContent(this.root, this.renderDown(status));
 		else if (mode != this.mode)
-			dom.content(this.root, mode == 'join' ? this.renderJoin() : this.renderJoined());
+			setContent(this.root, mode == 'join' ? this.renderJoin() : this.renderJoined());
 
 		this.mode = mode;
 
@@ -218,17 +230,17 @@ return view.extend({
 	renderDown: function(status) {
 		var enabled = uci.get('flowmesh', 'main', 'enabled') != '0';
 		var body = [
-			E('p', {}, enabled ? _('The FlowMesh service is not running.') : _('FlowMesh is turned off.')),
-			E('p', {}, E('button', {
+			el('p', {}, enabled ? _('The FlowMesh service is not running.') : _('FlowMesh is turned off.')),
+			el('p', {}, el('button', {
 				'class': 'btn cbi-button cbi-button-action',
 				'click': ui.createHandlerFn(this, 'handleStart')
 			}, _('Start')))
 		];
 
 		if (status && status.ok === false && status.code != 'daemon_down' && status.detail)
-			body.splice(1, 0, E('pre', { 'class': 'flowmesh-detail' }, status.detail));
+			body.splice(1, 0, el('pre', { 'class': 'flowmesh-detail' }, status.detail));
 
-		return E('div', { 'class': 'cbi-section' }, body);
+		return el('div', { 'class': 'cbi-section' }, body);
 	},
 
 	handleStart: function() {
@@ -240,74 +252,74 @@ return view.extend({
 	renderJoin: function() {
 		var name = uci.get('flowmesh', 'main', 'hostname') || uci.get('system', '@system[0]', 'hostname');
 
-		this.codeInput = E('textarea', {
+		this.codeInput = el('textarea', {
 			'class': 'cbi-input-textarea',
 			'rows': 3,
 			'spellcheck': 'false',
 			'autocomplete': 'off',
 			'placeholder': _('wanflow://… or the Linux install command from the console')
 		});
-		this.nameInput = E('input', {
+		this.nameInput = el('input', {
 			'class': 'cbi-input-text',
 			'type': 'text',
 			'value': cleanHostname(name),
 			'maxlength': 63
 		});
-		this.serverInput = E('input', {
+		this.serverInput = el('input', {
 			'class': 'cbi-input-text',
 			'type': 'text',
 			'spellcheck': 'false',
 			'autocomplete': 'off',
 			'placeholder': 'https://'
 		});
-		this.keyInput = E('input', {
+		this.keyInput = el('input', {
 			'class': 'cbi-input-text',
 			'type': 'text',
 			'spellcheck': 'false',
 			'autocomplete': 'off'
 		});
-		this.joinError = E('div');
+		this.joinError = el('div');
 
-		return E([], [
-			E('div', { 'class': 'cbi-section' }, E('div', { 'class': 'alert-message notice flowmesh-signup' }, [
-				E('p', {}, _('No mesh yet? Wanflow FlowMesh Free is free forever.')),
-				E('a', {
+		return el([], [
+			el('div', { 'class': 'cbi-section' }, el('div', { 'class': 'alert-message notice flowmesh-signup' }, [
+				el('p', {}, _('No mesh yet? Wanflow FlowMesh Free is free forever.')),
+				el('a', {
 					'class': 'btn cbi-button cbi-button-positive',
 					'href': SIGNUP_URL,
 					'target': '_blank',
 					'rel': 'noopener'
 				}, _('Sign up free'))
 			])),
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Join a mesh')),
-				E('p', {}, _('In the console, add a device to your mesh and copy its join code (or the Linux install command), then paste it here.')),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Join code')),
-					E('div', { 'class': 'cbi-value-field' }, this.codeInput)
+			el('div', { 'class': 'cbi-section' }, [
+				el('h3', {}, _('Join a mesh')),
+				el('p', {}, _('In the console, add a device to your mesh and copy its join code (or the Linux install command), then paste it here.')),
+				el('div', { 'class': 'cbi-value' }, [
+					el('label', { 'class': 'cbi-value-title' }, _('Join code')),
+					el('div', { 'class': 'cbi-value-field' }, this.codeInput)
 				]),
-				E('div', { 'class': 'cbi-value' }, [
-					E('label', { 'class': 'cbi-value-title' }, _('Device name')),
-					E('div', { 'class': 'cbi-value-field' }, [
+				el('div', { 'class': 'cbi-value' }, [
+					el('label', { 'class': 'cbi-value-title' }, _('Device name')),
+					el('div', { 'class': 'cbi-value-field' }, [
 						this.nameInput,
-						E('div', { 'class': 'cbi-value-description' }, _('How this router appears in the mesh.'))
+						el('div', { 'class': 'cbi-value-description' }, _('How this router appears in the mesh.'))
 					])
 				]),
-				E('details', {}, [
-					E('summary', {}, _('Enter manually')),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Mesh address')),
-						E('div', { 'class': 'cbi-value-field' }, this.serverInput)
+				el('details', {}, [
+					el('summary', {}, _('Enter manually')),
+					el('div', { 'class': 'cbi-value' }, [
+						el('label', { 'class': 'cbi-value-title' }, _('Mesh address')),
+						el('div', { 'class': 'cbi-value-field' }, this.serverInput)
 					]),
-					E('div', { 'class': 'cbi-value' }, [
-						E('label', { 'class': 'cbi-value-title' }, _('Join key')),
-						E('div', { 'class': 'cbi-value-field' }, [
+					el('div', { 'class': 'cbi-value' }, [
+						el('label', { 'class': 'cbi-value-title' }, _('Join key')),
+						el('div', { 'class': 'cbi-value-field' }, [
 							this.keyInput,
-							E('div', { 'class': 'cbi-value-description' }, _('Used when the join code box is empty.'))
+							el('div', { 'class': 'cbi-value-description' }, _('Used when the join code box is empty.'))
 						])
 					])
 				]),
 				this.joinError,
-				E('div', { 'class': 'cbi-page-actions' }, E('button', {
+				el('div', { 'class': 'cbi-page-actions' }, el('button', {
 					'class': 'btn cbi-button cbi-button-apply',
 					'click': ui.createHandlerFn(this, 'handleJoin')
 				}, _('Join')))
@@ -346,15 +358,15 @@ return view.extend({
 	handleJoin: function() {
 		var target = this.joinTarget(), name = this.nameInput.value.trim();
 
-		dom.content(this.joinError, null);
+		setContent(this.joinError, null);
 
 		if (!target.ok) {
-			dom.content(this.joinError, E('div', { 'class': 'alert-message warning' }, target.text));
+			setContent(this.joinError, el('div', { 'class': 'alert-message warning' }, target.text));
 			return Promise.resolve();
 		}
 
 		if (!/^[A-Za-z0-9-]{1,63}$/.test(name)) {
-			dom.content(this.joinError, errorBox({ code: 'invalid_arg', detail: 'hostname' }));
+			setContent(this.joinError, errorBox({ code: 'invalid_arg', detail: 'hostname' }));
 			return Promise.resolve();
 		}
 
@@ -368,7 +380,7 @@ return view.extend({
 				this.keyInput.value = '';
 			}
 			else {
-				dom.content(this.joinError, errorBox(res));
+				setContent(this.joinError, errorBox(res));
 			}
 
 			// (up saved the device name to UCI)
@@ -383,7 +395,7 @@ return view.extend({
 		var self = this;
 
 		function check(option, label, description) {
-			var input = E('input', { 'type': 'checkbox' });
+			var input = el('input', { 'type': 'checkbox' });
 
 			input.checked = uci.get('flowmesh', 'main', option) == '1';
 			input.addEventListener('change', function() {
@@ -398,22 +410,22 @@ return view.extend({
 				});
 			});
 
-			return E('div', {}, [
-				E('label', { 'class': 'flowmesh-check' }, [ input, ' ', label ]),
-				description ? E('div', { 'class': 'cbi-value-description flowmesh-sub' }, description) : ''
+			return el('div', {}, [
+				el('label', { 'class': 'flowmesh-check' }, [ input, ' ', label ]),
+				description ? el('div', { 'class': 'cbi-value-description flowmesh-sub' }, description) : ''
 			]);
 		}
 
-		this.statusTable = E('table', { 'class': 'table' });
-		this.routesBox = E('div', { 'class': 'flowmesh-sub' });
-		this.exitBox = E('div', { 'class': 'flowmesh-sub' });
-		this.peersBox = E('div');
-		this.actionsBox = E('div', { 'class': 'cbi-page-actions' });
-		this.logBox = E('pre', { 'class': 'flowmesh-log' }, _('Loading…'));
+		this.statusTable = el('table', { 'class': 'table' });
+		this.routesBox = el('div', { 'class': 'flowmesh-sub' });
+		this.exitBox = el('div', { 'class': 'flowmesh-sub' });
+		this.peersBox = el('div');
+		this.actionsBox = el('div', { 'class': 'cbi-page-actions' });
+		this.logBox = el('pre', { 'class': 'flowmesh-log' }, _('Loading…'));
 
-		var logs = E('details', {}, [
-			E('summary', {}, _('Logs')),
-			E('p', {}, E('button', {
+		var logs = el('details', {}, [
+			el('summary', {}, _('Logs')),
+			el('p', {}, el('button', {
 				'class': 'btn cbi-button',
 				'click': ui.createHandlerFn(this, 'loadLogs')
 			}, _('Refresh'))),
@@ -425,19 +437,19 @@ return view.extend({
 				self.loadLogs();
 		});
 
-		return E([], [
-			E('div', { 'class': 'cbi-section' }, [ E('h3', {}, _('Status')), this.statusTable ]),
-			E('div', { 'class': 'cbi-section' }, [
-				E('h3', {}, _('Settings')),
+		return el([], [
+			el('div', { 'class': 'cbi-section' }, [ el('h3', {}, _('Status')), this.statusTable ]),
+			el('div', { 'class': 'cbi-section' }, [
+				el('h3', {}, _('Settings')),
 				check('advertise_lan', _('Share local LAN'), _('Lets other devices in the mesh reach this router\'s LAN. A mesh administrator approves it in the console.')),
 				this.routesBox,
 				check('exit_node', _('Act as exit node'), _('Other devices may send their Internet traffic through this router. A mesh administrator approves it in the console.')),
 				this.exitBox,
 				check('accept_routes', _('Use networks shared by other devices'), _('Reach the LANs other mesh devices share.'))
 			]),
-			E('div', { 'class': 'cbi-section' }, [ E('h3', {}, _('Devices in this mesh')), this.peersBox ]),
+			el('div', { 'class': 'cbi-section' }, [ el('h3', {}, _('Devices in this mesh')), this.peersBox ]),
 			this.actionsBox,
-			E('div', { 'class': 'cbi-section' }, logs)
+			el('div', { 'class': 'cbi-section' }, logs)
 		]);
 	},
 
@@ -487,10 +499,10 @@ return view.extend({
 			[ _('Connections'), via.length ? via.join(' · ') : _('none active') ]
 		];
 
-		dom.content(this.statusTable, rows.map(function(r) {
-			return E('tr', { 'class': 'tr' }, [
-				E('td', { 'class': 'td left', 'width': '33%' }, r[0]),
-				E('td', { 'class': 'td left' }, r[1])
+		setContent(this.statusTable, rows.map(function(r) {
+			return el('tr', { 'class': 'tr' }, [
+				el('td', { 'class': 'td left', 'width': '33%' }, r[0]),
+				el('td', { 'class': 'td left' }, r[1])
 			]);
 		}));
 
@@ -498,11 +510,11 @@ return view.extend({
 		var online = sum.state == 'running';
 		var label = function(active) {
 			if (!online)
-				return E('span', { 'class': 'flowmesh-muted' }, _('Not shared while disconnected'));
+				return el('span', { 'class': 'flowmesh-muted' }, _('Not shared while disconnected'));
 
 			return active
-				? E('span', { 'class': 'flowmesh-active' }, _('Active'))
-				: E('span', { 'class': 'flowmesh-pending' }, _('Advertised — waiting for an admin to approve it in the console'));
+				? el('span', { 'class': 'flowmesh-active' }, _('Active'))
+				: el('span', { 'class': 'flowmesh-pending' }, _('Advertised — waiting for an admin to approve it in the console'));
 		};
 		var routes = [];
 
@@ -511,23 +523,23 @@ return view.extend({
 			var pending = false;
 
 			if (!wanted.length)
-				routes.push(E('p', {}, _('No LAN network found to share.')));
+				routes.push(el('p', {}, _('No LAN network found to share.')));
 
 			states.forEach(function(r) {
 				pending = pending || r.state == 'pending';
-				routes.push(E('div', {}, [ E('code', {}, r.prefix), ' ', label(r.state == 'active') ]));
+				routes.push(el('div', {}, [ el('code', {}, r.prefix), ' ', label(r.state == 'active') ]));
 			});
 
 			if (pending && online)
-				routes.push(E('p', {}, consoleLink()));
+				routes.push(el('p', {}, consoleLink()));
 
 			fmstate.conflicts(wanted, sum.peers).forEach(function(c) {
-				routes.push(E('div', { 'class': 'alert-message warning' },
+				routes.push(el('div', { 'class': 'alert-message warning' },
 					_('%s overlaps a network that %s already shares. Devices may not reach the right one; consider changing this router\'s LAN network.').format(c.prefix, c.peer)));
 			});
 		}
 
-		dom.content(this.routesBox, routes);
+		setContent(this.routesBox, routes);
 
 		/* exit node */
 		var exit = [];
@@ -539,7 +551,7 @@ return view.extend({
 				exit.push(' ', consoleLink());
 		}
 
-		dom.content(this.exitBox, exit);
+		setContent(this.exitBox, exit);
 
 		/* peers */
 		var pathText = {
@@ -550,22 +562,22 @@ return view.extend({
 		};
 
 		if (!sum.peers.length) {
-			dom.content(this.peersBox, E('p', {}, _('No other devices yet.')));
+			setContent(this.peersBox, el('p', {}, _('No other devices yet.')));
 		}
 		else {
-			dom.content(this.peersBox, E('table', { 'class': 'table' }, [
-				E('tr', { 'class': 'tr table-titles' }, [
-					E('th', { 'class': 'th' }, _('Name')),
-					E('th', { 'class': 'th' }, _('Mesh IP')),
-					E('th', { 'class': 'th' }, _('Status')),
-					E('th', { 'class': 'th' }, _('Connection'))
+			setContent(this.peersBox, el('table', { 'class': 'table' }, [
+				el('tr', { 'class': 'tr table-titles' }, [
+					el('th', { 'class': 'th' }, _('Name')),
+					el('th', { 'class': 'th' }, _('Mesh IP')),
+					el('th', { 'class': 'th' }, _('Status')),
+					el('th', { 'class': 'th' }, _('Connection'))
 				])
 			].concat(sum.peers.map(function(p) {
-				return E('tr', { 'class': 'tr' }, [
-					E('td', { 'class': 'td' }, p.name),
-					E('td', { 'class': 'td' }, p.ips.join(', ')),
-					E('td', { 'class': 'td' }, p.online ? _('Online') : _('Offline')),
-					E('td', { 'class': 'td' }, p.online ? pathText[p.path] : '—')
+				return el('tr', { 'class': 'tr' }, [
+					el('td', { 'class': 'td' }, p.name),
+					el('td', { 'class': 'td' }, p.ips.join(', ')),
+					el('td', { 'class': 'td' }, p.online ? _('Online') : _('Offline')),
+					el('td', { 'class': 'td' }, p.online ? pathText[p.path] : '—')
 				]);
 			}))));
 		}
@@ -577,12 +589,12 @@ return view.extend({
 			return;
 
 		this.actionsBox.setAttribute('data-running', String(running));
-		dom.content(this.actionsBox, [
+		setContent(this.actionsBox, [
 			running
-				? E('button', { 'class': 'btn cbi-button cbi-button-neutral', 'click': ui.createHandlerFn(this, 'handleDown') }, _('Disconnect'))
-				: E('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleReconnect') }, _('Reconnect')),
+				? el('button', { 'class': 'btn cbi-button cbi-button-neutral', 'click': ui.createHandlerFn(this, 'handleDown') }, _('Disconnect'))
+				: el('button', { 'class': 'btn cbi-button cbi-button-action', 'click': ui.createHandlerFn(this, 'handleReconnect') }, _('Reconnect')),
 			' ',
-			E('button', { 'class': 'btn cbi-button cbi-button-negative', 'click': ui.createHandlerFn(this, 'handleLogout') }, _('Log out'))
+			el('button', { 'class': 'btn cbi-button cbi-button-negative', 'click': ui.createHandlerFn(this, 'handleLogout') }, _('Log out'))
 		]);
 	},
 
@@ -590,7 +602,7 @@ return view.extend({
 		return helper([ 'logs' ]).then(L.bind(function(res) {
 			var lines = (res.ok && Array.isArray(res.lines)) ? res.lines : null;
 
-			dom.content(this.logBox, lines ? (lines.length ? lines.join('\n') : _('No log lines.')) : errorText(res));
+			setContent(this.logBox, lines ? (lines.length ? lines.join('\n') : _('No log lines.')) : errorText(res));
 
 			if (lines)
 				this.logBox.scrollTop = this.logBox.scrollHeight;
@@ -639,11 +651,11 @@ return view.extend({
 
 	handleLogout: function() {
 		ui.showModal(_('Log out of the mesh?'), [
-			E('p', {}, _('This router leaves the mesh. Joining again needs a new join code from the console.')),
-			E('div', { 'class': 'right' }, [
-				E('button', { 'class': 'btn', 'click': function() { ui.hideModal(); } }, _('Cancel')),
+			el('p', {}, _('This router leaves the mesh. Joining again needs a new join code from the console.')),
+			el('div', { 'class': 'right' }, [
+				el('button', { 'class': 'btn', 'click': function() { ui.hideModal(); } }, _('Cancel')),
 				' ',
-				E('button', {
+				el('button', {
 					'class': 'btn cbi-button-negative',
 					'click': L.bind(function() {
 						this.runAction([ 'logout' ], _('Logging out…'));
