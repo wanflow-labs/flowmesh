@@ -3,7 +3,7 @@
 # Adds the Wanflow FlowMesh package feed to this OpenWrt router, with the key its index is signed
 # with, for opkg (OpenWrt 21.02 to 24.10) or apk (OpenWrt 25.12 and later):
 #
-#   wget -qO- https://dl.wanflow.com/openwrt/add-feed.sh | sh
+#   wget -qO- https://dl.wanflow.com/flowmesh/openwrt/add-feed.sh | sh
 #
 # then `opkg update && opkg install luci-app-flowmesh` (apk: `apk update && apk add luci-app-flowmesh`).
 # Running it again replaces the feed entry instead of adding a second one. FLOWMESH_FEED_BASE sets
@@ -14,7 +14,7 @@
 # (arches.txt) and the public keys (keys/) when it builds the feed.
 set -eu
 
-BASE=${FLOWMESH_FEED_BASE:-https://dl.wanflow.com/openwrt}
+BASE=${FLOWMESH_FEED_BASE:-https://dl.wanflow.com/flowmesh/openwrt}
 BASE=${BASE%/}
 ARCHES="@ARCHES@"
 

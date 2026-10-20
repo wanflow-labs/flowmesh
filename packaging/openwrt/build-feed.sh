@@ -102,6 +102,11 @@ awk -v arches="${arches[*]}" -v usign_file="$usign_pub" -v apk_file="$apk_pub" '
   { print }
   END { if (n != 2) exit 1 }' "$here/add-feed.sh" > "$feed/add-feed.sh"
 ! grep -q '@[A-Z_]*@' "$feed/add-feed.sh" || { echo "add-feed.sh: placeholder left" >&2; exit 1; }
+# The default address is where the download mirror (packaging/mirror-sync.sh, DEST served at
+# https://dl.wanflow.com/flowmesh/) publishes the feed: DEST/openwrt.
+feed_url=https://dl.wanflow.com/flowmesh/openwrt
+grep -qxF "BASE=\${FLOWMESH_FEED_BASE:-$feed_url}" "$feed/add-feed.sh" ||
+  { echo "add-feed.sh: the default BASE is not $feed_url" >&2; exit 1; }
 chmod 0755 "$feed/add-feed.sh"
 
 out=$dist/flowmesh-openwrt-feed-$version.tar.gz

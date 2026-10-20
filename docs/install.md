@@ -40,7 +40,7 @@ curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/ins
 OpenWrt 21.02 to 25.12 on x86_64, aarch64 and armv7 with VFP (no MIPS yet). First add the FlowMesh package feed on the router:
 
 ```sh
-wget -qO- https://dl.wanflow.com/openwrt/add-feed.sh | sh
+wget -qO- https://dl.wanflow.com/flowmesh/openwrt/add-feed.sh | sh
 ```
 
 The script detects the router's architecture and package manager, imports the feed's signing key and writes the feed entry (opkg: `/etc/opkg/customfeeds.conf`; apk: `/etc/apk/repositories.d/flowmesh.list`). Running it again does not add a second entry; on an unsupported architecture it stops with an error. The feed's index is signed (usign for opkg, an apk signature for apk): an index with a wrong signature, or a package that does not match the index, is refused, and no `--force-*` or `--allow-untrusted` is needed. The feed carries the latest version only.

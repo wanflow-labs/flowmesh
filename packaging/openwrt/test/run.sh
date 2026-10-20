@@ -160,6 +160,9 @@ our_installed() {
 if [ -n "$feed" ]; then
   if [ $pm = opkg ]; then fmt=ipk; feed_index=Packages; else fmt=apk; feed_index=packages.adb; fi
   check "feed has add-feed.sh and the $fmt index for x86_64" test -s "$feed/add-feed.sh" -a -s "$feed/$fmt/x86_64/$feed_index"
+  # The default address must be where the download mirror publishes the feed (this test overrides it).
+  check "add-feed.sh defaults to https://dl.wanflow.com/flowmesh/openwrt" \
+    grep -qxF 'BASE=${FLOWMESH_FEED_BASE:-https://dl.wanflow.com/flowmesh/openwrt}' "$feed/add-feed.sh"
   www=$vm/www
   mkdir -p "$www"
   cp -a "$feed" "$www/good" 2>/dev/null; cp -a "$feed" "$www/badindex" 2>/dev/null; cp -a "$feed" "$www/badpkg" 2>/dev/null
