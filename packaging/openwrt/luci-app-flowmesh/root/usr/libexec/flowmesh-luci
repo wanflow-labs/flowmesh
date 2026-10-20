@@ -6,6 +6,7 @@
 #   status                              `flowmesh status --json`, unchanged
 #   up <server_url> <auth_key> <hostname>
 #                                       join; the key reaches the CLI only through a 0600 file
+#   reconnect                           bring a joined node back up after `down` (no key needed)
 #   down | logout                       {"ok":true} or an error
 #   apply                               push /etc/config/flowmesh to the daemon (the init's reload)
 #   logs                                {"ok":true,"lines":[...]}: the last 200 flowmesh log lines
@@ -77,6 +78,35 @@ valid() {
 	printf '%s' "$1" | grep -Eq "$2"
 }
 
+# Stricter than a URL needs to be: no shell metacharacters, quotes or spaces anywhere.
+URL_RE='^https?://[][A-Za-z0-9.:-]+(/[A-Za-z0-9._~/?#@%+=,:-]*)?$'
+
+# up_cli <flowmesh up args...>: run `flowmesh up` with the UCI flag set and the given arguments,
+# under the hard deadline; fail unless it succeeds. Needs flowmesh_load_prefs done.
+up_cli() {
+	local flag outfile pid watchdog
+	outfile=$(mktemp /tmp/flowmesh-up.XXXXXX) || fail unknown "mktemp failed"
+	flag=$outfile.timeout
+	TMPFILES="$TMPFILES $outfile $flag"
+	# `up` must repeat every setting the service applied, or the CLI refuses: the full flag set
+	# from UCI, the same one the init's reload sends.
+	flowmesh_cli exec up "$@" --timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 &
+	pid=$!
+	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep.)
+	( sleep "$UP_DEADLINE" && touch "$flag" && kill "$pid" ) < /dev/null > /dev/null 2>&1 &
+	watchdog=$!
+	wait "$pid" 2> /dev/null   # (the shell reports a killed job on stderr)
+	RC=$?
+	kill "$watchdog" 2>/dev/null
+	OUT=$(cat "$outfile")
+	[ -e "$flag" ] && fail timeout "$OUT"
+	check_cli
+}
+
+TMPFILES=
+trap 'rm -f $TMPFILES' EXIT
+trap 'exit 1' INT TERM HUP
+
 cmd_status() {
 	run_cli status --json
 	# The CLI exits 1 whenever the node is not running (NeedsLogin, Stopped, ...) and still prints
@@ -90,10 +120,8 @@ cmd_status() {
 
 cmd_up() {
 	[ $# -eq 3 ] || fail invalid_arg "usage: up <server_url> <auth_key> <hostname>"
-	local url="$1" key="$2" host="$3" keyfile flag outfile pid watchdog
-	# Stricter than a URL needs to be: no shell metacharacters, quotes or spaces anywhere.
-	valid "$url" '^https?://[][A-Za-z0-9.:-]+(/[A-Za-z0-9._~/?#@%+=,:-]*)?$' ||
-		fail invalid_arg "server_url"
+	local url="$1" key="$2" host="$3" keyfile
+	valid "$url" "$URL_RE" || fail invalid_arg "server_url"
 	valid "$key" '^[A-Za-z0-9_-]{8,128}$' || fail invalid_arg "auth_key"
 	valid "$host" '^[A-Za-z0-9-]{1,63}$' || fail invalid_arg "hostname"
 
@@ -104,31 +132,31 @@ cmd_up() {
 
 	umask 077
 	keyfile=$(mktemp /tmp/flowmesh-key.XXXXXX) || fail unknown "mktemp failed"
-	flag=$keyfile.timeout
-	outfile=$keyfile.out
-	trap 'rm -f "$keyfile" "$flag" "$outfile"' EXIT
+	TMPFILES="$TMPFILES $keyfile"
 	printf '%s\n' "$key" > "$keyfile"
-
-	# `up` must repeat every setting the service applied, or the CLI refuses: --reset plus the full
-	# flag set from UCI, the same one the init's reload sends.
-	flowmesh_cli exec up --reset --login-server="$url" --auth-key="file:$keyfile" \
-		--timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 &
-	pid=$!
-	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep.)
-	( sleep "$UP_DEADLINE" && touch "$flag" && kill "$pid" ) < /dev/null > /dev/null 2>&1 &
-	watchdog=$!
-	wait "$pid" 2> /dev/null   # (the shell reports a killed job on stderr)
-	RC=$?
-	kill "$watchdog" 2>/dev/null
+	up_cli --reset --login-server="$url" --auth-key="file:$keyfile"
 	rm -f "$keyfile"
-	OUT=$(cat "$outfile")
-	[ -e "$flag" ] && fail timeout "$OUT"
-	check_cli
 
 	# Joined: keep the name for later reloads, and the exit-node firewall in line with the flags.
 	if [ "$(uci -q get flowmesh.main.hostname)" != "$host" ]; then
 		uci -q set flowmesh.main.hostname="$host" && uci -q commit flowmesh
 	fi
+	flowmesh_apply_fw > /dev/null 2>&1
+	ok
+}
+
+# After `down` the node keeps its login; `up` needs the control server repeated (the CLI refuses
+# otherwise), which the daemon still holds in its preferences. No --reset: nothing is forgotten.
+cmd_reconnect() {
+	local url
+	run_cli debug prefs
+	check_cli
+	url=$(printf '%s' "$OUT" | jsonfilter -e '@.control_url' 2>/dev/null)
+	valid "$url" "$URL_RE" || fail invalid_arg "no control server to reconnect to"
+	. /lib/functions.sh
+	. "$PREFS"
+	flowmesh_load_prefs
+	up_cli --login-server="$url"
 	flowmesh_apply_fw > /dev/null 2>&1
 	ok
 }
@@ -142,7 +170,7 @@ cmd_apply() {
 cmd_logs() {
 	local line tmp
 	tmp=$(mktemp /tmp/flowmesh-logs.XXXXXX) || fail unknown "mktemp failed"
-	trap 'rm -f "$tmp"' EXIT
+	TMPFILES="$TMPFILES $tmp"
 	# (Through a file: a pipe into the loop would run it in a subshell and lose the JSON state.)
 	logread -e flowmesh 2>/dev/null | tail -n "$LOG_LINES" > "$tmp"
 	json_init
@@ -160,13 +188,14 @@ cmd_logs() {
 cmd=$1
 shift
 case "$cmd" in
-status | down | logout | apply | logs)
+status | reconnect | down | logout | apply | logs)
 	[ $# -eq 0 ] || fail invalid_arg "$cmd takes no arguments"
 	;;
 esac
 case "$cmd" in
 status) cmd_status ;;
 up) cmd_up "$@" ;;
+reconnect) cmd_reconnect ;;
 down | logout)
 	run_cli "$cmd"
 	check_cli

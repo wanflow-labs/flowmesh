@@ -1,14 +1,21 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: Apache-2.0
 # OpenWrt packages from the release tarballs (build/release.sh): for every architecture in
-# arches.txt, an opkg package and an apk-tools 3 package (OpenWrt 25.12 and later), assembled here
-# without the OpenWrt SDK. All timestamps are SOURCE_DATE_EPOCH, so the packages reproduce.
+# arches.txt, an opkg package and an apk-tools 3 package (OpenWrt 25.12 and later) of flowmesh, plus
+# the architecture-independent LuCI page luci-app-flowmesh, assembled here without the OpenWrt SDK.
+# All timestamps are SOURCE_DATE_EPOCH, so the packages reproduce.
 #   packaging/openwrt/build-packages.sh <dist_dir> <out_dir>
 # Reads <dist_dir>/flowmesh-<version>-openwrt-<family>.tar.gz; writes, per architecture,
 #   <out_dir>/<arch>/flowmesh_<version>-1_<arch>.ipk
 #   <out_dir>/<arch>/flowmesh-<version>-r1.apk      (its arch field is <arch>)
-# Needs GNU tar, gzip and apk-tools 3 (`apk mkpkg`; APK=/path/to/apk to choose one). The packages
-# are unsigned: the feed's index carries the signature.
+# and once
+#   <out_dir>/all/luci-app-flowmesh_<version>-1_all.ipk
+#   <out_dir>/all/luci-app-flowmesh-<version>-r1.apk  (arch noarch)
+# A feed for one architecture is <out_dir>/<arch>/ plus the files of <out_dir>/all/ (the feed
+# builder copies them in). luci-app-flowmesh depends on flowmesh of the same version.
+# Needs GNU tar, gzip, apk-tools 3 (`apk mkpkg`; APK=/path/to/apk to choose one) and LuCI's po2lmo
+# (PO2LMO=/path/to/po2lmo; when unset it is built with tools/build-po2lmo.sh, which downloads its
+# pinned source). The packages are unsigned: the feed's index carries the signature.
 set -euo pipefail
 [ $# -eq 2 ] || { echo "usage: $0 <dist_dir> <out_dir>" >&2; exit 2; }
 here=$(cd "$(dirname "$0")" && pwd)
@@ -37,8 +44,17 @@ license=Apache-2.0
 url=https://github.com/wanflow-labs/flowmesh
 description="Wanflow FlowMesh: joins this router to a FlowMesh mesh network (flowmeshd daemon and flowmesh command)"
 
+luci_pkg=luci-app-flowmesh
+luci_description="Wanflow FlowMesh: LuCI page (Services > FlowMesh)"
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+
+PO2LMO=${PO2LMO:-}
+if [ -z "$PO2LMO" ]; then
+  "$here/tools/build-po2lmo.sh" "$work/tools" > /dev/null
+  PO2LMO=$work/tools/po2lmo
+fi
 
 # Deterministic tar.gz of directory $1's contents ("./..." entries, like OpenWrt's ipkg-build).
 tgz() {
@@ -68,29 +84,56 @@ stage_root() {
   install -Dm0644 "$f/flowmesh.keep" "$root/lib/upgrade/keep.d/flowmesh"
 }
 
+# The installed files of luci-app-flowmesh.
+stage_luci() {
+  local root=$1 d="$here/luci-app-flowmesh" po lang
+  install -Dm0755 "$d/root/usr/libexec/flowmesh-luci" "$root/usr/libexec/flowmesh-luci"
+  install -Dm0644 "$d/root/usr/share/luci/menu.d/luci-app-flowmesh.json" \
+    "$root/usr/share/luci/menu.d/luci-app-flowmesh.json"
+  install -Dm0644 "$d/root/usr/share/rpcd/acl.d/luci-app-flowmesh.json" \
+    "$root/usr/share/rpcd/acl.d/luci-app-flowmesh.json"
+  (cd "$d/htdocs" && find . -type f -name '*.js') | sort | while read -r f; do
+    install -Dm0644 "$d/htdocs/$f" "$root/www/$f"
+  done
+  for po in "$d"/po/*/flowmesh.po; do
+    lang=$(basename "$(dirname "$po")")
+    # LuCI's language codes for these directories (luci.mk LUCI_LC_ALIAS); others are lower-cased.
+    case "$lang" in
+      zh_Hans) lang=zh-cn ;; zh_Hant) lang=zh-tw ;; pt_BR) lang=pt-br ;; nb_NO) lang=no ;; bn_BD) lang=bn ;;
+      *) lang=$(echo "$lang" | tr 'A-Z_' 'a-z-') ;;
+    esac
+    mkdir -p "$root/usr/lib/lua/luci/i18n"
+    "$PO2LMO" "$po" "$root/usr/lib/lua/luci/i18n/flowmesh.$lang.lmo"
+  done
+}
+
+# build_ipk <arch> <root> <dest> <name> <depends (opkg syntax)> <section> <description>
+#   <scripts dir (postinst, prerm, postrm: those present)> [conffile]
 build_ipk() {
-  local arch=$1 root=$2 dest=$3 c="$work/ipk-control" p="$work/ipk-outer"
+  local arch=$1 root=$2 dest=$3 name=$4 deps=$5 section=$6 desc=$7 scripts=$8 conffile=${9:-}
+  local c="$work/ipk-control" p="$work/ipk-outer" s
   rm -rf "$c" "$p"
   mkdir -p "$c" "$p"
   local size
   size=$(find "$root" -type f -printf '%s\n' | awk '{ s += $1 } END { print s }')
   cat > "$c/control" <<EOF
-Package: $pkg
+Package: $name
 Version: $ipk_version
-Depends: ${depends// /, }
+Depends: $deps
 Source: $url
-SourceName: $pkg
+SourceName: $name
 License: $license
-Section: net
+Section: $section
 SourceDateEpoch: $SOURCE_DATE_EPOCH
 URL: $url
 Architecture: $arch
 Installed-Size: $size
-Description: $description
+Description: $desc
 EOF
-  echo /etc/config/flowmesh > "$c/conffiles"
-  install -m0755 "$here/flowmesh/control/postinst" "$c/postinst"
-  install -m0755 "$here/flowmesh/control/prerm" "$c/prerm"
+  [ -z "$conffile" ] || echo "$conffile" > "$c/conffiles"
+  for s in postinst prerm postrm; do
+    [ ! -f "$scripts/$s" ] || install -m0755 "$scripts/$s" "$c/$s"
+  done
   echo 2.0 > "$p/debian-binary"
   tgz "$root" > "$p/data.tar.gz"
   tgz "$c" > "$p/control.tar.gz"
@@ -100,24 +143,28 @@ EOF
       -C "$p" -cf - ./debian-binary ./data.tar.gz ./control.tar.gz | gzip -n -9 > "$dest"
 }
 
+# build_apk <arch> <root> <dest> <name> <depends (apk syntax)> <description> <scripts dir>
 build_apk() {
-  local arch=$1 root=$2 dest=$3
+  local arch=$1 root=$2 dest=$3 name=$4 deps=$5 desc=$6 scripts=$7
   find "$root" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+  # opkg script names -> apk script types.
+  local sargs=()
+  [ ! -f "$scripts/postinst" ] || sargs+=(--script "post-install:$scripts/postinst" --script "post-upgrade:$scripts/postinst")
+  [ ! -f "$scripts/prerm" ] || sargs+=(--script "pre-deinstall:$scripts/prerm")
+  [ ! -f "$scripts/postrm" ] || sargs+=(--script "post-deinstall:$scripts/postrm")
   # Files are recorded with their owner: run as (namespaced) root so they belong to root.
   local asroot=()
   [ "$(id -u)" = 0 ] || asroot=(unshare -r)
   "${asroot[@]}" "$APK" mkpkg \
-    --info "name:$pkg" \
+    --info "name:$name" \
     --info "version:$apk_version" \
-    --info "description:$description" \
+    --info "description:$desc" \
     --info "arch:$arch" \
     --info "license:$license" \
-    --info "origin:$pkg" \
+    --info "origin:$name" \
     --info "url:$url" \
-    --info "depends:$depends" \
-    --script "post-install:$here/flowmesh/control/postinst" \
-    --script "post-upgrade:$here/flowmesh/control/postinst" \
-    --script "pre-deinstall:$here/flowmesh/control/prerm" \
+    --info "depends:$deps" \
+    "${sargs[@]}" \
     --files "$root" \
     --output "$dest"
 }
@@ -128,8 +175,22 @@ while read -r arch family; do
   root="$work/root-$family"
   [ -d "$root" ] || stage_root "$family" "$root"
   mkdir -p "$out/$arch"
-  build_ipk "$arch" "$root" "$out/$arch/${pkg}_${ipk_version}_${arch}.ipk"
-  build_apk "$arch" "$root" "$out/$arch/$pkg-$apk_version.apk"
+  build_ipk "$arch" "$root" "$out/$arch/${pkg}_${ipk_version}_${arch}.ipk" "$pkg" "${depends// /, }" net \
+    "$description" "$here/flowmesh/control" /etc/config/flowmesh
+  build_apk "$arch" "$root" "$out/$arch/$pkg-$apk_version.apk" "$pkg" "$depends" "$description" \
+    "$here/flowmesh/control"
   n=$((n + 1))
 done < "$here/arches.txt"
 echo "$n architectures: $out/<arch>/{${pkg}_${ipk_version}_<arch>.ipk,$pkg-$apk_version.apk}"
+
+# luci-app-flowmesh needs the flowmesh of the same version (it uses /usr/share/flowmesh/prefs.sh);
+# rpcd-mod-file runs its helper (luci-base pulls it in too).
+lroot="$work/root-luci"
+stage_luci "$lroot"
+mkdir -p "$out/all"
+build_ipk all "$lroot" "$out/all/${luci_pkg}_${ipk_version}_all.ipk" "$luci_pkg" \
+  "flowmesh (= $ipk_version), luci-base, rpcd-mod-file" luci "$luci_description" \
+  "$here/luci-app-flowmesh/control"
+build_apk noarch "$lroot" "$out/all/$luci_pkg-$apk_version.apk" "$luci_pkg" \
+  "flowmesh=$apk_version luci-base rpcd-mod-file" "$luci_description" "$here/luci-app-flowmesh/control"
+echo "and $out/all/{${luci_pkg}_${ipk_version}_all.ipk,$luci_pkg-$apk_version.apk}"

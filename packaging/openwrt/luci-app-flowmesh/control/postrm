@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: Apache-2.0
+# As LuCI's own packages do (luci.mk): drop LuCI's caches so the menu entry and ACL follow the change.
+[ -n "${IPKG_INSTROOT}" ] && exit 0
+rm -f /tmp/luci-indexcache /tmp/luci-indexcache.*
+rm -rf /tmp/luci-modulecache/
+killall -HUP rpcd 2>/dev/null
+exit 0
