@@ -5,6 +5,13 @@
 # reboot, stop, removal. Exit status is the number of failed checks (0: all passed).
 #
 #   run.sh <openwrt-version | image.img[.gz]> <flowmesh .ipk or .apk>
+#   run.sh <openwrt-version | image.img[.gz]> <flowmesh-openwrt-feed-<v>.tar.gz or its openwrt/ dir>
+#
+# With a feed (build-feed.sh), the router adds it with the feed's add-feed.sh (served from this host
+# over the lab LAN; FLOWMESH_FEED_BASE points it there) and installs luci-app-flowmesh from it with
+# plain opkg/apk (no --force-*, no --allow-untrusted); first a copy with a tampered index and one with
+# tampered packages must both be refused. Tampering with the apk index needs APK (apk-tools 3) and
+# openssl on this host.
 #
 # Needs the lab from lab.sh (OWT_WORK, default ./owt-work, holds lab.env), KVM, qemu-system-x86_64
 # and passwordless sudo (tap device, network namespaces). An OpenWrt version (e.g. 24.10.8) is
@@ -65,7 +72,9 @@ label=$(basename "$img" | sed 's/^openwrt-//; s/-x86-64.*//')
 # --- the VM ----------------------------------------------------------------------------------
 vm=$(mktemp -d "$OWT_WORK/vm.XXXXXX")
 qemu_pid=
+http_pid=
 cleanup() {
+  if [ -n "$http_pid" ]; then kill "$http_pid" 2>/dev/null; wait "$http_pid" 2>/dev/null; fi
   if [ -n "$qemu_pid" ] && kill -0 "$qemu_pid" 2>/dev/null; then
     kill "$qemu_pid"
     for _ in $(seq 1 20); do kill -0 "$qemu_pid" 2>/dev/null || break; sleep 0.5; done
@@ -134,9 +143,117 @@ no_daemon() { ! r 'pidof flowmeshd' >/dev/null; }
 
 before=$(fw_inventory)
 
-# --- install ---------------------------------------------------------------------------------
-pkg_name=$(basename "$pkg")
-if [ -f "$pkg" ] && r "cat > /tmp/$pkg_name" < "$pkg"; then
+# --- install from the feed ----------------------------------------------------------------------
+feed=
+case "$pkg" in
+  *.tar.gz) mkdir -p "$vm/feed"; tar -xzf "$pkg" -C "$vm/feed" 2>/dev/null; feed=$vm/feed/openwrt ;;
+  *) [ -d "$pkg" ] && feed=$pkg ;;
+esac
+OWT_FEED_PORT=${OWT_FEED_PORT:-18490}
+furl="http://$OWT_LAN_HOST_IP:$OWT_FEED_PORT"
+# The router runs the feed's own add-feed.sh, as users do: wget -qO- <base>/add-feed.sh | sh.
+add_feed() { r "wget -qO- $furl/$1/add-feed.sh | FLOWMESH_FEED_BASE=$furl/$1 sh"; }
+our_installed() {
+  if [ $pm = opkg ]; then r 'opkg list-installed' | grep -E '^(flowmesh|luci-app-flowmesh) '
+  else r 'apk info 2>/dev/null' | grep -xE 'flowmesh|luci-app-flowmesh'; fi
+}
+if [ -n "$feed" ]; then
+  if [ $pm = opkg ]; then fmt=ipk; feed_index=Packages; else fmt=apk; feed_index=packages.adb; fi
+  check "feed has add-feed.sh and the $fmt index for x86_64" test -s "$feed/add-feed.sh" -a -s "$feed/$fmt/x86_64/$feed_index"
+  www=$vm/www
+  mkdir -p "$www"
+  cp -a "$feed" "$www/good" 2>/dev/null; cp -a "$feed" "$www/badindex" 2>/dev/null; cp -a "$feed" "$www/badpkg" 2>/dev/null
+  # badindex: opkg's Packages edited under its old signature; apk's index re-signed with a key nobody trusts.
+  if [ $pm = opkg ]; then
+    d=$www/badindex/ipk/x86_64
+    sed -i 's/^\(Description: .*LuCI.*\)$/\1 (tampered)/' "$d/Packages" 2>/dev/null &&
+      gzip -n -9 -c "$d/Packages" > "$d/Packages.gz"
+  else
+    d=$www/badindex/apk/x86_64
+    openssl ecparam -name prime256v1 -genkey -noout -out "$vm/rogue.pem" 2>/dev/null
+    mkdir -p "$vm/apkroot"
+    (cd "$d" && "${APK:-apk}" mkndx --root "$vm/apkroot" --allow-untrusted --sign-key "$vm/rogue.pem" \
+        --output packages.adb ./*.apk) >/dev/null 2>&1 || echo "   (could not re-sign the apk index: set APK)"
+  fi
+  # badpkg: the index is genuine, our packages are not the ones it lists.
+  for f in "$www/badpkg/$fmt/x86_64"/*flowmesh*."$fmt"; do [ -f "$f" ] && printf 'tampered' >> "$f"; done
+  python3 -m http.server "$OWT_FEED_PORT" --bind "$OWT_LAN_HOST_IP" --directory "$www" > "$vm/http.log" 2>&1 &
+  http_pid=$!
+  eventually 10 curl -sf -o /dev/null "$furl/good/add-feed.sh"
+
+  check "the router can download over HTTPS (the default feed address is https)" \
+    eventually 30 r 'wget -q -O /dev/null https://downloads.openwrt.org/'
+
+  # An architecture without packages is refused, and nothing is written.
+  out=$(r "cp /etc/openwrt_release /tmp/owt_release
+           sed -i 's/^DISTRIB_ARCH=.*/DISTRIB_ARCH=\"mips_24kc\"/' /etc/openwrt_release
+           wget -qO- $furl/good/add-feed.sh | FLOWMESH_FEED_BASE=$furl/good sh; echo \"exit=\$?\"
+           cp /tmp/owt_release /etc/openwrt_release" 2>&1)
+  sed 's/^/   | /' <<< "$out"
+  check "add-feed.sh refuses an unsupported architecture (mips_24kc), writes no feed" eval '
+    grep -q "exit=1" <<< "$out" && grep -q "mips_24kc" <<< "$out" &&
+    ! r "grep -qs flowmesh /etc/opkg/customfeeds.conf || test -e /etc/apk/repositories.d/flowmesh.list"'
+
+  # Tampered index: refused at update; nothing of ours can be installed.
+  add_feed badindex > /dev/null 2>&1
+  if [ $pm = opkg ]; then
+    out=$(r 'opkg update 2>&1'); reject='Signature check failed'
+  else
+    out=$(r 'apk update 2>&1'); reject='UNTRUSTED signature'
+  fi
+  grep -iE 'flowmesh|signature|untrusted' <<< "$out" | head -4 | sed 's/^/   | /'
+  check "tampered index is rejected by $pm update ($reject)" grep -q "$reject" <<< "$out"
+  if [ $pm = opkg ]; then out=$(r 'opkg install luci-app-flowmesh 2>&1'); else out=$(r 'apk add luci-app-flowmesh 2>&1'); fi
+  st=$?
+  tail -2 <<< "$out" | sed 's/^/   | /'
+  check "tampered index: luci-app-flowmesh cannot be installed" eval '[ $st -ne 0 ] && [ -z "$(our_installed)" ]'
+
+  # Tampered packages under a genuine index: refused at install.
+  add_feed badpkg > /dev/null 2>&1
+  # (The index is accepted: the package is listed. The refusal comes at install.)
+  if [ $pm = opkg ]; then
+    r 'opkg update' > /dev/null 2>&1; listed=$(r 'opkg list luci-app-flowmesh'); out=$(r 'opkg install luci-app-flowmesh 2>&1')
+  else
+    r 'apk update' > /dev/null 2>&1; listed=$(r 'apk search luci-app-flowmesh'); out=$(r 'apk add luci-app-flowmesh 2>&1')
+  fi
+  st=$?
+  grep -iE 'flowmesh|hash|checksum|sha256|mismatch|bad' <<< "$out" | head -4 | sed 's/^/   | /'
+  check "packages that do not match the signed index are refused, nothing of ours installed" \
+    eval '[ -n "$listed" ] && [ $st -ne 0 ] && [ -z "$(our_installed)" ]'
+
+  # The genuine feed; adding it twice leaves one entry.
+  add_feed good 2>&1 | sed 's/^/   | /'
+  add_feed good > /dev/null 2>&1
+  if [ $pm = opkg ]; then
+    want="src/gz flowmesh $furl/good/ipk/x86_64"
+    check "add-feed.sh twice: one feed entry in customfeeds.conf, the genuine feed" \
+      eval '[ "$(r "grep \"^src/gz flowmesh \" /etc/opkg/customfeeds.conf")" = "$want" ]'
+    keyline=$(sed -n 2p "$feed/keys/flowmesh-usign.pub")
+    check "add-feed.sh twice: the usign key is in /etc/opkg/keys once" \
+      eval '[ -n "$keyline" ] && [ "$(r "grep -rlF \"$keyline\" /etc/opkg/keys | wc -l")" = 1 ]'
+  else
+    want="$furl/good/apk/x86_64/packages.adb"
+    check "add-feed.sh twice: one repository line in /etc/apk/repositories.d/flowmesh.list, the genuine feed" \
+      eval '[ "$(r "cat /etc/apk/repositories.d/flowmesh.list")" = "$want" ]'
+    check "add-feed.sh: /etc/apk/keys/flowmesh.pem is the feed's key" \
+      eval '[ -s "$feed/keys/flowmesh-apk.pem" ] && [ "$(r "cat /etc/apk/keys/flowmesh.pem")" = "$(cat "$feed/keys/flowmesh-apk.pem")" ]'
+  fi
+  # The packages come from the feed; their dependencies from the official feeds. No --force-*,
+  # no --allow-untrusted.
+  if [ $pm = opkg ]; then
+    r 'opkg update >/dev/null 2>&1; opkg install luci-app-flowmesh' > "$vm/install.log" 2>&1
+  else
+    r 'apk update >/dev/null 2>&1; apk add luci-app-flowmesh' > "$vm/install.log" 2>&1
+  fi
+  install_status=$?
+  sed 's/^/   | /' "$vm/install.log" | tail -15
+  check "luci-app-flowmesh installs from the feed (pulls in flowmesh)" [ $install_status -eq 0 ]
+  check "both flowmesh and luci-app-flowmesh are installed" eval '[ "$(our_installed | wc -l)" = 2 ]'
+  check "the LuCI page is in place" r 'test -f /www/luci-static/resources/view/flowmesh/overview.js'
+  if [ $pm = opkg ]; then r 'opkg list-installed | grep flowmesh'; else r 'apk info -v 2>/dev/null | grep flowmesh'; fi | sed 's/^/   | installed: /'
+
+# --- install a package file ---------------------------------------------------------------------
+elif pkg_name=$(basename "$pkg") && [ -f "$pkg" ] && r "cat > /tmp/$pkg_name" < "$pkg"; then
   if [ $pm = opkg ]; then
     r "opkg update >/dev/null && opkg install /tmp/$pkg_name" > "$vm/install.log" 2>&1
   else
@@ -241,7 +358,9 @@ check "stop: no inet flowmesh table, no fm-forward chain" own_rules_absent
 r '/etc/init.d/flowmesh start' >/dev/null 2>&1
 eventually 30 own_rules_present
 
-if [ $pm = opkg ]; then r 'opkg remove flowmesh'; else r 'apk del flowmesh'; fi 2>&1 | sed 's/^/   | /' | tail -5
+ours="flowmesh"
+[ -n "$feed" ] && ours="luci-app-flowmesh flowmesh"
+if [ $pm = opkg ]; then r "opkg remove $ours"; else r "apk del $ours"; fi 2>&1 | sed 's/^/   | /' | tail -5
 check "removed: no daemon" eventually 20 no_daemon
 check "removed: no flowmesh zone or forwardings, other zones unchanged" eval '[ "$(fw_inventory)" = "$before" ]'
 check "removed: no flowmesh rules in the running firewall ($fw)" eval '

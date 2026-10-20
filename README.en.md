@@ -45,6 +45,7 @@ The same throughput class at **a third to a half of the CPU** and **a fifth of t
 - **Share a local service** with the mesh (`flowmesh serve`): a web app, files, or a TCP port
 - **Operations built in**: `status`, `ping`, `whois`, `netcheck`, `metrics` (Prometheus), `bugreport`
 - **Packages** for Debian/Ubuntu (deb) and RHEL/Rocky/Alma (rpm), static binaries for x86_64 and aarch64, a hardened systemd unit
+- **OpenWrt routers** (21.02 to 25.12): a signed package feed added with one command, with a LuCI page ([install](docs/install.md#openwrt-routers))
 
 ## Trust, by design
 

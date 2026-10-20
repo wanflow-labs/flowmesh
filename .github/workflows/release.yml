@@ -2,7 +2,10 @@
 # Release: a tag vX.Y.Z builds the release twice — on the runner with build/setup-toolchain.sh, and in
 # the pinned container (build/Dockerfile) — and publishes only if both produce the same bytes
 # (docs/reproducible-builds.md). Run by hand (workflow_dispatch) it builds and compares, and does not
-# publish.
+# publish. The `openwrt` job turns the runner's build into the signed OpenWrt package feed
+# (packaging/openwrt/build-feed.sh) with the keys in the secrets OPENWRT_USIGN_KEY and OPENWRT_APK_KEY;
+# signatures are not reproducible, so the feed is not part of the comparison (its packages are built
+# from the compared tarballs).
 name: release
 on:
   push:
@@ -55,8 +58,52 @@ jobs:
           name: dist-container
           path: dist/SHA256SUMS
 
+  openwrt:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+      - name: Tools (apk-tools 3.0.5, usign, po2lmo; pinned sources, SHA-256 checked)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq meson ninja-build pkg-config libssl-dev zlib1g-dev
+          t=$RUNNER_TEMP/tools
+          packaging/openwrt/tools/build-apk-tools.sh "$t"
+          packaging/openwrt/tools/build-usign.sh "$t"
+          packaging/openwrt/tools/build-po2lmo.sh "$t"
+      - name: Packages
+        run: |
+          # build-packages.sh runs `apk mkpkg` in an unprivileged user namespace (unshare -r) so that
+          # files are recorded as root's; Ubuntu 24.04 runners forbid those by default (AppArmor).
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          t=$RUNNER_TEMP/tools
+          APK=$t/apk PO2LMO=$t/po2lmo packaging/openwrt/build-packages.sh dist pkgs
+      - name: Signed feed
+        env:
+          OPENWRT_USIGN_KEY: ${{ secrets.OPENWRT_USIGN_KEY }}
+          OPENWRT_APK_KEY: ${{ secrets.OPENWRT_APK_KEY }}
+        run: |
+          [ -n "$OPENWRT_USIGN_KEY" ] && [ -n "$OPENWRT_APK_KEY" ] ||
+            { echo "the secrets OPENWRT_USIGN_KEY and OPENWRT_APK_KEY must be set"; exit 1; }
+          keys=$(mktemp -d)
+          trap 'rm -rf "$keys"' EXIT
+          (umask 077; printf '%s\n' "$OPENWRT_USIGN_KEY" > "$keys/usign.sec"; printf '%s\n' "$OPENWRT_APK_KEY" > "$keys/apk.key")
+          t=$RUNNER_TEMP/tools
+          USIGN=$t/usign APK=$t/apk USIGN_KEY=$keys/usign.sec APK_KEY=$keys/apk.key \
+            packaging/openwrt/build-feed.sh pkgs feed
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-feed
+          path: feed/
+
   publish:
-    needs: [build, reproduce]
+    needs: [build, reproduce, openwrt]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -70,6 +117,10 @@ jobs:
         with:
           name: dist-container
           path: dist-container
+      - uses: actions/download-artifact@v4
+        with:
+          name: openwrt-feed
+          path: feed
       - name: Both builders produced the same bytes
         run: |
           # The container build has no packages; every file it did build must match.
@@ -88,8 +139,9 @@ jobs:
         run: |
           v=${GITHUB_REF_NAME#v}
           cp packaging/install.sh dist/install.sh
+          cp "feed/flowmesh-openwrt-feed-$v.tar.gz" dist/
           cd dist
-          # Mirrors (packaging/mirror-sync.sh) check install.sh against this list too.
-          sha256sum install.sh >> SHA256SUMS
+          # Mirrors (packaging/mirror-sync.sh) check install.sh and the feed against this list too.
+          sha256sum install.sh "flowmesh-openwrt-feed-$v.tar.gz" >> SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "FlowMesh $v" --notes-from-tag \
             flowmesh-*.tar.gz *.deb *.rpm *.cdx.json SHA256SUMS install.sh

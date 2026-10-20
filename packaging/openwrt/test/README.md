@@ -55,6 +55,33 @@ the number of failures. One VM runs at a time (it uses the fixed tap `owttap0` a
 OpenWrt release ships (3.0.5 for 25.12): `meson setup build -Dlua=disabled -Ddocs=disabled
 -Dhelp=disabled -Dpython=disabled -Dzstd=disabled && ninja -C build`, then `APK=build/src/apk`.
 
+## The package feed
+
+Given the feed (`build-feed.sh`) instead of a package, `run.sh` tests it the way users install:
+
+    SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) USIGN=/path/to/usign APK=/path/to/apk \
+        USIGN_KEY=/path/to/usign.sec APK_KEY=/path/to/apk.key \
+        packaging/openwrt/build-feed.sh pkgs dist
+    for v in 21.02.7 23.05.5 24.10.8 25.12.6; do
+        APK=/path/to/apk OWT_WORK=owt-work packaging/openwrt/test/run.sh $v dist/flowmesh-openwrt-feed-<v>.tar.gz
+    done
+
+It serves three copies of the feed from this host on the lab LAN (`python3 -m http.server` on
+`$OWT_LAN_HOST_IP:$OWT_FEED_PORT`, default port 18490): `good`; `badindex`, whose index was tampered
+with (opkg: `Packages` edited under its old signature; apk: the index re-signed with a throwaway key,
+which needs `APK` and `openssl` here); and `badpkg`, a genuine index with altered packages. The
+router runs the feed's own `add-feed.sh` (`wget -qO- <base>/add-feed.sh | FLOWMESH_FEED_BASE=<base> sh`).
+Checks: an unsupported architecture is refused; `badindex` is rejected by `opkg update` / `apk update`
+and nothing can be installed from it; `badpkg`'s packages are refused at install; `add-feed.sh` run
+twice leaves one feed entry and one key; `luci-app-flowmesh` installs from `good` with plain
+`opkg install` / `apk add` (no `--force-*`, no `--allow-untrusted`) and pulls in `flowmesh`; then all
+the package checks above run, and removal removes both packages. The router must also be able to
+download over HTTPS (the default feed address is `https://`).
+
+`tools/build-usign.sh` and `tools/build-apk-tools.sh` build the pinned usign and apk-tools that the
+release workflow uses (`build-apk-tools.sh` needs meson, ninja, pkg-config and the OpenSSL and zlib
+headers).
+
 ## luci-app-flowmesh
 
 The page's pure modules (join code parsing, status reading) are tested with node, on any machine:

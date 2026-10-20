@@ -45,6 +45,7 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh�
 - **把本机服务共享到组网**（`flowmesh serve`）：网页应用、文件或 TCP 端口
 - **内置运维命令**：`status`、`ping`、`whois`、`netcheck`、`metrics`（Prometheus）、`bugreport`
 - Debian/Ubuntu（deb）与 RHEL/Rocky/Alma（rpm）**安装包**，x86_64 与 aarch64 静态二进制，加固的 systemd 单元
+- **OpenWrt 路由器**（21.02 到 25.12）：签名软件源，一行命令添加，带 LuCI 界面（[安装](docs/install.zh-CN.md#openwrt-路由器)）
 
 ## 值得信任
 
