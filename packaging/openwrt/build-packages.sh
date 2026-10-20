@@ -6,11 +6,12 @@
 # All timestamps are SOURCE_DATE_EPOCH, so the packages reproduce.
 #   packaging/openwrt/build-packages.sh <dist_dir> <out_dir>
 # Reads <dist_dir>/flowmesh-<version>-openwrt-<family>.tar.gz; writes, per architecture,
-#   <out_dir>/<arch>/flowmesh_<version>-1_<arch>.ipk
-#   <out_dir>/<arch>/flowmesh-<version>-r1.apk      (its arch field is <arch>)
+#   <out_dir>/<arch>/flowmesh_<version>-<n>_<arch>.ipk
+#   <out_dir>/<arch>/flowmesh-<version>-r<n>.apk      (its arch field is <arch>)
 # and once
-#   <out_dir>/all/luci-app-flowmesh_<version>-1_all.ipk
-#   <out_dir>/all/luci-app-flowmesh-<version>-r1.apk  (arch noarch)
+#   <out_dir>/all/luci-app-flowmesh_<version>-<n>_all.ipk
+#   <out_dir>/all/luci-app-flowmesh-<version>-r<n>.apk  (arch noarch)
+# where <n> is the package release, FLOWMESH_PKG_RELEASE (default 1).
 # A feed for one architecture is <out_dir>/<arch>/ plus the files of <out_dir>/all/ (the feed
 # builder copies them in). luci-app-flowmesh depends on flowmesh of the same version.
 # Needs GNU tar, gzip, apk-tools 3 (`apk mkpkg`; APK=/path/to/apk to choose one) and LuCI's po2lmo
@@ -26,7 +27,13 @@ out=$(cd "$2" && pwd)
 APK=${APK:-apk}
 
 version=$(sed -n 's/^version = "\(.*\)"/\1/p' "$repo/Cargo.toml" | head -1)
-release=1
+# The package release (opkg -<n>, apk -r<n>): 1 for every new version. A rebuild of the same version
+# that must reach routers which have it already takes the next number (the upgrade test builds 1, 2
+# and 3 this way).
+release=${FLOWMESH_PKG_RELEASE:-1}
+case "$release" in
+  ''|0*|*[!0-9]*) echo "FLOWMESH_PKG_RELEASE must be a number from 1 (got '$release')" >&2; exit 1 ;;
+esac
 # apk versions do not allow '-' inside the upstream version (0.2.0-rc1 -> 0.2.0_rc1).
 apk_version="${version//-/_}-r$release"
 ipk_version="$version-$release"
@@ -148,8 +155,13 @@ build_apk() {
   local arch=$1 root=$2 dest=$3 name=$4 deps=$5 desc=$6 scripts=$7
   find "$root" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
   # opkg script names -> apk script types.
+  # post-upgrade is postinst with PKG_UPGRADE=1, the variable opkg sets for an upgrade (as OpenWrt's
+  # own apk packages do).
   local sargs=()
-  [ ! -f "$scripts/postinst" ] || sargs+=(--script "post-install:$scripts/postinst" --script "post-upgrade:$scripts/postinst")
+  if [ -f "$scripts/postinst" ]; then
+    { printf '#!/bin/sh\nPKG_UPGRADE=1\nexport PKG_UPGRADE\n'; sed 1d "$scripts/postinst"; } > "$work/post-upgrade"
+    sargs+=(--script "post-install:$scripts/postinst" --script "post-upgrade:$work/post-upgrade")
+  fi
   [ ! -f "$scripts/prerm" ] || sargs+=(--script "pre-deinstall:$scripts/prerm")
   [ ! -f "$scripts/postrm" ] || sargs+=(--script "post-deinstall:$scripts/postrm")
   # Files are recorded with their owner: run as (namespaced) root so they belong to root.

@@ -1,9 +1,12 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# Removal only (opkg does not run prerm on upgrade; apk runs pre-deinstall only on removal).
+# Removal (apk: pre-deinstall, run only on removal). opkg runs prerm on an upgrade too, with
+# PKG_UPGRADE=1: then nothing is stopped, disabled or removed, and postinst restarts the daemon on
+# the new binary (OpenWrt's default_prerm likewise leaves the enabled state alone on upgrade).
 # The state directory /etc/flowmesh (the node's identity) is kept, like a modified conffile.
 [ "$IPKG_NO_SCRIPT" = 1 ] && exit 0
 [ -n "$IPKG_INSTROOT" ] && exit 0
+[ "$PKG_UPGRADE" = 1 ] && exit 0
 /etc/init.d/flowmesh stop
 /etc/init.d/flowmesh disable
 # The daemon removes its routes and forwarding rules on the way out; wait for it.

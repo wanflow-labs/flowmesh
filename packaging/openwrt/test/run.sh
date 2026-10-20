@@ -157,6 +157,145 @@ our_installed() {
   if [ $pm = opkg ]; then r 'opkg list-installed' | grep -E '^(flowmesh|luci-app-flowmesh) '
   else r 'apk info 2>/dev/null' | grep -xE 'flowmesh|luci-app-flowmesh'; fi
 }
+
+# --- upgrade (OWT_UPGRADE_FROM) -----------------------------------------------------------------
+# OWT_UPGRADE_FROM="<feed 1> <feed 2>": older builds of the feed given as the package argument
+# (feed 3), e.g. the same version with package releases 1, 2 and 3. The router installs
+# luci-app-flowmesh from feed 1, joins through the LuCI helper and changes its settings, then:
+# upgrades to feed 2 (settings, identity, firewall zone kept; daemon restarted on the new binary),
+# is disabled and stopped by the user and upgraded to feed 3 (stays disabled and stopped), and finally
+# goes through a sysupgrade with the same image and a reinstall from the feed (rejoins with its kept
+# identity, no key).
+if [ -n "${OWT_UPGRADE_FROM:-}" ]; then
+  [ -n "$feed" ] || { echo "OWT_UPGRADE_FROM needs a feed as the package argument" >&2; exit 100; }
+  if [ $pm = opkg ]; then fmt=ipk; else fmt=apk; fi
+  www=$vm/www
+  mkdir -p "$www"
+  n=0
+  for f in $OWT_UPGRADE_FROM "$feed"; do
+    n=$((n + 1))
+    case "$f" in
+      *.tar.gz) mkdir -p "$vm/u$n"; tar -xzf "$f" -C "$vm/u$n" && mv "$vm/u$n/openwrt" "$www/feed$n" ;;
+      *) cp -a "$f" "$www/feed$n" ;;
+    esac
+  done
+  [ $n = 3 ] || { echo "OWT_UPGRADE_FROM must name two feeds" >&2; exit 100; }
+  python3 -m http.server "$OWT_FEED_PORT" --bind "$OWT_LAN_HOST_IP" --directory "$www" > "$vm/http.log" 2>&1 &
+  http_pid=$!
+  eventually 10 curl -sf -o /dev/null "$furl/feed1/add-feed.sh"
+
+  # What the package manager lists once feed $1's packages are installed, from their file names.
+  want_installed() {
+    local f b out=
+    for f in "$www/$1/$fmt/x86_64"/*flowmesh*."$fmt"; do
+      b=$(basename "$f" ".$fmt")
+      if [ $fmt = ipk ]; then b=$(sed 's/^\([^_]*\)_\([^_]*\)_.*/\1 - \2/' <<< "$b"); fi
+      out="$out$b"$'\n'
+    done
+    sort <<< "$out" | sed '/^$/d'
+  }
+  installed_versions() {
+    if [ $pm = opkg ]; then r 'opkg list-installed' | grep -E '^(flowmesh|luci-app-flowmesh) '
+    else r 'apk info -v 2>/dev/null' | grep -E '^(flowmesh|luci-app-flowmesh)-[0-9]'; fi | sort
+  }
+  feed_update() { add_feed "$1" > /dev/null 2>&1 && r "$pm update" > /dev/null 2>&1; }
+  mesh_ip() { r 'flowmesh status --json 2>/dev/null | jsonfilter -e "@.Self.TailscaleIPs[0]"'; }
+  nodes_named() { $OWT_HS nodes list -o json 2>/dev/null | jq --arg h "$1" '[.[] | select(.given_name == $h or .name == $h)] | length'; }
+  enabled() { r '/etc/init.d/flowmesh enabled'; }
+  on_new_binary() {
+    local pid
+    pid=$(r 'pidof flowmeshd') && [ -n "$pid" ] && [ "$pid" != "$1" ] &&
+      ! r "readlink /proc/$pid/exe" | grep -q deleted
+  }
+  fw_once() {
+    local inv
+    inv=$(fw_inventory)
+    [ "$(grep -cxF "zone flowmesh" <<< "$inv")" = 1 ] && [ "$(grep -cxF "fwd lan>flowmesh" <<< "$inv")" = 1 ] &&
+      [ "$(grep -cxF "fwd flowmesh>lan" <<< "$inv")" = 1 ] && [ "$(grep -cxF "fwd flowmesh>wan" <<< "$inv")" = 1 ]
+  }
+  settings_kept() {
+    [ "$(r 'cat /etc/config/flowmesh')" = "$cfg" ] && [ "$(pref hostname)" = "$host" ] &&
+      [ "$(pref "advertise_routes[0]")" = 192.168.1.0/24 ] && [ "$(pref advertise_exit_node)" = true ] &&
+      [ "$(pref accept_dns)" = false ]
+  }
+  same_node() { backend_running && [ "$(mesh_ip)" = "$ip0" ] && [ "$(nodes_named "$host")" = 1 ]; }
+
+  # Release 1, joined and configured. (Dependencies come from the official feeds: WAN up first.)
+  eventually 60 r 'wget -q -O /dev/null https://downloads.openwrt.org/' 2>/dev/null
+  feed_update feed1
+  r "$pm $([ $pm = opkg ] && echo install || echo add) luci-app-flowmesh" > "$vm/install.log" 2>&1
+  check "upgrade: feed 1 installs ($(want_installed feed1 | tr '\n' ' '))" \
+    eval '[ "$(installed_versions)" = "$(want_installed feed1)" ]'
+  check "upgrade: service running" eventually 20 running
+  host="owt-up-$(tr -c 'a-z0-9\n' '-' <<< "$label")"
+  out=$(r "/usr/libexec/flowmesh-luci up $OWT_LOGIN_SERVER $OWT_AUTH_KEY $host" 2>&1)
+  sed 's/^/   | /' <<< "$out"
+  check "upgrade: joined with the LuCI helper (flowmesh-luci up <server> <key> <name>)" \
+    eval 'grep -q "\"ok\": *true" <<< "$out" && eventually 30 backend_running'
+  r "uci set flowmesh.main.advertise_lan=1; uci set flowmesh.main.exit_node=1; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+  cfg=$(r 'cat /etc/config/flowmesh')
+  ip0=$(mesh_ip)
+  sed 's/^/   | /' <<< "$cfg"
+  check "upgrade: settings applied (name $host, LAN shared, exit node), mesh address $ip0" \
+    eval 'eventually 20 settings_kept && [ -n "$ip0" ] && fw_once'
+
+  # Release 2, service enabled and running.
+  pid1=$(r 'pidof flowmeshd')
+  feed_update feed2
+  if [ $pm = opkg ]; then up_cmd='opkg upgrade flowmesh luci-app-flowmesh'; else up_cmd='apk upgrade flowmesh luci-app-flowmesh'; fi
+  r "$up_cmd" > "$vm/upgrade.log" 2>&1
+  st=$?
+  sed 's/^/   | /' "$vm/upgrade.log" | tail -8
+  check "upgrade to feed 2: $up_cmd succeeds ($(want_installed feed2 | tr '\n' ' '))" \
+    eval '[ $st -eq 0 ] && [ "$(installed_versions)" = "$(want_installed feed2)" ]'
+  r 'ls /etc/config/ | grep flowmesh' | sed 's/^/   | \/etc\/config: /'
+  check "upgrade to feed 2: /etc/config/flowmesh unchanged, settings in effect" eventually 20 settings_kept
+  check "upgrade to feed 2: service still enabled and running" eval 'enabled && eventually 20 running'
+  check "upgrade to feed 2: daemon restarted on the new binary" eventually 20 on_new_binary "$pid1"
+  check "upgrade to feed 2: Running with the same mesh address, no second node" eventually 60 same_node
+  check "upgrade to feed 2: firewall zone and forwardings once each" fw_once
+
+  # Release 3, after the user disabled and stopped the service.
+  r '/etc/init.d/flowmesh disable; /etc/init.d/flowmesh stop' >/dev/null 2>&1
+  eventually 20 no_daemon
+  feed_update feed3
+  r "$up_cmd" > "$vm/upgrade.log" 2>&1
+  st=$?
+  sed 's/^/   | /' "$vm/upgrade.log" | tail -8
+  check "upgrade to feed 3 (service disabled): succeeds ($(want_installed feed3 | tr '\n' ' '))" \
+    eval '[ $st -eq 0 ] && [ "$(installed_versions)" = "$(want_installed feed3)" ]'
+  check "upgrade to feed 3: the disabled service stays disabled and stopped" eval '! enabled && sleep 5 && no_daemon'
+  check "upgrade to feed 3: /etc/config/flowmesh unchanged" eval '[ "$(r "cat /etc/config/flowmesh")" = "$cfg" ]'
+  r '/etc/init.d/flowmesh enable; /etc/init.d/flowmesh start' >/dev/null 2>&1
+  check "upgrade to feed 3: started again, Running with the same mesh address" eventually 60 same_node
+
+  # Firmware sysupgrade with the same image (configuration kept): our packages are gone, the
+  # settings and identity are not; reinstalling from the feed brings the node back without a key.
+  img_name=fw.img
+  case "$img" in *.gz) img_name=fw.img.gz ;; esac
+  r "cat > /tmp/$img_name" < "$img"
+  # (The router drops the session as it goes down; do not wait for ssh to notice.)
+  timeout 60 ssh "${SSH_OPTS[@]}" "root@$OWT_ROUTER_LAN_IP" "sysupgrade /tmp/$img_name" > "$vm/sysupgrade.log" 2>&1
+  tail -3 "$vm/sysupgrade.log" | sed 's/^/   | /'
+  eventually 90 eval '! r true 2>/dev/null'
+  check "sysupgrade: back up" eventually 180 eval 'r true 2>/dev/null'
+  check "sysupgrade: our packages are gone, /etc/config/flowmesh and /etc/flowmesh/ kept" eval '
+    [ -z "$(our_installed)" ] && [ "$(r "cat /etc/config/flowmesh")" = "$cfg" ] && r "test -n \"\$(ls -A /etc/flowmesh)\""'
+  r 'grep -s flowmesh /etc/opkg/customfeeds.conf; cat /etc/apk/repositories.d/flowmesh.list 2>/dev/null; true' |
+    sed 's/^/   | feed entry after sysupgrade: /'
+  eventually 60 r 'wget -q -O /dev/null https://downloads.openwrt.org/' 2>/dev/null
+  feed_update feed3
+  r "$pm $([ $pm = opkg ] && echo install || echo add) luci-app-flowmesh" > "$vm/install.log" 2>&1
+  check "sysupgrade: luci-app-flowmesh reinstalls from the feed" eval '[ "$(installed_versions)" = "$(want_installed feed3)" ]'
+  check "sysupgrade: Running with the same mesh address, no key, no second node" eventually 60 same_node
+  check "sysupgrade: settings in effect, firewall zone once, enabled" eval 'settings_kept && fw_once && enabled'
+
+  node_id=$($OWT_HS nodes list -o json 2>/dev/null | jq -r --arg h "$host" '.[] | select(.given_name == $h or .name == $h) | .id' | head -1)
+  [ -n "$node_id" ] && $OWT_HS nodes delete -i "$node_id" --force >/dev/null 2>&1
+  echo "== $label (upgrade): $fails failed"
+  exit "$fails"
+fi
+
 if [ -n "$feed" ]; then
   if [ $pm = opkg ]; then fmt=ipk; feed_index=Packages; else fmt=apk; feed_index=packages.adb; fi
   check "feed has add-feed.sh and the $fmt index for x86_64" test -s "$feed/add-feed.sh" -a -s "$feed/$fmt/x86_64/$feed_index"
@@ -257,6 +396,8 @@ if [ -n "$feed" ]; then
 
 # --- install a package file ---------------------------------------------------------------------
 elif pkg_name=$(basename "$pkg") && [ -f "$pkg" ] && r "cat > /tmp/$pkg_name" < "$pkg"; then
+  # (Dependencies come from the official feeds: wait until the WAN is up after boot.)
+  eventually 60 r 'wget -q -O /dev/null https://downloads.openwrt.org/' 2>/dev/null
   if [ $pm = opkg ]; then
     r "opkg update >/dev/null && opkg install /tmp/$pkg_name" > "$vm/install.log" 2>&1
   else

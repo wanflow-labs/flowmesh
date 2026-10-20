@@ -2,10 +2,13 @@
 
 `run.sh` boots an official OpenWrt x86-64 image (`generic-ext4-combined`) in QEMU/KVM, installs a
 `flowmesh` package built by `../build-packages.sh` and checks it end to end: the service, the state
-directory and sysupgrade keep list, the firewall zone (as fw3 or fw4 actually loads it, see below),
-joining a mesh, traffic from a LAN host to another mesh node through the router, settings applied by
-`reload` without a restart, a reboot (still online, no key re-entered), `stop` (no forwarding rules
-left) and removal (no zone or forwardings left, other zones unchanged, identity kept).
+directory and sysupgrade keep list, the firewall zone (as fw3 or fw4 actually loads it, see below)
+and its helper's locking (no truncation through a symlink, staged changes restored on SIGTERM, a
+held lock given up after 60 s), joining a mesh from the command line as `docs/install.md` describes,
+traffic from a LAN host to another mesh node through the router, settings applied by `reload`
+without a restart, a reboot (still online, no key re-entered), the Linux `install.sh` refusing to
+run on OpenWrt, `stop` (no forwarding rules left) and removal (no zone or forwardings left, other
+zones unchanged, identity kept).
 
 Firewall per release: 21.02 uses fw3 (iptables); 22.03 and later use fw4 (nftables). Package manager:
 opkg up to 24.10, apk from 25.12.
@@ -81,6 +84,34 @@ download over HTTPS (the default feed address is `https://`).
 `tools/build-usign.sh` and `tools/build-apk-tools.sh` build the pinned usign and apk-tools that the
 release workflow uses (`build-apk-tools.sh` needs meson, ninja, pkg-config and the OpenSSL and zlib
 headers).
+
+## Upgrades
+
+With `OWT_UPGRADE_FROM` naming two older feeds, `run.sh` tests upgrading through them to the feed
+given as its argument. Three builds of the same version that differ only in the package release
+(`FLOWMESH_PKG_RELEASE`, default 1) are enough:
+
+    for n in 1 2 3; do
+        FLOWMESH_PKG_RELEASE=$n SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) APK=/path/to/apk \
+            packaging/openwrt/build-packages.sh dist pkgs-$n
+        SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) USIGN=/path/to/usign APK=/path/to/apk \
+            USIGN_KEY=/path/to/usign.sec APK_KEY=/path/to/apk.key \
+            packaging/openwrt/build-feed.sh pkgs-$n feed-$n
+    done
+    for v in 21.02.7 24.10.8 25.12.6; do
+        OWT_UPGRADE_FROM="feed-1/flowmesh-openwrt-feed-<v>.tar.gz feed-2/flowmesh-openwrt-feed-<v>.tar.gz" \
+            OWT_WORK=owt-work packaging/openwrt/test/run.sh $v feed-3/flowmesh-openwrt-feed-<v>.tar.gz
+    done
+
+The router installs luci-app-flowmesh from feed 1, joins with the LuCI helper and turns on LAN
+sharing and the exit node under its own name. Upgraded to feed 2 (`opkg upgrade` / `apk upgrade`):
+`/etc/config/flowmesh` is unchanged and in effect, the service is enabled and running on the new
+binary, the node is Running with the same mesh address and the control server has no second node,
+and the firewall zone and each forwarding exist once. Then the service is disabled and stopped, and
+upgraded to feed 3: it stays disabled and stopped, the settings stay. Last, a sysupgrade with the
+same image (settings kept): the packages are gone, `/etc/config/flowmesh` and `/etc/flowmesh/` are
+not, and after `add-feed.sh` and a reinstall the node is back with the same address, no key needed.
+This mode replaces the usual checks.
 
 ## luci-app-flowmesh
 

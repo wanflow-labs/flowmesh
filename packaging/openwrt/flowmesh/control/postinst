@@ -1,6 +1,6 @@
 #!/bin/sh
 # SPDX-License-Identifier: Apache-2.0
-# Install and upgrade (opkg: postinst; apk: post-install and post-upgrade).
+# Install and upgrade (opkg: postinst; apk: post-install, and post-upgrade with PKG_UPGRADE=1).
 [ "$IPKG_NO_SCRIPT" = 1 ] && exit 0
 if [ -n "$IPKG_INSTROOT" ]; then
 	# Building an image: enable the service there; uci-defaults run on its first boot.
@@ -14,11 +14,14 @@ if [ -f "$d" ]; then
 	( . "$d" ) && rm -f "$d"
 fi
 /etc/init.d/firewall reload >/dev/null 2>&1
-/etc/init.d/flowmesh enable
-# Upgrades replace the binary under a running daemon: restart it; a fresh install just starts.
+# A fresh install enables the service. An upgrade leaves that choice alone, as OpenWrt's
+# default_postinst does: a service the user disabled stays disabled.
+[ "$PKG_UPGRADE" = 1 ] || /etc/init.d/flowmesh enable
+# Upgrades replace the binary under a running daemon: restart it. Otherwise start the service if it
+# is enabled (always after a fresh install); a disabled, stopped service stays stopped.
 if /etc/init.d/flowmesh running; then
 	/etc/init.d/flowmesh restart
-else
+elif /etc/init.d/flowmesh enabled; then
 	/etc/init.d/flowmesh start
 fi
 exit 0
