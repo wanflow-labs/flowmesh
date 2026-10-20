@@ -21,6 +21,8 @@ build/release.sh dist
 
 `dist/SHA256SUMS` lists the tarballs, their binaries and SBOMs: the `linux-{x86_64,aarch64}` set for servers and desktops, and the `openwrt-{x86_64,aarch64,armv7}` set for routers (built without the SSH server, with the size-optimised `release-openwrt` profile, no systemd units; `packaging/openwrt/arches.txt` maps OpenWrt architectures onto it); `build/package.sh dist` then builds the deb and rpm packages and adds them to the list. A rebuild without the packages checks the rest (`make reproduce` skips files it did not build).
 
+The release also carries the OpenWrt package feed, `flowmesh-openwrt-feed-<version>.tar.gz` (`packaging/openwrt/build-feed.sh`). Its signed indexes differ from run to run (ECDSA signatures), so the feed tarball is not reproducible and the comparison leaves it out; the `.ipk` and `.apk` packages in it are: `packaging/openwrt/build-packages.sh dist <dir>` rebuilds them byte for byte from the `openwrt-*` tarballs.
+
 ## SBOM
 
 Each shipped binary gets a CycloneDX 1.5 SBOM per target (`dist/flowmeshd-<version>-{linux,openwrt}-<arch>.cdx.json`, `dist/flowmesh-…`), made by cargo-cyclonedx 0.5.9 from `Cargo.lock`: every crate compiled into that binary for that target, with version, license and package URL. It is reproducible like the binaries: its timestamp is `SOURCE_DATE_EPOCH`, it has no random serial number, and workspace crates are referenced as `path+file:///flowmesh/crates/…` whatever the build directory (`release.sh` fails if the build directory still appears).

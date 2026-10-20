@@ -35,6 +35,29 @@ curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/ins
 
 `--version=X.Y.Z` 指定版本，`--mirror=URL` 从镜像下载（`URL/latest/…`、`URL/vX.Y.Z/…`），`--uninstall` 卸载。万联控制台会为每个组网生成这条命令。
 
+### OpenWrt 路由器
+
+支持 OpenWrt 21.02 到 25.12，架构为 x86_64、aarch64 和带 VFP 的 armv7（暂不支持 MIPS）。先在路由器上添加 FlowMesh 软件源：
+
+```sh
+wget -qO- https://dl.wanflow.com/openwrt/add-feed.sh | sh
+```
+
+脚本会识别路由器的架构和包管理器，导入软件源的签名公钥，并写入源配置（opkg：`/etc/opkg/customfeeds.conf`；apk：`/etc/apk/repositories.d/flowmesh.list`）。重复运行不会重复添加；架构不受支持时会直接报错退出。软件源的索引带签名（opkg 用 usign，apk 用 apk 签名），签名不对的索引和与索引不符的安装包都会被拒绝，安装时不需要 `--force-*` 或 `--allow-untrusted`。软件源只提供最新版本。
+
+然后安装 LuCI 界面（会一并安装 `flowmesh`）：
+
+```sh
+opkg update && opkg install luci-app-flowmesh    # OpenWrt 21.02 到 24.10
+apk update && apk add luci-app-flowmesh          # OpenWrt 25.12 及以后
+```
+
+只想用命令行时，可以只装 `flowmesh`。
+
+加入组网：在 LuCI 打开「服务 → FlowMesh」，在万联控制台为组网添加设备，把控制台给出的 Linux 安装命令粘贴进去，或者手动填写组网地址和接入密钥，再填设备名，点「接入」。之后可以在同一页面开关「共享本地局域网」「作为出口节点」等设置；设置保存在 `/etc/config/flowmesh`，节点身份保存在 `/etc/flowmesh/`，两者都会在系统升级（sysupgrade）时保留。安装时会添加一个名为 `flowmesh` 的防火墙区域（设备 `flowmesh0`，与 `lan` 双向转发），卸载时删除。
+
+升级：`opkg update && opkg upgrade flowmesh luci-app-flowmesh`（apk：`apk update && apk upgrade`）。卸载：`opkg remove luci-app-flowmesh flowmesh`（apk：`apk del luci-app-flowmesh flowmesh`），`/etc/flowmesh/` 里的节点身份会保留，彻底清除需手动删除。
+
 ### 用安装包
 
 Debian / Ubuntu：

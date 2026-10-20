@@ -5,19 +5,27 @@
 #
 #   DEST/v0.1.2/<release files>   one directory per version (the newest KEEP are kept)
 #   DEST/latest -> v0.1.2         switched only after every file of the new version checked out
+#   DEST/openwrt -> openwrt-v0.1.2  the OpenWrt package feed of the latest version (only that one):
+#                                 flowmesh-openwrt-feed-<v>.tar.gz unpacked, so that
+#                                 `wget -qO- <mirror>/openwrt/add-feed.sh | sh` works
 #
 # Each round reads the latest release's SHA256SUMS from GitHub; a version not mirrored yet is
 # downloaded into STAGING/vX.Y.Z, every file is checked against SHA256SUMS (install.sh too),
 # and only then the directory is renamed into place and `latest` repointed. A failed round changes
 # nothing that is served; files already checked are kept and a partial download is resumed, so slow
 # links get there over several rounds. A round also repairs a mirror whose files were removed.
+# The feed is unpacked from the checked tarball into STAGING, checked (every package its index
+# lists, with its SHA-256; the signed indexes), renamed into place and switched to by repointing the
+# `openwrt` symlink, like `latest`; the previous feed is then removed. Releases without a feed
+# tarball leave the feed alone.
 #
 #   mirror-sync.sh DEST                 one round (cron)
 #   mirror-sync.sh --loop SECONDS DEST  rounds forever (supervisor); failures are logged and retried
 #
 # Environment: FLOWMESH_REPO (default wanflow-labs/flowmesh), KEEP (default 3), STAGING (default
 # DEST/.staging; put it outside the web root so unchecked files are never served — it must be on the
-# same file system as DEST, since a finished version is moved into place by rename).
+# same file system as DEST, since a finished version is moved into place by rename),
+# FLOWMESH_RELEASES_URL (default https://github.com/$FLOWMESH_REPO/releases; tests use file://).
 set -eu
 
 REPO=${FLOWMESH_REPO:-wanflow-labs/flowmesh}
@@ -37,6 +45,49 @@ sha256() { sha256sum "$1" | cut -d' ' -f1; }
 # are listed as dir/file and are not separate downloads), plus SHA256SUMS itself.
 release_files() { sed -n 's/^[0-9a-f]\{64\}  \([^/]*\)$/\1/p' "$1"; }
 
+# feed_ok DIR: an unpacked OpenWrt feed is whole: add-feed.sh, the keys, and per architecture the
+# opkg index with its signature and every package it lists (size and SHA-256), the apk index and
+# packages. (The signatures themselves are checked by the routers; the tarball by SHA256SUMS.)
+feed_ok() {
+  [ -s "$1/add-feed.sh" ] && [ -s "$1/keys/flowmesh-usign.pub" ] && [ -s "$1/keys/flowmesh-apk.pem" ] || return 1
+  n=0
+  for d in "$1"/ipk/*/; do
+    [ -s "$d/Packages" ] && [ -s "$d/Packages.gz" ] && [ -s "$d/Packages.sig" ] || return 1
+    grep -q '^SHA256sum: ' "$d/Packages" || return 1
+    awk '/^Filename: /{ f = $2 } /^SHA256sum: /{ print $2 "  " f }' "$d/Packages" |
+      (cd "$d" && sha256sum -c --quiet -) > /dev/null 2>&1 || return 1
+    a=$(basename "$d")
+    [ -s "$1/apk/$a/packages.adb" ] && ls "$1/apk/$a"/*.apk > /dev/null 2>&1 || return 1
+    n=$((n + 1))
+  done
+  [ "$n" -gt 0 ]
+}
+
+# sync_feed VERSION DIR: switch DEST/openwrt to the feed in DIR's flowmesh-openwrt-feed-VERSION.tar.gz.
+sync_feed() {
+  tarball="$2/flowmesh-openwrt-feed-$1.tar.gz"
+  feed="$DEST/openwrt-v$1"
+  [ -f "$tarball" ] || return 0
+  [ "$(readlink "$DEST/openwrt" 2>/dev/null)" = "openwrt-v$1" ] && feed_ok "$feed" && return 0
+  log "unpacking the OpenWrt feed of v$1"
+  t="$STAGING/openwrt-v$1"
+  rm -rf "$t" && mkdir -p "$t" || return 1
+  tar -xzf "$tarball" -C "$t" || { rm -rf "$t"; log "cannot unpack $tarball"; return 1; }
+  feed_ok "$t/openwrt" || { rm -rf "$t"; log "the OpenWrt feed of v$1 is incomplete; feed not switched"; return 1; }
+  rm -rf "$feed.new" && mv "$t/openwrt" "$feed.new" && rm -rf "$t" "$feed" && mv "$feed.new" "$feed" || return 1
+  if [ -e "$DEST/openwrt" ] && [ ! -L "$DEST/openwrt" ]; then
+    log "$DEST/openwrt is not a symlink (not made by mirror-sync.sh): remove it to publish the feed"; return 1
+  fi
+  if ! { ln -sfn "openwrt-v$1" "$DEST/.openwrt.new" && mv -T "$DEST/.openwrt.new" "$DEST/openwrt"; }; then
+    log "cannot repoint openwrt"; return 1
+  fi
+  log "openwrt -> openwrt-v$1"
+  for old in "$DEST"/openwrt-v*; do
+    [ -d "$old" ] && [ "$old" != "$feed" ] && rm -rf "$old"
+  done
+  return 0
+}
+
 is_complete() { # is_complete DIR: every listed file is there with the right checksum
   [ -f "$1/SHA256SUMS" ] || return 1
   for f in $(release_files "$1/SHA256SUMS"); do
@@ -52,7 +103,7 @@ sync_once() {
   exec 9>"$STAGING/.lock" || return 1
   if command -v flock >/dev/null 2>&1 && ! flock -n 9; then log "another round is running; skipping"; return 0; fi
   rm -f "$STAGING"/sums.* # left by a round that was killed
-  base="https://github.com/$REPO/releases"
+  base=${FLOWMESH_RELEASES_URL:-https://github.com/$REPO/releases}
   sums=$(mktemp "$STAGING/sums.XXXXXX") || return 1
   trap 'rm -f "$sums"' EXIT
   fetch "$base/latest/download/SHA256SUMS" "$sums" || { log "cannot read the latest release from GitHub; retrying next round"; return 1; }
@@ -115,7 +166,7 @@ sync_once() {
   for stale in "$STAGING"/v*; do
     [ -d "$stale" ] && [ "$stale" != "$tmp" ] && rm -rf "$stale"
   done
-  return 0
+  sync_feed "$version" "$dir"
 }
 
 if [ -z "$loop" ]; then

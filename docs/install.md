@@ -35,6 +35,29 @@ curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/ins
 
 `--version=X.Y.Z` pins a version, `--mirror=URL` downloads from a mirror (`URL/latest/…`, `URL/vX.Y.Z/…`), `--uninstall` removes FlowMesh. The Wanflow console generates this command for each mesh.
 
+### OpenWrt routers
+
+OpenWrt 21.02 to 25.12 on x86_64, aarch64 and armv7 with VFP (no MIPS yet). First add the FlowMesh package feed on the router:
+
+```sh
+wget -qO- https://dl.wanflow.com/openwrt/add-feed.sh | sh
+```
+
+The script detects the router's architecture and package manager, imports the feed's signing key and writes the feed entry (opkg: `/etc/opkg/customfeeds.conf`; apk: `/etc/apk/repositories.d/flowmesh.list`). Running it again does not add a second entry; on an unsupported architecture it stops with an error. The feed's index is signed (usign for opkg, an apk signature for apk): an index with a wrong signature, or a package that does not match the index, is refused, and no `--force-*` or `--allow-untrusted` is needed. The feed carries the latest version only.
+
+Then install the LuCI page (it pulls in `flowmesh`):
+
+```sh
+opkg update && opkg install luci-app-flowmesh    # OpenWrt 21.02 to 24.10
+apk update && apk add luci-app-flowmesh          # OpenWrt 25.12 and later
+```
+
+For the command line only, install just `flowmesh`.
+
+To join a mesh, open "Services → FlowMesh" in LuCI. In the Wanflow console, add a device to your mesh and paste the Linux install command it shows, or enter the mesh address and join key by hand; give the router a name and press "Join". The same page switches "Share local LAN", "Act as exit node" and the other settings. Settings live in `/etc/config/flowmesh` and the node identity in `/etc/flowmesh/`; both are kept across sysupgrade. Installing adds a firewall zone `flowmesh` (device `flowmesh0`, forwarding to and from `lan`); removing the package deletes it.
+
+Upgrade: `opkg update && opkg upgrade flowmesh luci-app-flowmesh` (apk: `apk update && apk upgrade`). Remove: `opkg remove luci-app-flowmesh flowmesh` (apk: `apk del luci-app-flowmesh flowmesh`); the node identity in `/etc/flowmesh/` is kept, delete it by hand to remove everything.
+
 ### From a package
 
 Debian / Ubuntu:
