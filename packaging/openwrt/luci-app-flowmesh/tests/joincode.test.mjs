@@ -12,7 +12,7 @@ const WANT = { ok: true, server: 'https://mesh.example.com:8443', key: 'hskey-ab
 
 const b64url = (s) => Buffer.from(s, 'utf8').toString('base64url');
 
-// The shape of wanflow-api's buildLinuxInstallScript output (values through escapeshellarg).
+// The shape of the console's Linux install command (values quoted as by PHP escapeshellarg).
 const INSTALL = [
 	'#!/bin/sh',
 	'# Wanflow FlowMesh · Linux 服务器接入脚本',
