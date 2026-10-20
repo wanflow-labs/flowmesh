@@ -14,12 +14,14 @@
 		"write": {
 			"file": {
 				"/usr/libexec/flowmesh-luci up *": [ "exec" ],
+				"/usr/libexec/flowmesh-luci reconnect": [ "exec" ],
 				"/usr/libexec/flowmesh-luci down": [ "exec" ],
 				"/usr/libexec/flowmesh-luci logout": [ "exec" ],
 				"/usr/libexec/flowmesh-luci apply": [ "exec" ]
 			},
 			"ubus": {
-				"file": [ "exec" ]
+				"file": [ "exec" ],
+				"uci": [ "commit", "revert" ]
 			},
 			"uci": [ "flowmesh" ]
 		}

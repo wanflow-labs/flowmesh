@@ -54,3 +54,18 @@ the number of failures. One VM runs at a time (it uses the fixed tap `owttap0` a
 `apk mkpkg` needs apk-tools 3. Hosts without it can build it from the upstream release that the
 OpenWrt release ships (3.0.5 for 25.12): `meson setup build -Dlua=disabled -Ddocs=disabled
 -Dhelp=disabled -Dpython=disabled -Dzstd=disabled && ninja -C build`, then `APK=build/src/apk`.
+
+## luci-app-flowmesh
+
+The page's pure modules (join code parsing, status reading) are tested with node, on any machine:
+
+    node --test packaging/openwrt/luci-app-flowmesh/tests/*.test.mjs
+
+`tests/luci-shim.mjs` loads each module the way LuCI does (its `'require'` lines, then the source as a
+factory body), providing only `baseclass`. The rpcd helper is tested on OpenWrt itself (it needs
+jshn, uci and procd), in a VM with the `flowmesh` package installed:
+
+    sh packaging/openwrt/luci-app-flowmesh/tests/helper_test.sh
+
+`build-packages.sh` writes luci-app-flowmesh to `<out_dir>/all/` (opkg `Architecture: all`, apk
+`arch: noarch`); install it next to the `flowmesh` package of the same version.

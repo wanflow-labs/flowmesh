@@ -36,9 +36,11 @@ chmod 0755 "$helper"
 
 # Fake flowmesh: appends "<args, one per line>" and a "--" line to $work/calls; for --auth-key=file:
 # records the file's mode and content in $work/keyfile; prints $work/out; exits with $work/rc;
-# sleeps $work/sleep seconds first if that file exists.
+# sleeps $work/sleep seconds first if that file exists. `debug prefs` prints $work/prefs instead,
+# when that file exists (and is not recorded).
 cat > "$fakebin/flowmesh" <<FAKE
 #!/bin/sh
+[ "\$1 \$2" = "debug prefs" ] && [ -f $work/prefs ] && { cat $work/prefs; exit 0; }
 for a in "\$@"; do
 	printf '%s\n' "\$a" >> $work/calls
 	case "\$a" in
@@ -71,7 +73,7 @@ chmod 0755 "$fakebin/logread"
 
 # fake <rc> [output file]
 fake() {
-	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep"
+	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs"
 	echo "$1" > "$work/rc"
 	[ -n "$2" ] && cp "$2" "$work/out"
 }
@@ -198,6 +200,30 @@ run up "$URL" "$KEY" gw-other
 [ "$(uci -q get flowmesh.main.hostname)" = gw-test ] && pass "failed up leaves the UCI hostname" || fail "failed up leaves the UCI hostname"
 kf=$(sed -n 1p "$work/keyfile")
 [ -n "$kf" ] && [ ! -e "$kf" ] && pass "key file removed after a failed up" || fail "key file removed after a failed up"
+
+echo "== reconnect"
+# `flowmesh debug prefs` as flowmeshd prints it after `down` (trimmed).
+prefs() { printf '{ "control_url": "%s", "hostname": "gw-test", "want_running": false }\n' "$1" > "$work/prefs"; }
+fake 0; prefs "$URL"
+run reconnect
+expect_ok "reconnect succeeds"
+for a in up "--login-server=$URL" --hostname=gw-test --accept-dns=false --timeout=20s \
+	--accept-routes=1 --advertise-routes=10.9.0.0/24,10.9.1.0/24 --advertise-exit-node=0; do
+	grep -qxF -- "$a" "$work/calls" && pass "reconnect passes $a" || fail "reconnect passes $a"
+done
+grep -qxF -- --reset "$work/calls" && fail "reconnect does not pass --reset" || pass "reconnect does not pass --reset"
+grep -q -- '--auth-key' "$work/calls" && fail "reconnect passes no key" || pass "reconnect passes no key"
+fake 0; printf '{ "control_url": "" }\n' > "$work/prefs"; run reconnect
+expect_code invalid_arg "reconnect, never joined (no control server)"
+if called; then fail "reconnect without a control server: the CLI was called"; fi
+fake 0; prefs 'https://mesh.example.com/;reboot'; run reconnect
+expect_code invalid_arg "reconnect, control server with a semicolon"
+if called; then fail "reconnect with a bad control server: the CLI was called"; fi
+fake 1 "$fx/daemon-down.txt"; run reconnect; expect_code daemon_down "reconnect, daemon down"
+fake 1 "$fx/up-unreachable-refused.txt"; prefs "$URL"; run reconnect; expect_code unreachable "reconnect, control server unreachable"
+fake 0; prefs "$URL"; echo 15 > "$work/sleep"; run reconnect; expect_code timeout "reconnect, hard deadline"
+fake 0; run reconnect now; expect_code invalid_arg "reconnect with an argument"
+ls /tmp/flowmesh-up.* > /dev/null 2>&1 && fail "no flowmesh-up.* left in /tmp" || pass "no flowmesh-up.* left in /tmp"
 
 echo "== status"
 printf '%s\n' '{' '  "BackendState": "Running",' '  "PrimaryRoutes": null' '}' > "$work/status.json"

@@ -1,0 +1,348 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:526
+msgid ""
+"%s overlaps a network that %s already shares. Devices may not reach the "
+"right one; consider changing this router's LAN network."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:434
+msgid "Act as exit node"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:504
+msgid "Active"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:505
+msgid "Advertised — waiting for an admin to approve it in the console"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:644
+msgid "Cancel"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:106
+msgid ""
+"Cannot reach the mesh server. Check the address and this router's Internet "
+"connection."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:465
+msgid "Connecting…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:561
+msgid "Connection"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:487
+msgid "Connections"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:289
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:486
+msgid "Device name"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:438
+msgid "Devices in this mesh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:546
+msgid "Direct"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:582
+msgid "Disconnect"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:466
+msgid "Disconnected"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:633
+msgid "Disconnecting…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:296
+msgid "Enter manually"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:328
+msgid "Enter the join key."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:326
+msgid "Enter the mesh address, starting with https:// or http://."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:186
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:3
+msgid "FlowMesh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:221
+msgid "FlowMesh is turned off."
+msgstr ""
+
+#: root/usr/share/rpcd/acl.d/luci-app-flowmesh.json:3
+msgid "Grant access to FlowMesh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:548
+msgid "High-speed relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:292
+msgid "How this router appears in the mesh."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:549
+msgid "Idle"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:283
+msgid ""
+"In the console, add a device to your mesh and copy its join code (or the "
+"Linux install command), then paste it here."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:118
+msgid "Invalid request."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:313
+msgid "Join"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:282
+msgid "Join a mesh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:285
+msgid "Join code"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:302
+msgid "Join key"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:187
+msgid "Join this router to a Wanflow FlowMesh mesh network."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:361
+msgid "Joining the mesh… This can take up to half a minute."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:432
+msgid ""
+"Lets other devices in the mesh reach this router's LAN. A mesh administrator "
+"approves it in the console."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:412
+msgid "Loading…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:585
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:651
+msgid "Log out"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:641
+msgid "Log out of the mesh?"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:649
+msgid "Logging out…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:415
+msgid "Logs"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:485
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:559
+msgid "Mesh IP"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:298
+msgid "Mesh address"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:558
+msgid "Name"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:514
+msgid "No LAN network found to share."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:593
+msgid "No log lines."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:273
+msgid "No mesh yet? Wanflow FlowMesh Free is free forever."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:553
+msgid "No other devices yet."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:501
+msgid "Not shared while disconnected"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:567
+msgid "Offline"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:464
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:567
+msgid "Online"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:95
+msgid "Open the console"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:434
+msgid ""
+"Other devices may send their Internet traffic through this router. A mesh "
+"administrator approves it in the console."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:339
+msgid "Paste a join code first."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:436
+msgid "Reach the LANs other mesh devices share."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:583
+msgid "Reconnect"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:637
+msgid "Reconnecting…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:419
+msgid "Refresh"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:547
+msgid "Relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:431
+msgid "Settings"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:432
+msgid "Share local LAN"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:279
+msgid "Sign up free"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:225
+msgid "Start"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:429
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:484
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:560
+msgid "Status"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:110
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:221
+msgid "The FlowMesh service is not running."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:113
+msgid ""
+"The device name may only contain letters, digits and hyphens (at most 63)."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:115
+msgid "The join key is not valid."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:117
+msgid "The mesh address is not valid."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:108
+msgid "The mesh server did not answer in time. Please try again."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:122
+msgid "The operation failed."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:120
+msgid "The router did not answer: %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:343
+msgid ""
+"This is not a join code. Paste the join code or the Linux install command "
+"from the console."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:102
+msgid ""
+"This join code has expired or was already used. Generate a new one in the "
+"console."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:341
+msgid ""
+"This join code is newer than this plugin. Please upgrade luci-app-flowmesh."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:642
+msgid ""
+"This router leaves the mesh. Joining again needs a new join code from the "
+"console."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:436
+msgid "Use networks shared by other devices"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:305
+msgid "Used when the join code box is empty."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:104
+msgid "Your mesh has reached its site limit."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:477
+msgid "direct: %d"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:479
+msgid "high-speed relay: %d"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:487
+msgid "none active"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:481
+msgid "relay: %d"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:248
+msgid "wanflow://… or the Linux install command from the console"
+msgstr ""
