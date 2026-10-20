@@ -58,6 +58,23 @@ done
 version=${version#v}
 mirror=${mirror%/}
 
+# --- OpenWrt --------------------------------------------------------------------------------------
+# Routers get FlowMesh as OpenWrt packages (procd service, settings in UCI, identity kept across
+# sysupgrade). This script would overwrite the package's binaries, start a second daemon next to the
+# service and keep the identity in /var/lib/flowmesh, which is lost on reboot there.
+if [ -f /etc/openwrt_release ]; then
+  if command -v apk >/dev/null 2>&1 && [ -d /etc/apk ]; then
+    pkg_cmd="apk update && apk add luci-app-flowmesh"
+  else
+    pkg_cmd="opkg update && opkg install luci-app-flowmesh"
+  fi
+  die "this is OpenWrt: install the FlowMesh packages from the FlowMesh feed instead of this script:
+    wget -qO- https://dl.wanflow.com/flowmesh/openwrt/add-feed.sh | sh
+    $pkg_cmd
+  then join under Services > FlowMesh in LuCI, or from the command line, see
+  $REPO_URL/blob/main/docs/install.md#openwrt-routers"
+fi
+
 # --- privileges -----------------------------------------------------------------------------------
 if [ "$(id -u)" = 0 ]; then
   SUDO=

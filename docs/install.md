@@ -52,11 +52,24 @@ opkg update && opkg install luci-app-flowmesh    # OpenWrt 21.02 to 24.10
 apk update && apk add luci-app-flowmesh          # OpenWrt 25.12 and later
 ```
 
-For the command line only, install just `flowmesh`.
+For the command line only, install just `flowmesh` (`opkg install flowmesh` / `apk add flowmesh`). Do not run the Linux install command (`install.sh`) on a router: it refuses on OpenWrt, since it would replace the package's files and start a second daemon next to the service.
 
-To join a mesh, open "Services → FlowMesh" in LuCI. In the Wanflow console, add a device to your mesh and paste the Linux install command it shows, or enter the mesh address and join key by hand; give the router a name and press "Join". The same page switches "Share local LAN", "Act as exit node" and the other settings. Settings live in `/etc/config/flowmesh` and the node identity in `/etc/flowmesh/`; both are kept across sysupgrade. Installing adds a firewall zone `flowmesh` (device `flowmesh0`, forwarding to and from `lan`); removing the package deletes it.
+To join a mesh, open "Services → FlowMesh" in LuCI. In the Wanflow console, add a device to your mesh and paste the Linux install command it shows, or enter the mesh address and join key by hand; give the router a name and press "Join". The same page switches "Share local LAN", "Act as exit node" and the other settings. Settings live in `/etc/config/flowmesh` (each option is described there) and the node identity in `/etc/flowmesh/`. Installing adds a firewall zone `flowmesh` (device `flowmesh0`, forwarding to and from `lan`); removing the package deletes it.
 
-Upgrade: `opkg update && opkg upgrade flowmesh luci-app-flowmesh` (apk: `apk update && apk upgrade`). Remove: `opkg remove luci-app-flowmesh flowmesh` (apk: `apk del luci-app-flowmesh flowmesh`); the node identity in `/etc/flowmesh/` is kept, delete it by hand to remove everything.
+Without LuCI, join from the command line. The service applies the settings in `/etc/config/flowmesh`, so put the name there first; `up --reset` then joins with default settings (`--accept-dns=false` leaves the router's DNS to dnsmasq) and the reload applies the rest:
+
+```sh
+uci set flowmesh.main.hostname=office-gw && uci commit flowmesh
+flowmesh up --reset --accept-dns=false --hostname=office-gw \
+  --login-server=https://<mesh address> --auth-key=<key>
+/etc/init.d/flowmesh reload
+```
+
+With `luci-app-flowmesh` installed, `/usr/libexec/flowmesh-luci up https://<mesh address> <key> office-gw` does all three in one step (it is what the LuCI page runs, and prints `{ "ok": true }` once joined). Later changes: `uci set flowmesh.main.<option>=<value>`, `uci commit flowmesh`, `/etc/init.d/flowmesh reload`.
+
+Upgrade: `opkg update && opkg upgrade flowmesh luci-app-flowmesh` (apk: `apk update && apk upgrade flowmesh luci-app-flowmesh`). Settings, identity and the firewall zone are kept and the router stays connected; a service you disabled (`/etc/init.d/flowmesh disable`) stays disabled. Remove: `opkg remove luci-app-flowmesh flowmesh` (apk: `apk del luci-app-flowmesh flowmesh`); the node identity in `/etc/flowmesh/` is kept, delete it by hand to remove everything.
+
+Firmware upgrade (sysupgrade): `/etc/config/flowmesh` and `/etc/flowmesh/` are kept, but the packages are not, like every package installed after the firmware. Afterwards run the `add-feed.sh` command again and reinstall `luci-app-flowmesh` (or `flowmesh`); the router then reconnects with its kept identity and settings, without a new key.
 
 ### From a package
 
