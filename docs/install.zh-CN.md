@@ -40,7 +40,7 @@ curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/ins
 支持 OpenWrt 21.02 到 25.12，架构为 x86_64、aarch64 和带 VFP 的 armv7（暂不支持 MIPS）。先在路由器上添加 FlowMesh 软件源：
 
 ```sh
-wget -qO- https://dl.wanflow.com/openwrt/add-feed.sh | sh
+wget -qO- https://dl.wanflow.com/flowmesh/openwrt/add-feed.sh | sh
 ```
 
 脚本会识别路由器的架构和包管理器，导入软件源的签名公钥，并写入源配置（opkg：`/etc/opkg/customfeeds.conf`；apk：`/etc/apk/repositories.d/flowmesh.list`）。重复运行不会重复添加；架构不受支持时会直接报错退出。软件源的索引带签名（opkg 用 usign，apk 用 apk 签名），签名不对的索引和与索引不符的安装包都会被拒绝，安装时不需要 `--force-*` 或 `--allow-untrusted`。软件源只提供最新版本。

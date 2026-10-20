@@ -103,6 +103,8 @@ jobs:
           path: feed/
 
   publish:
+    # A tagged release ships with its matching OpenWrt feed, never without one: a missing or wrong
+    # OPENWRT_* secret, or a failing tool build in `openwrt`, blocks the release until it is fixed.
     needs: [build, reproduce, openwrt]
     runs-on: ubuntu-24.04
     permissions:
