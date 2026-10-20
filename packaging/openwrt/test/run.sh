@@ -300,6 +300,37 @@ check "flowmesh-fw leaves the user's staged firewall changes staged" \
   r 'test -x /usr/libexec/flowmesh-fw && uci -q changes firewall | grep -q owt_staged && ! grep -q owt_staged /etc/config/firewall'
 r 'uci revert firewall' >/dev/null 2>&1
 
+# The lock file is opened as root without truncating: a symlink planted at its path costs the
+# target nothing.
+r 'echo keep > /tmp/owt-victim; rm -f /var/lock/flowmesh-fw.lock; ln -s /tmp/owt-victim /var/lock/flowmesh-fw.lock
+   FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw exitnode-off' >/dev/null 2>&1
+check "flowmesh-fw does not truncate a file symlinked at its lock path" \
+  r 'test -x /usr/libexec/flowmesh-fw && [ "$(cat /tmp/owt-victim)" = keep ]'
+r 'rm -f /var/lock/flowmesh-fw.lock /tmp/owt-victim' >/dev/null 2>&1
+
+# Killed mid-run (SIGTERM, after the user's staged changes were set aside): they are put back. A
+# slow uci in front of the real one keeps the run busy long enough.
+r 'mkdir -p /tmp/owt-slow; real=$(command -v uci)
+   printf "#!/bin/sh\ncase \"\$*\" in *\"show firewall\"*) sleep 4 ;; esac\nexec %s \"\$@\"\n" "$real" > /tmp/owt-slow/uci
+   chmod +x /tmp/owt-slow/uci
+   uci set firewall.@defaults[0].owt_staged=1
+   PATH=/tmp/owt-slow:$PATH FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw exitnode-off & p=$!
+   sleep 2; kill -TERM $p; wait $p; rm -rf /tmp/owt-slow' >/dev/null 2>&1
+check "flowmesh-fw killed with SIGTERM mid-run puts the user's staged firewall changes back" \
+  r 'test -x /usr/libexec/flowmesh-fw && uci -q changes firewall | grep -q owt_staged'
+r 'uci revert firewall' >/dev/null 2>&1
+
+# A run stuck behind a held lock does not wait forever: it gives up after 60 s.
+out=$(r 'mkfifo /tmp/owt-hold; (flock 9; read x < /tmp/owt-hold) 9<> /var/lock/flowmesh-fw.lock & sleep 1
+   s=$(date +%s); FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw exitnode-off > /tmp/owt-msg 2>&1 & p=$!
+   (sleep 75; kill $p) < /dev/null > /dev/null 2>&1 & w=$!
+   wait $p; rc=$?; t=$(( $(date +%s) - s )); kill $w
+   echo release > /tmp/owt-hold; wait; echo "rc=$rc t=$t $(cat /tmp/owt-msg)"; rm -f /tmp/owt-hold /tmp/owt-msg' 2>&1)
+sed 's/^/   | /' <<< "$out"
+check "flowmesh-fw gives up on a held lock after about 60 s, with a message" eval '
+  rc=$(sed -n "s/^rc=\([0-9]*\) .*/\1/p" <<< "$out"); t=$(sed -n "s/^rc=[0-9]* t=\([0-9]*\).*/\1/p" <<< "$out")
+  [ -n "$rc" ] && [ "$rc" != 0 ] && [ "$t" -ge 55 ] && [ "$t" -le 70 ] && grep -qi lock <<< "$out"'
+
 # Overlapping runs (the init's background apply, LuCI, a reload) must not interleave: from scratch,
 # "add" and "exitnode-on" at the same time, five rounds, with a user change staged throughout.
 race_ok=1

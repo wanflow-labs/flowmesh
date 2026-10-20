@@ -7,8 +7,8 @@
 #   exitnode-on   forwarding flowmesh -> wan (this router offers itself as an exit node)
 #   exitnode-off  the forwardings flowmesh -> wan
 # Nothing else in /etc/config/firewall is touched. Access control is the mesh's ACL, which also
-# decides what the device list shows. Firewall changes the user has staged but not applied (e.g. in
-# LuCI) are set aside while we commit, so they are neither committed with ours nor lost.
+# decides what the device list shows. Firewall changes the user has staged with the uci command but
+# not applied are set aside while we commit, so they are neither committed with ours nor lost.
 # The firewall is reloaded when something changed, unless FLOWMESH_FW_NORELOAD=1 (first boot, where
 # the firewall starts later on its own).
 
@@ -17,9 +17,20 @@ DEVICE=flowmesh0
 
 # One run at a time: the init's background apply, a reload and LuCI can overlap, and the staged-change
 # shuffle below (and uci's own add-then-set) is not safe against a concurrent run.
+# Opened without truncating (<>): we run as root, and the path may be a symlink to anything. A run
+# that holds the lock for a minute is stuck (a hung firewall reload): give up rather than queue
+# every later run behind it. (BusyBox flock has no -w.)
 mkdir -p /var/lock
-exec 9> /var/lock/flowmesh-fw.lock || exit 1
-flock 9 || exit 1
+exec 9<> /var/lock/flowmesh-fw.lock || exit 1
+waited=0
+until flock -n 9; do
+	if [ "$waited" -ge 60 ]; then
+		echo "flowmesh-fw: another run has held /var/lock/flowmesh-fw.lock for 60 s; giving up" >&2
+		exit 1
+	fi
+	sleep 1
+	waited=$((waited + 1))
+done
 
 # uci always reads the default delta directory (-t only moves where new changes are written), so the
 # user's staged firewall changes are moved out of the way for the duration.
@@ -30,6 +41,8 @@ restore() {
 	rm -rf "$ASIDE"
 }
 trap restore EXIT
+# (A signal would otherwise end the shell without running the EXIT trap.)
+trap 'exit 1' INT TERM HUP
 if [ -s "$STAGED" ]; then
 	mv -f "$STAGED" "$ASIDE/firewall" || exit 1
 fi
