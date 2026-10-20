@@ -349,8 +349,15 @@ r 'uci revert firewall; F=/usr/libexec/flowmesh-fw; FLOWMESH_FW_NORELOAD=1 $F ad
 # --- join, settings ---------------------------------------------------------------------------
 host="owt-$(tr -c 'a-z0-9\n' '-' <<< "$label")"
 check "daemon got accept-dns=false from the service" eventually 30 eval '[ "$(pref accept_dns)" = false ]'
-r "flowmesh up --reset --login-server=$OWT_LOGIN_SERVER --auth-key=$OWT_AUTH_KEY --hostname=$host --accept-dns=false --timeout=60s" 2>&1 | sed 's/^/   | /' | tail -5
-check "joined: BackendState Running" eventually 30 backend_running
+# The command-line join of docs/install.md ("OpenWrt routers"), with LAN sharing switched on in the
+# settings beforehand: up --reset starts from the defaults, the reload applies the settings.
+r "uci set flowmesh.main.hostname=$host; uci set flowmesh.main.advertise_lan=1; uci commit flowmesh
+   flowmesh up --reset --accept-dns=false --hostname=$host --login-server=$OWT_LOGIN_SERVER --auth-key=$OWT_AUTH_KEY --timeout=60s &&
+   /etc/init.d/flowmesh reload" 2>&1 | sed 's/^/   | /' | tail -5
+check "joined from the command line: BackendState Running" eventually 30 backend_running
+check "command-line join: the reload applied the settings (LAN shared, accept-dns off)" eventually 20 eval '
+  [ "$(pref hostname)" = "$host" ] && [ "$(pref "advertise_routes[0]")" = 192.168.1.0/24 ] && [ "$(pref accept_dns)" = false ]'
+r "uci set flowmesh.main.advertise_lan=0; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 
 pid1=$(r 'pidof flowmeshd')
 r "uci set flowmesh.main.hostname=$host; uci set flowmesh.main.advertise_lan=1; uci set flowmesh.main.accept_routes=1; uci commit flowmesh; /etc/init.d/flowmesh reload" 2>&1 | sed 's/^/   | /'
@@ -384,6 +391,21 @@ eventually 60 eval '! r true 2>/dev/null'
 check "after reboot: back up" eventually 120 eval 'r true 2>/dev/null'
 check "after reboot: Running again without the key" eventually 60 backend_running
 check "after reboot: LAN host still reaches the mesh" eventually 45 lan_ping
+
+# --- the Linux installer ---------------------------------------------------------------------
+# The console's Linux install command run on the router must refuse and point to the feed, leaving
+# the package's daemon alone (not replaced, no second one started).
+sum_before=$(r 'md5sum /usr/sbin/flowmeshd /usr/bin/flowmesh')
+pid_before=$(r 'pidof flowmeshd')
+r 'cat > /tmp/install.sh' < "$(dirname "$0")/../../install.sh"
+out=$(r "sh /tmp/install.sh --login-server=$OWT_LOGIN_SERVER --auth-key=$OWT_AUTH_KEY; echo \"exit=\$?\"" 2>&1)
+sed 's/^/   | /' <<< "$out"
+check "install.sh refuses on OpenWrt and points to add-feed.sh" \
+  eval 'grep -q "^exit=1$" <<< "$out" && grep -q "add-feed.sh" <<< "$out"'
+sleep 3
+check "install.sh on OpenWrt: package binaries untouched, still one daemon (the service's)" eval '
+  [ "$(r "md5sum /usr/sbin/flowmeshd /usr/bin/flowmesh")" = "$sum_before" ] && [ -n "$pid_before" ] &&
+  [ "$(r "pidof flowmeshd")" = "$pid_before" ] && r "test ! -e /var/lib/flowmesh"'
 
 # --- stop, removal ---------------------------------------------------------------------------
 r '/etc/init.d/flowmesh stop' >/dev/null 2>&1

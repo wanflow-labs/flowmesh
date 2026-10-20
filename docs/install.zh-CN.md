@@ -52,11 +52,24 @@ opkg update && opkg install luci-app-flowmesh    # OpenWrt 21.02 到 24.10
 apk update && apk add luci-app-flowmesh          # OpenWrt 25.12 及以后
 ```
 
-只想用命令行时，可以只装 `flowmesh`。
+只想用命令行时，可以只装 `flowmesh`（`opkg install flowmesh` / `apk add flowmesh`）。不要在路由器上运行 Linux 安装命令（`install.sh`）：它在 OpenWrt 上会拒绝执行，否则会覆盖软件包的文件，并在系统服务之外再启动一个守护进程。
 
-加入组网：在 LuCI 打开「服务 → FlowMesh」，在万联控制台为组网添加设备，把控制台给出的 Linux 安装命令粘贴进去，或者手动填写组网地址和接入密钥，再填设备名，点「接入」。之后可以在同一页面开关「共享本地局域网」「作为出口节点」等设置；设置保存在 `/etc/config/flowmesh`，节点身份保存在 `/etc/flowmesh/`，两者都会在系统升级（sysupgrade）时保留。安装时会添加一个名为 `flowmesh` 的防火墙区域（设备 `flowmesh0`，与 `lan` 双向转发），卸载时删除。
+加入组网：在 LuCI 打开「服务 → FlowMesh」，在万联控制台为组网添加设备，把控制台给出的 Linux 安装命令粘贴进去，或者手动填写组网地址和接入密钥，再填设备名，点「接入」。之后可以在同一页面开关「共享本地局域网」「作为出口节点」等设置；设置保存在 `/etc/config/flowmesh`（文件里有每个选项的说明），节点身份保存在 `/etc/flowmesh/`。安装时会添加一个名为 `flowmesh` 的防火墙区域（设备 `flowmesh0`，与 `lan` 双向转发），卸载时删除。
 
-升级：`opkg update && opkg upgrade flowmesh luci-app-flowmesh`（apk：`apk update && apk upgrade`）。卸载：`opkg remove luci-app-flowmesh flowmesh`（apk：`apk del luci-app-flowmesh flowmesh`），`/etc/flowmesh/` 里的节点身份会保留，彻底清除需手动删除。
+没有 LuCI 时用命令行加入。系统服务以 `/etc/config/flowmesh` 里的设置为准，所以先把设备名写进去；`up --reset` 以默认设置加入（`--accept-dns=false` 让路由器的 DNS 继续由 dnsmasq 负责），最后 reload 应用其余设置：
+
+```sh
+uci set flowmesh.main.hostname=office-gw && uci commit flowmesh
+flowmesh up --reset --accept-dns=false --hostname=office-gw \
+  --login-server=https://<组网地址> --auth-key=<接入密钥>
+/etc/init.d/flowmesh reload
+```
+
+装了 `luci-app-flowmesh` 时，`/usr/libexec/flowmesh-luci up https://<组网地址> <接入密钥> office-gw` 一步完成上面三步（LuCI 页面调用的就是它，加入成功后输出 `{ "ok": true }`）。之后修改设置：`uci set flowmesh.main.<选项>=<值>`、`uci commit flowmesh`、`/etc/init.d/flowmesh reload`。
+
+升级：`opkg update && opkg upgrade flowmesh luci-app-flowmesh`（apk：`apk update && apk upgrade flowmesh luci-app-flowmesh`）。设置、节点身份和防火墙区域都会保留，路由器保持在线；你停用过的服务（`/etc/init.d/flowmesh disable`）升级后仍是停用状态。卸载：`opkg remove luci-app-flowmesh flowmesh`（apk：`apk del luci-app-flowmesh flowmesh`），`/etc/flowmesh/` 里的节点身份会保留，彻底清除需手动删除。
+
+固件升级（sysupgrade）：`/etc/config/flowmesh` 和 `/etc/flowmesh/` 会保留，但软件包不会（固件之外装的软件包都是如此）。升级后重新运行上面的 `add-feed.sh` 命令，再安装 `luci-app-flowmesh`（或 `flowmesh`）；路由器会用保留的身份和设置重新连上，不需要新的接入密钥。
 
 ### 用安装包
 
