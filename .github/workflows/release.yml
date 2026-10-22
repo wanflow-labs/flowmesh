@@ -147,3 +147,44 @@ jobs:
           sha256sum install.sh "flowmesh-openwrt-feed-$v.tar.gz" >> SHA256SUMS
           gh release create "$GITHUB_REF_NAME" --verify-tag --title "FlowMesh $v" --notes-from-tag \
             flowmesh-*.tar.gz *.deb *.rpm *.cdx.json SHA256SUMS install.sh
+
+  oss:
+    # Copies the published release to the OSS bucket behind the download mirror (packaging/
+    # oss-publish.sh). Skipped until the repository variables below are set; a failure here does not
+    # touch the GitHub Release, and re-running this job publishes the same files again.
+    #   OSS_BUCKET, OSS_REGION (e.g. cn-hangzhou), OSS_ROLE_ARN, OSS_OIDC_PROVIDER_ARN
+    # The RAM role trusts this repository's tag refs only (OIDC subject repo:<owner>/<repo>:ref:refs/tags/*).
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/') && vars.OSS_BUCKET != ''
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+      - name: ossutil 2.4.0 (SHA-256 checked)
+        run: |
+          zip=ossutil-2.4.0-linux-amd64.zip
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/$zip" "https://gosspublic.alicdn.com/ossutil/v2/2.4.0/$zip"
+          echo "85edf66b2fb7238f5c7e25cab820cf29312319fe4935b7c86a6b8485eb434f3c  $RUNNER_TEMP/$zip" | sha256sum -c --quiet -
+          unzip -q -o "$RUNNER_TEMP/$zip" -d "$RUNNER_TEMP"
+          install -m0755 "$RUNNER_TEMP/ossutil-2.4.0-linux-amd64/ossutil" "$RUNNER_TEMP/ossutil"
+      - name: The published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "$GITHUB_REF_NAME" -D rel
+      - name: Temporary credentials (OIDC)
+        id: cred
+        uses: aliyun/configure-aliyun-credentials-action@v1.1.0
+        with:
+          role-to-assume: ${{ vars.OSS_ROLE_ARN }}
+          oidc-provider-arn: ${{ vars.OSS_OIDC_PROVIDER_ARN }}
+          role-session-name: flowmesh-release-${{ github.run_id }}
+      - name: Upload
+        env:
+          OSS_BUCKET: ${{ vars.OSS_BUCKET }}
+          OSS_REGION: ${{ vars.OSS_REGION }}
+          OSS_ACCESS_KEY_ID: ${{ steps.cred.outputs.aliyun-access-key-id }}
+          OSS_ACCESS_KEY_SECRET: ${{ steps.cred.outputs.aliyun-access-key-secret }}
+          OSS_SESSION_TOKEN: ${{ steps.cred.outputs.aliyun-security-token }}
+        run: OSSUTIL=$RUNNER_TEMP/ossutil packaging/oss-publish.sh "${GITHUB_REF_NAME#v}" rel
