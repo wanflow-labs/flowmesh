@@ -175,7 +175,7 @@ jobs:
         run: gh release download "$GITHUB_REF_NAME" -D rel
       - name: Temporary credentials (OIDC)
         id: cred
-        uses: aliyun/configure-aliyun-credentials-action@v1.1.0
+        uses: aliyun/configure-aliyun-credentials-action@1e5248c8d5d93a8781ac344a68e19a43341e79e6 # v1.1.0
         with:
           role-to-assume: ${{ vars.OSS_ROLE_ARN }}
           oidc-provider-arn: ${{ vars.OSS_OIDC_PROVIDER_ARN }}
