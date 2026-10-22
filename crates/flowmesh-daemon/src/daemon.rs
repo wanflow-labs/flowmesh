@@ -504,13 +504,15 @@ impl<L: Launcher> Daemon<L> {
 
     pub async fn status_json(&self) -> serde_json::Value {
         let sh = self.shared.lock().await;
+        // the name the engine reports, also when --hostname is unset (the system host name)
+        let hostname = flowmesh_engine::hostname::effective_hostname(&sh.stored.prefs.hostname);
         status_json::render(&status_json::Input {
             state: derive(facts(&sh)),
             logged_in: sh.stored.logged_in,
             auth_url: sh.refused.as_deref().unwrap_or(""),
             errors: &sh.errors,
             snap: &sh.snap,
-            hostname: &sh.stored.prefs.hostname,
+            hostname: &hostname,
         })
     }
 

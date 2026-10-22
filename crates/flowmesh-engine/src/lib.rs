@@ -4,6 +4,7 @@
 pub mod command;
 pub mod control_loop;
 pub mod debug;
+pub mod hostname;
 mod logic;
 pub mod metrics;
 mod peerapi;

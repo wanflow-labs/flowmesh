@@ -370,7 +370,7 @@ pub(crate) fn apply_to_hostinfo(
     cfg: &EngineConfig,
     features: &Features,
 ) {
-    h.hostname.clone_from(&cfg.hostname);
+    h.hostname = crate::hostname::effective_hostname(&cfg.hostname);
     h.routable_ips = advertised(cfg);
     h.request_tags.clone_from(&cfg.advertise_tags);
     h.shields_up = cfg.shields_up;
