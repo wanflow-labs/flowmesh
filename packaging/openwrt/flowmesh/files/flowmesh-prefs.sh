@@ -105,10 +105,16 @@ flowmesh_cli() {
 # IPv6 kept off the local uplink while its IPv4 goes through the exit node; no NAT66) and of
 # FM_EXIT_BLOCK (set by the init when the chosen exit node could not be used and the kill switch is
 # on: the LAN kept off the local uplink entirely). Every successful apply sets all three.
+# flowmesh_apply_fw early: the first two only, before the CLI has answered (the kill switch rule
+# depends on its answer and is left as it is).
 flowmesh_apply_fw() {
 	local exit=exitnode-off v6="exit-v6-block-off" kill="exit-kill-off"
 	[ "$FM_EXIT_NODE" = 1 ] && exit=exitnode-on
 	[ -n "$FM_EXIT_IP" ] && v6="exit-v6-block-on"
 	[ "$FM_EXIT_BLOCK" = 1 ] && kill="exit-kill-on"
-	/usr/libexec/flowmesh-fw "$exit" "$v6" "$kill"
+	if [ "$1" = early ]; then
+		/usr/libexec/flowmesh-fw "$exit" "$v6"
+	else
+		/usr/libexec/flowmesh-fw "$exit" "$v6" "$kill"
+	fi
 }

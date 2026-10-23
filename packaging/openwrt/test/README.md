@@ -30,11 +30,14 @@ and `ip-full` from the official package feeds through QEMU user networking).
 | "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer`; blackholed on the host, so the router's uplink cannot reach it |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
+| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200, `corp.owt-split.test` |
 
 It writes `<work_dir>/lab.env` (control server URL, a reusable pre-auth key, the peer's mesh address).
 The addresses can be changed with the `OWT_*` variables at the top of `lab.sh`.
 `lab.sh down <work_dir>` stops both processes (by their recorded PIDs) and removes the namespaces,
-the bridge and the lab's files.
+the bridge and the lab's files. `lab.sh peer-stop <work_dir>` stops the peer's daemon (by its PID),
+`lab.sh peer-start <work_dir>` starts it again with its state and waits until it is Running: run.sh
+uses them to take the exit node offline.
 
 The relay is not reachable over plain HTTP, so the nodes talk directly (they share the host); that is
 enough for these tests.
@@ -56,6 +59,24 @@ kill switch on the rule `flowmesh_exit_kill_switch` rejects all LAN -> WAN forwa
 after a working exit node; off, the LAN goes direct, probed by a TCP connection through the router to
 this host's public address), and that
 `stop` and package removal leave no exit routing, SNAT or IPv6 rule behind.
+
+## The watcher
+
+`flowmesh-watch` runs as the service's second procd instance. run.sh first runs its unit tests in the
+VM (`flowmesh/tests/watch_test.sh`, a fake `flowmesh`: probe debouncing, missing exit nodes, the
+consistency re-apply, the domain set, dnsmasq entries next to the user's, SIGTERM), then checks it
+for real. Mesh names: with a user's own `server='/corp.example/10.0.0.53'` and `rebind_domain`
+in place, dnsmasq gets forwardings to 100.100.100.100 (and rebind exceptions) for the mesh suffix,
+the extra record and the split-DNS domain, and nothing else; the LAN host resolves the peer's mesh
+name and the extra record through the router (`dig`); nothing is reloaded while nothing changes;
+`lan_dns=0`, logging out, `stop` and package removal remove the watcher's entries and leave the
+user's. The exit node: the peer is stopped and started (`lab.sh peer-stop/peer-start`). Kill switch
+on: `offline_blocked`, the LAN reaches neither the exit node's Internet nor the uplink, the router
+keeps resolving names and its control connection, nothing is re-applied. Kill switch off: the LAN is
+on the uplink within 15 s (IPv6 open, UCI unchanged, a reload keeps it there) and back on the exit
+node within 15 s of the peer being Running again. Also: a chosen exit node that is not in the mesh
+is reported `missing`, and a restart in that state with the kill switch off leaves the LAN on the
+uplink without a reload by hand.
 
 ## Running
 

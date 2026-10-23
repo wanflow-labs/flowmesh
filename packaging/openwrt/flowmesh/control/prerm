@@ -16,4 +16,7 @@ while pidof flowmeshd >/dev/null && [ "$i" -lt 20 ]; do
 	i=$((i + 1))
 done
 /usr/libexec/flowmesh-fw remove
+# The watcher's dnsmasq entries (it removes them itself when stopped; again in case it was not
+# running). The user's own entries are not touched.
+/usr/libexec/flowmesh-watch cleanup
 exit 0

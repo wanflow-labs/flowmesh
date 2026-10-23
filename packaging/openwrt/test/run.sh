@@ -141,6 +141,30 @@ own_rules_absent() {
   out=$(own_rules) && ! grep -qE 'table inet flowmesh|fm-forward' <<< "$out"
 }
 no_daemon() { ! r 'pidof flowmeshd' >/dev/null; }
+LAB="$(dirname "$0")/lab.sh"
+# The watcher (second procd instance of the service): running, with respawn.
+watcher_running() {
+  local out
+  out=$(r "ubus call service list '{\"name\":\"flowmesh\"}'") &&
+    jq -e '.flowmesh.instances.watch | .running == true and .respawn != null and
+      (.command | any(. == "/usr/libexec/flowmesh-watch"))' <<< "$out" >/dev/null
+}
+exit_state() { r 'jsonfilter -i /var/run/flowmesh/exit-state.json -e @.state 2>/dev/null'; }
+# dnsmasq's UCI lists (first dnsmasq section), one value per line.
+dns_list() { r "uci -q -d '
+' get dhcp.@dnsmasq[0].$1"; }
+dns_has() { dns_list "$1" | grep -qxF "$2"; }
+dns_count() { dns_list "$1" | grep -cxF "$2"; }
+# Our entries: everything forwarded to FlowMesh's resolver, and the owned list.
+ours_absent() {
+  ! dns_list server | grep -q '/100\.100\.100\.100$' && r '! test -e /etc/flowmesh/lan-dns.owned'
+}
+# The user's own entries (set below): there, once each.
+user_dns_kept() {
+  [ "$(dns_count server /corp.example/10.0.0.53)" = 1 ] && [ "$(dns_count rebind_domain corp.example)" = 1 ]
+}
+# A LAN host asks the router (dnsmasq) for name $1 and gets address $2.
+lan_resolves() { sudo ip netns exec owt-lan dig +short +time=2 +tries=1 @"$OWT_ROUTER_LAN_IP" "$1" A 2>/dev/null | grep -qxF "$2"; }
 
 before=$(fw_inventory)
 
@@ -418,6 +442,13 @@ check "keep.d lists the state dir and the UCI config" \
 check "flock is available (flowmesh-fw serializes with it)" r 'command -v flock >/dev/null'
 check "kmod-tun and ip-full were pulled in" r 'test -e /dev/net/tun && test -x /usr/libexec/ip-full'
 
+# The watcher's own tests (a fake flowmesh), with this release's BusyBox, jsonfilter and uci.
+tar -C "$(dirname "$0")/../flowmesh" -cf - files tests | r 'rm -rf /tmp/owt-watch; mkdir -p /tmp/owt-watch; tar -xf - -C /tmp/owt-watch'
+out=$(r 'sh /tmp/owt-watch/tests/watch_test.sh 2>&1; echo "exit=$?"; rm -rf /tmp/owt-watch')
+grep -E '^FAIL|^      ' <<< "$out" | sed 's/^/   | /'
+check "flowmesh-watch unit tests (flowmesh/tests/watch_test.sh): $(grep -c '^PASS' <<< "$out") passed, none failed" \
+  grep -qx 'exit=0' <<< "$out"
+
 after=$(fw_inventory)
 check "firewall: exactly one zone added, named flowmesh" eval '
   [ "$(grep -c "^zone " <<< "$after")" -eq $(( $(grep -c "^zone " <<< "$before") + 1 )) ] && has_line "$after" "zone flowmesh"'
@@ -520,6 +551,53 @@ check "control server sees the router and its approved LAN route" \
 check "the daemon's own forwarding rules are installed (subnet router)" eventually 20 own_rules_present
 check "LAN host reaches another mesh node through the router ($fw)" eventually 45 lan_ping
 
+# --- mesh names for the LAN (the watcher) -------------------------------------------------------
+# lan_dns is on when unset. The watcher has dnsmasq forward the mesh's domains to FlowMesh's
+# resolver: the suffix, the console's extra record (outside the suffix, lab.sh) and the split-DNS
+# domain; with rebind_domain exceptions. The user's own entries (one forwarding and one exception,
+# set here) must be left alone through all of it, and survive removal.
+r "uci add_list dhcp.@dnsmasq[0].server=/corp.example/10.0.0.53; uci add_list dhcp.@dnsmasq[0].rebind_domain=corp.example
+   uci commit dhcp; /etc/init.d/dnsmasq reload" >/dev/null 2>&1
+suffix=$(r 'flowmesh dns status --json | jsonfilter -e @.suffix')
+peer_name="owt-peer.$suffix"
+check "watcher: a second instance of the service, with respawn" watcher_running
+ours_present() {
+  dns_has server "/$suffix/100.100.100.100" && dns_has rebind_domain "$suffix" &&
+    dns_has server "/$OWT_EXTRA_NAME/100.100.100.100" && dns_has rebind_domain "$OWT_EXTRA_NAME" &&
+    dns_has server "/$OWT_SPLIT_DOMAIN/100.100.100.100" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN"
+}
+check "LAN names: dnsmasq forwards $suffix, $OWT_EXTRA_NAME and $OWT_SPLIT_DOMAIN to 100.100.100.100, with rebind exceptions" \
+  eventually 30 ours_present
+dns_list server | sed 's/^/   | server: /'
+dns_list rebind_domain | sed 's/^/   | rebind_domain: /'
+check "LAN names: only those (no mesh reverse zones), the user's entries untouched" eval '
+  [ "$(dns_list server | grep -c "/100\.100\.100\.100$")" = 3 ] && user_dns_kept'
+check "LAN host resolves $peer_name through the router: $OWT_PEER_MESH_IP" eventually 20 lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"
+check "LAN host resolves the console's extra record $OWT_EXTRA_NAME: $OWT_EXTRA_IP" eventually 20 lan_resolves "$OWT_EXTRA_NAME" "$OWT_EXTRA_IP"
+# (dnsmasq 2.90 and later, OpenWrt 24.10 on, discard mesh addresses as a rebind without the
+# rebind_domain exceptions, and log it.)
+check "dnsmasq did not discard a mesh answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\)"'
+# Nothing changes: neither dnsmasq nor the settings are reloaded again.
+logs_count() { r "logread | grep -c '$1'"; }
+n_dns=$(logs_count 'LAN names: forwarding'); n_apply=$(logs_count 're-applying the settings')
+sleep 25
+check "watcher, nothing changing for 25 s: no dnsmasq reload, nothing re-applied" eval '
+  [ "$(logs_count "LAN names: forwarding")" = "$n_dns" ] && [ "$(logs_count "re-applying the settings")" = "$n_apply" ]'
+r 'uci set flowmesh.main.lan_dns=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "lan_dns=0: our entries removed, the user's kept, the LAN no longer resolves $peer_name" eventually 20 eval '
+  ours_absent && user_dns_kept && ! lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"'
+r 'uci delete flowmesh.main.lan_dns; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "lan_dns unset again (on): entries back, resolves" eventually 30 eval 'ours_present && lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"'
+r 'flowmesh logout' >/dev/null 2>&1
+check "logged out: our entries removed, the user's kept" eventually 20 eval 'ours_absent && user_dns_kept'
+r "flowmesh up --reset --accept-dns=false --hostname=$host --login-server=$OWT_LOGIN_SERVER --auth-key=$OWT_AUTH_KEY --timeout=60s &&
+   /etc/init.d/flowmesh reload" >/dev/null 2>&1
+# (Should the control server have made it a new node, its LAN route is approved again.)
+node_id=$($OWT_HS nodes list -o json 2>/dev/null | jq -r --arg h "$host" '[.[] | select(.given_name == $h or .name == $h)] | max_by(.id | tonumber) | .id')
+[ -n "$node_id" ] && $OWT_HS nodes approve-routes -i "$node_id" -r 192.168.1.0/24 >/dev/null 2>&1
+check "logged in again: Running, the LAN reaches the mesh, entries back" eventually 45 eval '
+  backend_running && lan_ping && ours_present && user_dns_kept'
+
 r "uci set flowmesh.main.exit_node=1; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 check "exit node on: forwarding flowmesh>wan, advertised" \
   eval 'has_line "$(fw_inventory)" "fwd flowmesh>wan" && [ "$(pref advertise_exit_node)" = true ]'
@@ -532,7 +610,8 @@ check "exit node off: no forwarding flowmesh>wan" \
 # the source it sees. The LAN host goes there through the router; the router itself does not.
 # IPv6: the lab's uplink (QEMU user networking, fec0::/64) answers only the router itself, so the
 # LAN host's IPv6 to it never gets an answer; what shows the block is the router's reject.
-inet_from_lan() { sudo ip netns exec owt-lan curl -s -m 4 "http://$OWT_INET_IP:$OWT_INET_PORT/" 2>/dev/null; }
+# (CURL_T, LAN4_T: shorter timeouts where a switch-over is timed.)
+inet_from_lan() { sudo ip netns exec owt-lan curl -s -m "${CURL_T:-4}" "http://$OWT_INET_IP:$OWT_INET_PORT/" 2>/dev/null; }
 via_exit() { [ -n "$rip" ] && [ "$(inet_from_lan)" = "$rip" ]; }
 not_via_exit() {
   local o
@@ -580,7 +659,7 @@ lan6_rejected() {
 # to this host's own SSH port on its public address (outside the router's WAN network, so not one
 # of the networks that stay off table 52).
 uplink_ip=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
-lan4_direct() { sudo ip netns exec owt-lan timeout 5 bash -c "echo > /dev/tcp/$uplink_ip/22" 2>/dev/null; }
+lan4_direct() { sudo ip netns exec owt-lan timeout "${LAN4_T:-5}" bash -c "echo > /dev/tcp/$uplink_ip/22" 2>/dev/null; }
 # The router's reject, for IPv4 (QEMU user networking answers pings to its gateway 10.0.2.2).
 lan4_rejected() {
   local out
@@ -737,6 +816,7 @@ check "exit node not in the mesh (after $P), kill switch on: reload succeeds, th
 check "  ... the LAN reaches neither the Internet behind $P nor the uplink (kill switch rule in UCI and $fw)" eval '
   kill_on && not_via_exit && lan4_rejected && lan6_rejected'
 check "  ... the LAN still reaches the mesh" eventually 20 lan_ping
+check "  ... the watcher reports it missing" eventually 20 eval '[ "$(exit_state)" = missing ]'
 r '/etc/init.d/flowmesh stop' >/dev/null 2>&1
 check "  ... stop lifts the kill switch rule (the LAN uses the uplink)" eval 'eventually 20 no_daemon && kill_off && v6_open && lan4_direct'
 r '/etc/init.d/flowmesh start' >/dev/null 2>&1
@@ -757,6 +837,15 @@ check "exit node not in the mesh (no exit node before), kill switch on: no Inter
 r "uci set flowmesh.main.kill_switch=0; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 check "exit node not in the mesh (no exit node before), kill switch off: the LAN uses the uplink" eval '
   kill_off && v6_open && lan4_direct && not_via_exit'
+# Started like this, the daemon takes the exit node as given before it has the mesh map, and drops
+# the LAN's Internet traffic; the watcher sees that and re-applies (no reload by hand).
+r '/etc/init.d/flowmesh restart' >/dev/null 2>&1
+t0=$SECONDS
+if eventually 60 eval 'backend_running && [ "$(exit_state)" = missing ] && [ "$(pref exit_node)" = "" ] && lan4_direct && not_via_exit'; then
+  pass "  ... restarted that way: the watcher puts the LAN on the uplink by itself, after $((SECONDS - t0)) s"
+else
+  fail "  ... restarted that way: the watcher puts the LAN on the uplink by itself (60 s)"
+fi
 r "uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 r 'uci delete flowmesh.main.use_exit_node; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 check "use_exit_node cleared after an unusable exit node (kill switch on): the kill switch rule is gone" eval 'kill_off && lan4_direct'
@@ -768,6 +857,57 @@ check "use_exit_node cleared: exit node off, no exit rules or SNAT, IPv6 open, L
 # On again, and left on: reboot, stop and removal below run with the exit node in use.
 r "uci set flowmesh.main.use_exit_node=$P; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 check "use_exit_node set again: through the exit node" eventually 30 via_exit
+
+# --- the exit node going offline (the watcher) ------------------------------------------------
+# The peer's daemon is stopped (lab.sh peer-stop, by PID) and started again. Kill switch on: the LAN
+# has no Internet while it is away and nothing is re-applied; the router itself keeps resolving
+# names and its control connection. Kill switch off: the LAN moves to the uplink and back, each
+# within 15 s (3 failed or answered probes, 3 s apart, and a re-apply).
+check "watcher: exit-state.json says active for $P" eventually 15 eval '[ "$(exit_state)" = active ] &&
+  [ "$(r "jsonfilter -i /var/run/flowmesh/exit-state.json -e @.want")" = "$P" ]'
+# time_until <limit> <command...>: prints the seconds it took, fails after <limit> (polls every second).
+time_until() {
+  local lim=$1 t=$SECONDS
+  shift
+  while ! "$@"; do
+    [ $((SECONDS - t)) -ge "$lim" ] && { echo "$((SECONDS - t))+"; return 1; }
+    sleep 1
+  done
+  echo $((SECONDS - t))
+}
+state_is() { [ "$(exit_state)" = "$1" ]; }
+fallback_now() { LAN4_T=1 lan4_direct; }
+back_now() { [ "$(exit_state)" = active ] && CURL_T=1 via_exit; }
+n_apply=$(logs_count 're-applying the settings')
+"$LAB" peer-stop "$OWT_WORK" >/dev/null
+dt=$(time_until 30 state_is offline_blocked)
+check "exit node offline, kill switch on: offline_blocked after $dt s" [ "${dt%+}" = "$dt" ]
+check "  ... the LAN reaches neither the Internet behind it nor the uplink" eval '! lan4_direct && not_via_exit'
+check "  ... the router still resolves names and keeps its control connection" eval '
+  r "nslookup downloads.openwrt.org 127.0.0.1 >/dev/null 2>&1" && sleep 5 && backend_running'
+check "  ... nothing re-applied (the exit node is still set, the daemon drops the LAN's traffic)" eval '
+  [ "$(pref exit_node)" = "$P" ] && [ "$(logs_count "re-applying the settings")" = "$n_apply" ]'
+"$LAB" peer-start "$OWT_WORK" >/dev/null
+dt=$(time_until 30 back_now)
+check "  ... exit node back: active, the LAN through it again (after $dt s from the peer's Running)" [ "${dt%+}" = "$dt" ]
+
+r 'uci set flowmesh.main.kill_switch=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+eventually 20 via_exit
+"$LAB" peer-stop "$OWT_WORK" >/dev/null
+dt=$(time_until 30 fallback_now)
+check "exit node offline, kill switch off: the LAN on the uplink after $dt s (at most 15), offline_fallback" eval '
+  [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ] && state_is offline_fallback'
+check "  ... exit node off in the daemon, IPv6 open, UCI unchanged (use_exit_node $P, kill_switch 0)" eval '
+  [ "$(pref exit_node)" = "" ] && v6_open && ! lan6_rejected &&
+  [ "$(r "uci -q get flowmesh.main.use_exit_node")" = "$P" ] && [ "$(r "uci -q get flowmesh.main.kill_switch")" = 0 ]'
+r '/etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "  ... a reload keeps the fallback" eval '[ "$(pref exit_node)" = "" ] && lan4_direct'
+"$LAB" peer-start "$OWT_WORK" >/dev/null
+dt=$(time_until 30 back_now)
+check "  ... exit node back: the LAN through it again after $dt s from the peer's Running (at most 15), IPv6 blocked" eval '
+  [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ] && v6_blocked'
+r 'uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "  ... kill switch back on (unset): still through the exit node" eventually 20 eval 'via_exit && [ "$(exit_state)" = active ]'
 
 # --- persistence -----------------------------------------------------------------------------
 sysupgrade_list=$(r 'sysupgrade -l')
@@ -802,9 +942,12 @@ r '/etc/init.d/flowmesh stop' >/dev/null 2>&1
 check "stop: daemon gone" eventually 20 no_daemon
 check "stop: no inet flowmesh table, no fm-forward chain" own_rules_absent
 check "stop (exit node in use): no exit routing or SNAT left, IPv6 block lifted" eval 'no_exit_rules && exit_snat_absent && v6_open && kill_off'
+check "stop: the watcher's dnsmasq entries and exit-state.json gone, the user's entries kept" eval '
+  ours_absent && user_dns_kept && r "! test -e /var/run/flowmesh/exit-state.json"'
 r '/etc/init.d/flowmesh start' >/dev/null 2>&1
 eventually 30 own_rules_present
 check "start: through the exit node again, IPv6 blocked" eventually 40 eval 'via_exit && v6_blocked'
+check "start: the watcher's entries back" eventually 30 ours_present
 
 ours="flowmesh"
 [ -n "$feed" ] && ours="luci-app-flowmesh flowmesh"
@@ -817,6 +960,8 @@ check "removed while using an exit node: no exit routing, table 52 or SNAT, no I
   eval 'no_exit_rules && exit_snat_absent && v6_open && kill_off'
 check "removed: init script and binaries gone" r '! test -e /etc/init.d/flowmesh && ! test -e /usr/sbin/flowmeshd && ! test -e /etc/rc.d/S95flowmesh'
 check "removed: /etc/flowmesh (identity) kept" r 'test -n "$(ls -A /etc/flowmesh)"'
+check "removed: no dnsmasq entries of ours left, the user's kept" eval 'ours_absent && user_dns_kept'
+dns_list server | sed 's/^/   | server after removal: /'
 
 [ -n "$node_id" ] && $OWT_HS nodes delete -i "$node_id" --force >/dev/null 2>&1
 echo "== $label: $fails failed"

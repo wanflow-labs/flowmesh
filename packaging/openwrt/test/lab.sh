@@ -11,6 +11,8 @@
 #
 #   lab.sh up <work_dir> <headscale_binary> <flowmesh-linux-x86_64.tar.gz>
 #   lab.sh down <work_dir>
+#   lab.sh peer-stop <work_dir>    stop the peer's daemon (by its PID): the exit node goes offline
+#   lab.sh peer-start <work_dir>   start it again (same state: no login), wait until it is Running
 # `up` writes <work_dir>/lab.env, which run.sh reads. Needs passwordless sudo (namespaces, bridge).
 set -euo pipefail
 
@@ -23,6 +25,9 @@ OWT_LAN_CLIENT_IP=${OWT_LAN_CLIENT_IP:-192.168.1.50}
 OWT_ROUTER_LAN_IP=${OWT_ROUTER_LAN_IP:-192.168.1.1}
 OWT_INET_IP=${OWT_INET_IP:-198.51.100.1}   # TEST-NET-2: reachable only through the peer as exit node
 OWT_INET_PORT=${OWT_INET_PORT:-18492}
+OWT_EXTRA_NAME=${OWT_EXTRA_NAME:-app.owt-extra.test}   # extra DNS record (not under the mesh suffix)
+OWT_EXTRA_IP=${OWT_EXTRA_IP:-100.64.0.200}
+OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}
 
 die() { echo "lab: $*" >&2; exit 1; }
 
@@ -37,6 +42,14 @@ stop_pidfile() {
     if sudo kill -0 "$pid" 2>/dev/null; then sudo kill -9 "$pid" || true; fi
   fi
   sudo rm -f "$f"
+}
+
+# The peer's daemon in owt-peer, its PID in $1/peer/flowmeshd.pid; waits for its socket.
+start_peer() {
+  local w=$1
+  sudo sh -c "ip netns exec owt-peer '$w/peer/flowmeshd' --state-dir '$w/peer/state' \
+      --socket '$w/peer/flowmeshd.sock' --tun owtpeer0 >> '$w/peer/flowmeshd.log' 2>&1 & echo \$! > '$w/peer/flowmeshd.pid'"
+  for _ in $(seq 1 30); do sudo test -S "$w/peer/flowmeshd.sock" && break; sleep 0.5; done
 }
 
 up() {
@@ -113,6 +126,15 @@ dns:
   override_local_dns: false
   nameservers:
     global: []
+    # A split-DNS domain (the router forwards it to FlowMesh's resolver too).
+    split:
+      $OWT_SPLIT_DOMAIN:
+        - $OWT_HOST_IP
+  # A record outside the mesh suffix, as the console's DNS settings make one.
+  extra_records:
+    - name: $OWT_EXTRA_NAME
+      type: A
+      value: $OWT_EXTRA_IP
 unix_socket: $w/hs/headscale.sock
 unix_socket_permission: "0770"
 logtail:
@@ -151,9 +173,7 @@ EOF2
 
   # The peer node accepts subnet routes, so its replies to the router's LAN go back over the mesh.
   # It is also an exit node (approved below), for the router's LAN.
-  sudo sh -c "ip netns exec owt-peer '$w/peer/flowmeshd' --state-dir '$w/peer/state' \
-      --socket '$w/peer/flowmeshd.sock' --tun owtpeer0 > '$w/peer/flowmeshd.log' 2>&1 & echo \$! > '$w/peer/flowmeshd.pid'"
-  for _ in $(seq 1 30); do sudo test -S "$w/peer/flowmeshd.sock" && break; sleep 0.5; done
+  start_peer "$w"
   sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" up --login-server "http://$OWT_HOST_IP:$OWT_HS_PORT" \
       --auth-key "$key" --hostname owt-peer --accept-routes --advertise-exit-node --accept-dns=false --timeout 30s
   local peer_ip
@@ -174,6 +194,9 @@ OWT_LAN_CLIENT_IP=$OWT_LAN_CLIENT_IP
 OWT_ROUTER_LAN_IP=$OWT_ROUTER_LAN_IP
 OWT_INET_IP=$OWT_INET_IP
 OWT_INET_PORT=$OWT_INET_PORT
+OWT_EXTRA_NAME=$OWT_EXTRA_NAME
+OWT_EXTRA_IP=$OWT_EXTRA_IP
+OWT_SPLIT_DOMAIN=$OWT_SPLIT_DOMAIN
 EOF
   chmod 0600 "$w/lab.env"
   echo "lab up: control server http://$OWT_HOST_IP:$OWT_HS_PORT, peer $peer_ip; env in $w/lab.env"
@@ -196,8 +219,30 @@ down() {
   echo "lab down"
 }
 
+peer_stop() {
+  local w
+  w=$(realpath -m "$1")
+  stop_pidfile "$w/peer/flowmeshd.pid"
+}
+
+peer_start() {
+  local w state=
+  w=$(realpath -m "$1")
+  sudo test -f "$w/peer/flowmeshd.pid" && sudo kill -0 "$(sudo cat "$w/peer/flowmeshd.pid")" 2>/dev/null &&
+    die "the peer's daemon is running"
+  start_peer "$w"
+  for _ in $(seq 1 60); do
+    state=$(sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" status --json 2>/dev/null | jq -r .BackendState)
+    [ "$state" = Running ] && return 0
+    sleep 0.5
+  done
+  die "the peer did not get back to Running (state: $state)"
+}
+
 case "${1:-}" in
   up) [ $# -eq 4 ] || die "usage: lab.sh up <work_dir> <headscale_binary> <flowmesh-linux-x86_64.tar.gz>"; up "$2" "$3" "$4" ;;
   down) [ $# -eq 2 ] || die "usage: lab.sh down <work_dir>"; down "$2" ;;
-  *) die "usage: lab.sh up|down ..." ;;
+  peer-stop) [ $# -eq 2 ] || die "usage: lab.sh peer-stop <work_dir>"; peer_stop "$2" ;;
+  peer-start) [ $# -eq 2 ] || die "usage: lab.sh peer-start <work_dir>"; peer_start "$2" ;;
+  *) die "usage: lab.sh up|down|peer-stop|peer-start ..." ;;
 esac
