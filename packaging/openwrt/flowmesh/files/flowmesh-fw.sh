@@ -10,8 +10,12 @@
 #                      rejected (this router sends its LAN through an exit node; lan -> flowmesh
 #                      and the router's own traffic are not affected)
 #   exit-v6-block-off  every rule of that name
+#   exit-kill-on       rule "flowmesh_exit_kill_switch": everything forwarded from lan to wan is
+#                      rejected, IPv4 and IPv6 (the chosen exit node cannot be used and the kill
+#                      switch is on; lan -> flowmesh and the router's own traffic are not affected)
+#   exit-kill-off      every rule of that name
 # Several actions may be given; they are applied in one commit and one firewall reload. `remove`
-# also removes the rule. Nothing else in /etc/config/firewall is touched. Access control is the
+# also removes both rules. Nothing else in /etc/config/firewall is touched. Access control is the
 # mesh's ACL, which also decides what the device list shows. Firewall changes the user has staged with the uci command but
 # not applied are set aside while we commit, so they are neither committed with ours nor lost.
 # The firewall is reloaded when something changed, unless FLOWMESH_FW_NORELOAD=1 (first boot, where
@@ -20,15 +24,16 @@
 ZONE=flowmesh
 DEVICE=flowmesh0
 V6_BLOCK=flowmesh_exit_block_ipv6
+KILL_BLOCK=flowmesh_exit_kill_switch
 
 usage() {
-	echo "usage: $0 add|remove|exitnode-on|exitnode-off|exit-v6-block-on|exit-v6-block-off..." >&2
+	echo "usage: $0 add|remove|exitnode-on|exitnode-off|exit-v6-block-on|exit-v6-block-off|exit-kill-on|exit-kill-off..." >&2
 	exit 2
 }
 [ $# -gt 0 ] || usage
 for a in "$@"; do
 	case "$a" in
-	add | remove | exitnode-on | exitnode-off | exit-v6-block-on | exit-v6-block-off) ;;
+	add | remove | exitnode-on | exitnode-off | exit-v6-block-on | exit-v6-block-off | exit-kill-on | exit-kill-off) ;;
 	*) usage ;;
 	esac
 done
@@ -133,14 +138,15 @@ add_zone() {
 	add_forwarding "$ZONE" lan
 }
 
+# add_block <name> <family>: rule <name> rejecting lan -> wan forwarding of <family> (ipv6, or any).
 # REJECT, not DROP: the LAN's dual-stack hosts give up on IPv6 at once and use IPv4 (through the
 # exit node) instead of waiting for timeouts. proto all: a rule's default is tcp and udp only.
-add_v6_block() {
+add_block() {
 	local id
-	[ -n "$(rules "$V6_BLOCK")" ] && return 0
+	[ -n "$(rules "$1")" ] && return 0
 	id=$(u add firewall rule)
-	u set "firewall.$id.name=$V6_BLOCK"
-	u set "firewall.$id.family=ipv6"
+	u set "firewall.$id.name=$1"
+	u set "firewall.$id.family=$2"
 	u set "firewall.$id.src=lan"
 	u set "firewall.$id.dest=wan"
 	u set "firewall.$id.proto=all"
@@ -154,12 +160,14 @@ for a in "$@"; do
 	remove)
 		delete $(forwardings "$ZONE" "*") $(forwardings "*" "$ZONE")
 		delete $(zones)
-		delete $(rules "$V6_BLOCK")
+		delete $(rules "$V6_BLOCK") $(rules "$KILL_BLOCK")
 		;;
 	exitnode-on) add_forwarding "$ZONE" wan ;;
 	exitnode-off) delete $(forwardings "$ZONE" wan) ;;
-	exit-v6-block-on) add_v6_block ;;
+	exit-v6-block-on) add_block "$V6_BLOCK" ipv6 ;;
 	exit-v6-block-off) delete $(rules "$V6_BLOCK") ;;
+	exit-kill-on) add_block "$KILL_BLOCK" any ;;
+	exit-kill-off) delete $(rules "$KILL_BLOCK") ;;
 	esac
 done
 

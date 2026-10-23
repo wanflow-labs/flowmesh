@@ -48,7 +48,7 @@ flowmesh_exit_fell_back() {
 flowmesh_load_prefs() {
 	local advertise_lan n
 	FM_ROUTES=
-	FM_EXIT_KEEP=
+	FM_EXIT_BLOCK=
 	config_load flowmesh
 	config_get FM_HOSTNAME main hostname
 	config_get_bool advertise_lan main advertise_lan 0
@@ -88,7 +88,6 @@ flowmesh_load_prefs() {
 # its mesh address (--exit-node-forwarded-only), and always lets the LAN through to its own networks
 # (without that, the replies to the LAN would go to the exit node too). --stateful-filtering stays
 # at the client's default: on, it would drop the LAN's traffic to the exit node.
-# FM_EXIT_KEEP=1 leaves out --exit-node (`set` then keeps the daemon's current one; not for `up`).
 flowmesh_cli() {
 	local run="" sub via=false
 	[ "$1" = exec ] && { run="exec"; shift; }
@@ -99,15 +98,17 @@ flowmesh_cli() {
 		--accept-routes="$FM_ACCEPT_ROUTES" --advertise-routes="$FM_ROUTES" \
 		--advertise-exit-node="$FM_EXIT_NODE" \
 		--exit-node-allow-lan-access="$via" --exit-node-forwarded-only="$via"
-	[ "$FM_EXIT_KEEP" = 1 ] || set -- "$@" --exit-node="$FM_EXIT_IP"
-	$run flowmesh "$sub" "$@"
+	$run flowmesh "$sub" "$@" --exit-node="$FM_EXIT_IP"
 }
 
-# The firewall side of FM_EXIT_NODE (the forwarding flowmesh -> wan) and of FM_EXIT_IP (the LAN's
-# IPv6 kept off the local uplink while its IPv4 goes through the exit node; no NAT66).
+# The firewall side of FM_EXIT_NODE (the forwarding flowmesh -> wan), of FM_EXIT_IP (the LAN's
+# IPv6 kept off the local uplink while its IPv4 goes through the exit node; no NAT66) and of
+# FM_EXIT_BLOCK (set by the init when the chosen exit node could not be used and the kill switch is
+# on: the LAN kept off the local uplink entirely). Every successful apply sets all three.
 flowmesh_apply_fw() {
-	local exit=exitnode-off v6="exit-v6-block-off"
+	local exit=exitnode-off v6="exit-v6-block-off" kill="exit-kill-off"
 	[ "$FM_EXIT_NODE" = 1 ] && exit=exitnode-on
 	[ -n "$FM_EXIT_IP" ] && v6="exit-v6-block-on"
-	/usr/libexec/flowmesh-fw "$exit" "$v6"
+	[ "$FM_EXIT_BLOCK" = 1 ] && kill="exit-kill-on"
+	/usr/libexec/flowmesh-fw "$exit" "$v6" "$kill"
 }

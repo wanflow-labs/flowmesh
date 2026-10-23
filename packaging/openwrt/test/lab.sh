@@ -60,6 +60,9 @@ up() {
   sudo ip -n owt-peer link add owtinet0 type dummy
   sudo ip -n owt-peer addr add "$OWT_INET_IP/32" dev owtinet0
   sudo ip -n owt-peer link set owtinet0 up
+  # The router's WAN is QEMU user networking, which connects from this host: here that address must
+  # lead nowhere, so that only the peer (as exit node) reaches it.
+  sudo ip route replace blackhole "$OWT_INET_IP/32"
 
   sudo ip link add owtbr0 type bridge
   sudo ip addr add "$OWT_LAN_HOST_IP/24" dev owtbr0
@@ -182,6 +185,7 @@ down() {
   stop_pidfile "$w/peer/flowmeshd.pid"
   stop_pidfile "$w/peer/echo.pid"
   stop_pidfile "$w/hs/headscale.pid"
+  [ -n "${OWT_INET_IP:-}" ] && sudo ip route del blackhole "$OWT_INET_IP/32" 2>/dev/null || true
   sudo ip link del owt-peer0 2>/dev/null || true
   sudo ip link del owt-lan0 2>/dev/null || true
   sudo ip link del owtbr0 2>/dev/null || true

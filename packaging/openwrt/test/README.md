@@ -27,7 +27,7 @@ and `ip-full` from the official package feeds through QEMU user networking).
 |---|---|
 | Control server: an upstream headscale release (v0.26.x), sqlite, embedded relay and STUN | `http://10.231.0.1:18480` (STUN UDP 18478) |
 | A second mesh node (the plain Linux release binary), accepting subnet routes, an approved exit node | namespace `owt-peer`, 10.231.0.2 |
-| "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer` |
+| "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer`; blackholed on the host, so the router's uplink cannot reach it |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
 
@@ -51,7 +51,10 @@ LAN host gets an IPv6 default route via the router's ULA address for this, and t
 shared and approved so that IPv6 to the peer's mesh address keeps working. Also checked: the
 defaults of `kill_switch` and `lan_dns`, what `flowmesh_cli` sends, the watcher's
 `exit-state.json` (`offline_fallback` keeps the exit node off on reload), `/etc/init.d/firewall
-restart` and `reload` leaving the exit node working, an exit node that is not in the mesh, and that
+restart` and `reload` leaving the exit node working, an exit node that is not in the mesh (with the
+kill switch on the rule `flowmesh_exit_kill_switch` rejects all LAN -> WAN forwarding, before and
+after a working exit node; off, the LAN goes direct, probed by a TCP connection through the router to
+this host's public address), and that
 `stop` and package removal leave no exit routing, SNAT or IPv6 rule behind.
 
 ## Running

@@ -486,6 +486,11 @@ for _ in 1 2 3 4 5; do
     r 'uci -q changes firewall | grep -q owt_staged && ! grep -q owt_staged /etc/config/firewall' || { race_ok=0; echo "$inv" | sed 's/^/   | /'; r 'uci -q changes firewall' | sed 's/^/   | staged: /'; break; }
 done
 check "concurrent flowmesh-fw runs: one zone, each forwarding once, staged change kept" [ $race_ok = 1 ]
+r 'F=/usr/libexec/flowmesh-fw; export FLOWMESH_FW_NORELOAD=1; $F exit-v6-block-on exit-kill-on exit-kill-on' >/dev/null 2>&1
+check "flowmesh-fw exit-v6-block-on exit-kill-on: one rule each" eval '
+  [ "$(r "uci -q -X show firewall" | grep -cE "\.name=.flowmesh_exit_(block_ipv6|kill_switch).$")" = 2 ]'
+r 'FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw remove' >/dev/null 2>&1
+check "flowmesh-fw remove: the exit rules go with the zone" eval '! r "uci -q -X show firewall" | grep -q flowmesh_exit_'
 r 'uci revert firewall; F=/usr/libexec/flowmesh-fw; FLOWMESH_FW_NORELOAD=1 $F add; FLOWMESH_FW_NORELOAD=1 $F exitnode-off; /etc/init.d/firewall reload' >/dev/null 2>&1
 
 # --- join, settings ---------------------------------------------------------------------------
@@ -564,11 +569,32 @@ v6_block_runtime() {
 v6_blocked() { v6_block_uci && v6_block_runtime; }
 v6_open() { ! v6_block_uci && ! v6_block_runtime; }
 # The router rejects the LAN host's IPv6 to the uplink (an ICMPv6 error at once, not a timeout).
+# (Port unreachable is what fw3 and fw4 reject with; other ICMPv6 errors, e.g. "address
+# unreachable" when the LAN host has no usable source address, are not the rule's.)
 lan6_rejected() {
   local out
   out=$(sudo ip netns exec owt-lan ping -6 -c 1 -W 3 fec0::2 2>&1)
-  grep -qi 'destination unreachable' <<< "$out"
+  grep -qi 'port unreachable' <<< "$out"
 }
+# The LAN host's IPv4 straight out of the uplink: QEMU user networking connects it, from this host,
+# to this host's own SSH port on its public address (outside the router's WAN network, so not one
+# of the networks that stay off table 52).
+uplink_ip=$(ip -4 route get 1.1.1.1 | sed -n 's/.* src \([0-9.]*\).*/\1/p')
+lan4_direct() { sudo ip netns exec owt-lan timeout 5 bash -c "echo > /dev/tcp/$uplink_ip/22" 2>/dev/null; }
+# The router's reject, for IPv4 (QEMU user networking answers pings to its gateway 10.0.2.2).
+lan4_rejected() {
+  local out
+  out=$(sudo ip netns exec owt-lan ping -c 1 -W 3 10.0.2.2 2>&1)
+  grep -qi 'port unreachable' <<< "$out"
+}
+kill_uci() { r 'uci -q -X show firewall' | grep -q "\.name='flowmesh_exit_kill_switch'$"; }
+kill_runtime() {
+  local out
+  if [ $fw = fw4 ]; then out=$(r 'nft list ruleset'); else out=$(r 'iptables -S; ip6tables -S'); fi &&
+    grep -q flowmesh_exit_kill_switch <<< "$out"
+}
+kill_on() { kill_uci && kill_runtime; }
+kill_off() { ! kill_uci && ! kill_runtime; }
 lan6_to_mesh() { sudo ip netns exec owt-lan ping -6 -c 2 -W 2 "$peer6" >/dev/null 2>&1; }
 prefs_vars() {
   r ". /lib/functions.sh; . /usr/share/flowmesh/prefs.sh; flowmesh_load_prefs; echo \"\$FM_KILL_SWITCH \$FM_LAN_DNS\""
@@ -589,6 +615,9 @@ for a in $(sudo ip netns exec owt-lan ip -6 -o addr show dev owt-lan1 scope glob
 done
 echo "   router $rip, peer $OWT_PEER_MESH_IP / $peer6, LAN ULA $ula (LAN host's IPv6 default via $gw6)"
 
+check "lab: the Internet address behind the peer is unreachable from this host (the router's uplink side)" \
+  eval '! curl -s -m 3 -o /dev/null "http://$OWT_INET_IP:$OWT_INET_PORT/"'
+check "lab: the LAN host reaches the uplink directly ($uplink_ip:22 through the router)" lan4_direct
 check "kill_switch and lan_dns unset: uci get fails, both read as on" eval '
   ! r "uci -q get flowmesh.main.kill_switch" && ! r "uci -q get flowmesh.main.lan_dns" && [ "$(prefs_vars)" = "1 1" ]'
 r 'uci set flowmesh.main.kill_switch=0; uci set flowmesh.main.lan_dns=0; uci commit flowmesh' >/dev/null 2>&1
@@ -694,23 +723,47 @@ check "exit_node and use_exit_node both set: offers itself, uses none, IPv6 open
   r "logread | grep -q \"exit_node and use_exit_node are both set\""'
 r "uci set flowmesh.main.exit_node=0; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
 
-# An exit node that is not in the mesh (any more): the other settings still apply. Kill switch on:
-# the daemon keeps the exit node it has; off: the LAN uses the uplink.
+# An exit node that is not in the mesh (any more): the other settings still apply, no exit node is
+# used (not the previous one either). Kill switch on: the LAN gets no Internet at all (rule
+# flowmesh_exit_kill_switch, both families) until an apply succeeds; off: the LAN uses the uplink.
+check "with the exit node $P in use, the LAN's IPv4 is not sent out of the uplink" eval 'via_exit && ! lan4_direct'
+# (b) after a working exit node.
 r "uci set flowmesh.main.use_exit_node=100.64.0.250; uci set flowmesh.main.hostname=$host-x; uci commit flowmesh
    /etc/init.d/flowmesh reload" > "$vm/reload.log" 2>&1
 st=$?
 sed 's/^/   | /' "$vm/reload.log"
-check "exit node not in the mesh, kill switch on: reload succeeds, the rest applied, exit node kept, IPv6 blocked" eval '
-  [ $st = 0 ] && [ "$(pref hostname)" = "$host-x" ] && [ "$(pref exit_node)" = "$P" ] && v6_blocked'
+check "exit node not in the mesh (after $P), kill switch on: reload succeeds, the rest applied, $P dropped" eval '
+  [ $st = 0 ] && [ "$(pref hostname)" = "$host-x" ] && [ "$(pref exit_node)" = "" ] && eventually 10 no_exit_rules'
+check "  ... the LAN reaches neither the Internet behind $P nor the uplink (kill switch rule in UCI and $fw)" eval '
+  kill_on && not_via_exit && lan4_rejected && lan6_rejected'
+check "  ... the LAN still reaches the mesh" eventually 20 lan_ping
+r '/etc/init.d/flowmesh stop' >/dev/null 2>&1
+check "  ... stop lifts the kill switch rule (the LAN uses the uplink)" eval 'eventually 20 no_daemon && kill_off && v6_open && lan4_direct'
+r '/etc/init.d/flowmesh start' >/dev/null 2>&1
+# (Right after a start the CLI cannot check the exit node yet and the daemon takes it as given: it
+# then drops the LAN's Internet traffic itself, "until it is found". Either way: no Internet.)
+check "  ... start: the exit node is still unusable, the LAN still gets no Internet" eventually 45 eval '
+  backend_running && not_via_exit && ! lan4_direct'
 r "uci set flowmesh.main.kill_switch=0; uci set flowmesh.main.hostname=$host; uci commit flowmesh; /etc/init.d/flowmesh reload" > "$vm/reload.log" 2>&1
 st=$?
-check "exit node not in the mesh, kill switch off: reload succeeds, no exit node, IPv6 open" eval '
-  [ $st = 0 ] && [ "$(pref hostname)" = "$host" ] && [ "$(pref exit_node)" = "" ] && v6_open'
+check "exit node not in the mesh, kill switch off: reload succeeds, no exit node, no block, the LAN uses the uplink" eval '
+  [ $st = 0 ] && [ "$(pref hostname)" = "$host" ] && [ "$(pref exit_node)" = "" ] && kill_off && v6_open &&
+  lan4_direct && ! lan6_rejected && not_via_exit'
+# (a) with no exit node before.
 r 'uci delete flowmesh.main.kill_switch; uci delete flowmesh.main.use_exit_node; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+r "uci set flowmesh.main.use_exit_node=100.64.0.250; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+check "exit node not in the mesh (no exit node before), kill switch on: no Internet for the LAN, IPv4 or IPv6" eval '
+  [ "$(pref exit_node)" = "" ] && kill_on && not_via_exit && lan4_rejected && lan6_rejected'
+r "uci set flowmesh.main.kill_switch=0; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+check "exit node not in the mesh (no exit node before), kill switch off: the LAN uses the uplink" eval '
+  kill_off && v6_open && lan4_direct && not_via_exit'
+r "uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+r 'uci delete flowmesh.main.use_exit_node; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "use_exit_node cleared after an unusable exit node (kill switch on): the kill switch rule is gone" eval 'kill_off && lan4_direct'
 
 check "use_exit_node cleared: exit node off, no exit rules or SNAT, IPv6 open, LAN on the uplink" eval '
   [ "$(pref exit_node)" = "" ] && [ "$(pref exit_node_forwarded_only)" = false ] && eventually 10 no_exit_rules &&
-  exit_snat_absent && v6_open && ! lan6_rejected && not_via_exit'
+  exit_snat_absent && v6_open && kill_off && ! lan6_rejected && lan4_direct && not_via_exit'
 
 # On again, and left on: reboot, stop and removal below run with the exit node in use.
 r "uci set flowmesh.main.use_exit_node=$P; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
@@ -748,7 +801,7 @@ check "install.sh on OpenWrt: package binaries untouched, still one daemon (the 
 r '/etc/init.d/flowmesh stop' >/dev/null 2>&1
 check "stop: daemon gone" eventually 20 no_daemon
 check "stop: no inet flowmesh table, no fm-forward chain" own_rules_absent
-check "stop (exit node in use): no exit routing or SNAT left, IPv6 block lifted" eval 'no_exit_rules && exit_snat_absent && v6_open'
+check "stop (exit node in use): no exit routing or SNAT left, IPv6 block lifted" eval 'no_exit_rules && exit_snat_absent && v6_open && kill_off'
 r '/etc/init.d/flowmesh start' >/dev/null 2>&1
 eventually 30 own_rules_present
 check "start: through the exit node again, IPv6 blocked" eventually 40 eval 'via_exit && v6_blocked'
@@ -761,7 +814,7 @@ check "removed: no flowmesh zone or forwardings, other zones unchanged" eval '[ 
 check "removed: no flowmesh rules in the running firewall ($fw)" eval '
   out=$(r "nft list ruleset 2>/dev/null; iptables -S 2>/dev/null; true") && ! grep -q flowmesh0 <<< "$out" && own_rules_absent'
 check "removed while using an exit node: no exit routing, table 52 or SNAT, no IPv6 block rule (UCI or $fw)" \
-  eval 'no_exit_rules && exit_snat_absent && v6_open'
+  eval 'no_exit_rules && exit_snat_absent && v6_open && kill_off'
 check "removed: init script and binaries gone" r '! test -e /etc/init.d/flowmesh && ! test -e /usr/sbin/flowmeshd && ! test -e /etc/rc.d/S95flowmesh'
 check "removed: /etc/flowmesh (identity) kept" r 'test -n "$(ls -A /etc/flowmesh)"'
 
