@@ -1,10 +1,44 @@
 # FlowMesh
 
-**The fast, lightweight Linux client for Wanflow FlowMesh.** Open source, written in Rust.
+**Connect your Linux servers and OpenWrt routers to a private Wanflow network.** An open-source Rust client with a small resource footprint.
 
-[中文](README.md) · [Website](https://www.wanflow.com) · [Download Wanflow apps](https://www.wanflow.com/downloads) · [Install FlowMesh](docs/install.md)
+[**Create a free mesh →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en) · [Wanflow console](https://console.wanflow.com/) · [Apps for other platforms](https://www.wanflow.com/downloads) · [中文](README.md)
 
-FlowMesh puts your Linux servers, gateways and routers on Wanflow FlowMesh: one private, encrypted network with your offices, cloud servers, laptops and phones, wherever they are. Devices connect directly to each other whenever the network allows it and fall back to Wanflow's relays when it does not. There are no ports to open and no VPN concentrator to run.
+Bring your home NAS, office servers, cloud instances, laptops and phones onto one encrypted private network with Wanflow FlowMesh. Devices connect directly where possible and automatically use Wanflow relays otherwise. No inbound ports to open and no VPN gateway to host yourself.
+
+Create your mesh, add devices and manage access in the Wanflow console. FlowMesh connects your Linux and OpenWrt devices, while Wanflow hosts the control service and relays.
+
+## What can you do with it?
+
+| Your use case | How it works |
+|---|---|
+| **Reach your home NAS or services while away** | Install FlowMesh on a home Linux device or OpenWrt router, then connect your laptop or phone with a Wanflow app; configure subnet routing to reach the rest of your home network |
+| **Connect office and cloud servers** | Join Linux servers to the same mesh, reach services over mesh IPs, and manage access in the console |
+| **Connect an OpenWrt router** | Join Wanflow through the LuCI interface, with optional subnet sharing or exit-node routing; see the [OpenWrt installation guide](docs/install.md#openwrt-routers) |
+
+## Get started
+
+### 1. Create a free mesh in Wanflow
+
+Open [**Create a free mesh**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en), sign up or log in, and complete setup. The free plan has no expiry; check the creation page for current allowances and features. See [plans](https://www.wanflow.com/pricing) for other options.
+
+### 2. Connect your first device
+
+- **Linux server:** In your mesh console, choose "Add device → Linux server" and run the generated installation command on your server. It includes your mesh address and auth key; do not share it publicly.
+- **OpenWrt router:** Follow the [installation guide](docs/install.md#openwrt-routers) to install FlowMesh and its LuCI interface. Open "Services → FlowMesh", paste the command from the console, and join.
+
+For manual installation, upgrades or removal, see the [Linux and OpenWrt installation guide](docs/install.md).
+
+### 3. Add a second device and check the connection
+
+Connect another Linux or OpenWrt device, or install the Wanflow app for [macOS, Windows, iOS or Android](https://www.wanflow.com/downloads) and join the same mesh. Once both devices appear online in the console, run this on your Linux device:
+
+```bash
+flowmesh status
+flowmesh ping 'OTHER_DEVICE_MESH_IP'
+```
+
+Replace the placeholder with the actual mesh IP shown in the console. You can then use that IP to reach SSH, web apps or other services on the peer. The service must be listening, and both the mesh access policy and the device firewall must allow the connection. To reach a NAS or other device behind a router, also configure and approve subnet routes; see [joining a network](docs/install.md#3-joining-a-mesh).
 
 ## Why FlowMesh
 
@@ -23,17 +57,6 @@ Measured side by side against Tailscale 1.94.2 in the same mesh:
 The same throughput class at **a third to a half of the CPU** and **a fifth of the memory** — which matters most where resources are tight: a router, a small cloud instance, an edge box, or a server whose CPU should go to its real work. Leave out the SSH server at build time and the daemon shrinks by another 2 MB.
 
 <sub>Lab measurements on one busy host (Docker on an 8-core Apple Silicon Mac, load average about 8): `iperf3` for 10 s each way between two nodes of each client on a direct path, median of 4 runs (single runs vary by up to ±20%; an earlier, quieter run gave 4.44 / 4.21 Gbit/s against 3.71 / 3.35). FlowMesh's packet path uses one core while Tailscale spreads over several, so on idle many-core machines Tailscale can gain more from the extra cores. Memory and threads were sampled while idle after both joined the same 100-node mesh. The Tailscale side is Wanflow's build of Tailscale 1.94.2, whose data path is unmodified upstream code. Compare the columns with each other, not with your hardware.</sub>
-
-## Get started
-
-1. **Create a mesh.** Wanflow FlowMesh has a free plan that stays free. Sign up at [wanflow.com](https://www.wanflow.com); the console gives you your mesh's address and an auth key.
-2. **Install and join** on each Linux machine: the console's "Add device → Linux server" generates one command to run there. By hand it is one line too ([other ways](docs/install.md)):
-
-   ```bash
-   curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh -s -- --login-server=<your mesh address> --auth-key=<key>
-   ```
-
-3. **Add your other devices** with the Wanflow app for [macOS, Windows, iOS and Android](https://www.wanflow.com/downloads). Every device in the mesh can now reach every other one by name.
 
 ## What it does
 
@@ -54,13 +77,15 @@ The same throughput class at **a third to a half of the CPU** and **a fifth of t
 - **Reproducible builds.** Released binaries can be rebuilt from this source byte for byte ([how](docs/reproducible-builds.md)).
 - **Memory safe.** Rust with `unsafe` forbidden in every crate.
 
-## Also speaks Tailscale
+## Protocol and compatibility
 
-FlowMesh implements the Tailscale coordination protocol, so it also joins networks run by [headscale](https://github.com/juanfont/headscale) and works side by side with official Tailscale clients; command-line flags and output follow the official client's ([details](docs/protocol/cli.md)). It is an independent implementation with no code from Tailscale or headscale. Intended differences are listed in [deviations.md](docs/deviations.md).
+FlowMesh independently implements the Tailscale coordination protocol and interoperates with official Tailscale clients in the same mesh. See the [CLI documentation](docs/protocol/cli.md) for command-line compatibility and [deviations.md](docs/deviations.md) for known differences and feature limitations.
 
 ## About Wanflow
 
-Wanflow (万联云网关) offers a new site-to-site mesh networking service. Learn more at [wanflow.com](https://www.wanflow.com).
+Wanflow (万联云网关) provides managed mesh networking, with a central console for devices, access policies and relays. This repository contains the open-source Linux / OpenWrt client under Apache-2.0; hosted service allowances and features depend on your plan.
+
+[**Create a free mesh**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en) · [About Wanflow](https://www.wanflow.com) · [View plans](https://www.wanflow.com/pricing)
 
 ## Development
 

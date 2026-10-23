@@ -1,10 +1,44 @@
 # FlowMesh
 
-**Wanflow FlowMesh 的 Linux 客户端：更快、更轻。** 开源，Rust 编写。
+**把你的 Linux 服务器与 OpenWrt 路由器接入万联私有网络。** 开源 Rust 客户端，轻量、低资源占用。
 
-[English](README.en.md) · [官网](https://www.wanflow.com) · [下载万联客户端](https://www.wanflow.com/downloads) · [安装 FlowMesh](docs/install.zh-CN.md)
+[**创建免费组网 →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh) · [万联控制台](https://console.wanflow.com/) · [下载其他平台客户端](https://www.wanflow.com/downloads) · [English](README.en.md)
 
-FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh：总部、分支、云服务器、笔记本和手机，无论身在何处，都在同一张加密的私有网络里。网络条件允许时设备之间直接互连，不允许时自动经万联的中继转发。不需要开放端口，也不需要自建 VPN 网关。
+家里的 NAS、办公室的服务器、云主机和随身的电脑、手机，都可以通过 Wanflow FlowMesh 加入同一张加密私有网络。设备之间尽量直接互连，无法直连时自动通过万联中继转发，无需开放入站端口，也无需自建 VPN 网关。
+
+在万联后台创建组网、添加设备、管理访问权限；FlowMesh 负责把 Linux 和 OpenWrt 设备接入网络。控制服务和中继由万联托管，你可以专注于使用自己的设备和服务。
+
+## 用它做什么
+
+| 你的场景 | 如何使用 |
+|---|---|
+| **出门访问家里的 NAS 或服务** | 在家中的 Linux 设备或 OpenWrt 路由器上安装 FlowMesh，再用万联客户端接入电脑或手机；访问整个家庭网段时配置子网路由 |
+| **连接办公室与云服务器** | 把 Linux 服务器加入同一个组网，通过组网地址访问业务服务，并在控制台设置访问权限 |
+| **让 OpenWrt 路由器接入组网** | 使用 LuCI 界面接入万联，按需开启局域网共享或出口节点；详见 [OpenWrt 安装说明](docs/install.zh-CN.md#openwrt-路由器) |
+
+## 快速开始
+
+### 1. 在万联创建免费组网
+
+打开 [**创建免费组网**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh)，注册或登录后完成创建。免费版可长期使用，当前额度和功能以创建页面为准；更多方案见 [套餐说明](https://www.wanflow.com/pricing)。
+
+### 2. 接入第一台设备
+
+- **Linux 服务器：** 在组网控制台选择「添加设备 → Linux 服务器」，复制生成的安装命令到服务器执行。命令包含你的组网地址和接入密钥，请勿公开分享。
+- **OpenWrt 路由器：** 按 [安装说明](docs/install.zh-CN.md#openwrt-路由器) 安装 FlowMesh 和 LuCI 界面，在「服务 → FlowMesh」粘贴控制台生成的命令并接入。
+
+需要手动安装、升级或卸载？查看 [Linux 与 OpenWrt 安装文档](docs/install.zh-CN.md)。
+
+### 3. 添加第二台设备，确认连通
+
+在另一台 Linux 或 OpenWrt 设备上重复接入，或下载 [macOS、Windows、iOS、Android 万联客户端](https://www.wanflow.com/downloads)，加入同一个组网。确认控制台中两台设备都已在线，然后在 Linux 设备上运行：
+
+```bash
+flowmesh status
+flowmesh ping '另一台设备的组网IP'
+```
+
+将占位符替换为控制台显示的实际组网 IP。连通后，就可以用组网 IP 访问对端的 SSH、网页或其他服务；服务需要在对端监听，且组网访问策略与设备防火墙允许连接。访问路由器后面的 NAS 等设备，还需要配置并批准子网路由，见 [安装文档](docs/install.zh-CN.md#3-加入组网)。
 
 ## 为什么选 FlowMesh
 
@@ -23,17 +57,6 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh�
 同一量级的吞吐，CPU 只要 **三分之一到一半**，内存只要 **五分之一**。资源越紧张越能体现差别：路由器、小规格云主机、边缘设备，或者 CPU 本该留给业务的服务器。构建时去掉 SSH 服务端，守护进程还能再小 2 MB。
 
 <sub>实验环境数据，同一台繁忙主机（8 核 Apple Silicon Mac 上的 Docker，负载约 8）：两种客户端各两个节点直连，`iperf3` 每个方向 10 秒，取 4 轮中位数（单轮波动可达 ±20%；此前一次较空闲时的测量为 4.44 / 4.21 Gbit/s 对 3.71 / 3.35）。FlowMesh 的数据包处理用一个核，Tailscale 会分散到多个核，因此在空闲的多核机器上 Tailscale 能从多出的核获益更多。内存与线程数在两者加入同一个 100 节点组网后空闲时采样。Tailscale 一侧是万联构建的 Tailscale 1.94.2，数据面为未修改的上游代码。请横向比较两列，不要直接对照你自己的硬件。</sub>
-
-## 快速开始
-
-1. **创建组网。** Wanflow FlowMesh 提供永久免费的免费版。在 [wanflow.com](https://www.wanflow.com) 注册，控制台会给出组网地址和接入密钥。
-2. **在每台 Linux 机器上安装并加入**：控制台「添加设备 → Linux 服务器」会生成一条命令，复制到服务器上运行即可。手动安装也只要一行（[更多方式](docs/install.zh-CN.md)）：
-
-   ```bash
-   curl -fsSL https://github.com/wanflow-labs/flowmesh/releases/latest/download/install.sh | sh -s -- --login-server=<你的组网地址> --auth-key=<密钥>
-   ```
-
-3. **添加其他设备：** 下载万联客户端，支持 [macOS、Windows、iOS 和 Android](https://www.wanflow.com/downloads)。之后组网内的每台设备都可以按名称互相访问。
 
 ## 功能
 
@@ -54,13 +77,15 @@ FlowMesh 把你的 Linux 服务器、网关和路由器接入 Wanflow FlowMesh�
 - **可复现构建。** 发布的二进制可以由这份源码逐字节重建（[方法](docs/reproducible-builds.md)）。
 - **内存安全。** Rust 编写，所有 crate 都禁止 `unsafe`。
 
-## 同样兼容 Tailscale
+## 协议与兼容性
 
-FlowMesh 实现了 Tailscale 的协调协议，因此也能加入由 [headscale](https://github.com/juanfont/headscale) 管理的网络，并与官方 Tailscale 客户端互通；命令行参数与输出遵循官方客户端（[详情](docs/protocol/cli.md)）。它是独立实现，不包含 Tailscale 或 headscale 的代码。有意为之的差异列在 [deviations.md](docs/deviations.md)。
+FlowMesh 独立实现了 Tailscale 的协调协议，可与官方 Tailscale 客户端在同一组网内互通；命令行参数与输出的兼容范围见 [CLI 文档](docs/protocol/cli.md)，已知差异与功能限制见 [deviations.md](docs/deviations.md)。
 
 ## 关于 Wanflow
 
-万联云网关 Wanflow 提供全新的站点互联组网服务。了解更多请访问 [wanflow.com](https://www.wanflow.com)。
+万联云网关 Wanflow 提供托管组网服务，通过统一控制台管理设备、访问策略和中继。本仓库开源的是 Linux / OpenWrt 客户端，采用 Apache-2.0 许可证；托管服务的额度和功能按所选套餐提供。
+
+[**创建免费组网**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh) · [了解万联](https://www.wanflow.com) · [查看套餐](https://www.wanflow.com/pricing)
 
 ## 开发
 
