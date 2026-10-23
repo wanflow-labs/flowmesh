@@ -48,9 +48,10 @@ pub enum Command {
     ExitNodeList {
         filter: Option<String>,
     },
-    /// `dns status [--all]`
+    /// `dns status [--all] [--json]` (`--json` is flowmesh only, see docs/deviations.md #20).
     DnsStatus {
         all: bool,
+        json: bool,
     },
     /// `dns query <name> [type]`; no name prints the usage (exit 0, as official).
     DnsQuery {
@@ -133,13 +134,17 @@ pub fn parse(args: &[String]) -> Result<Invocation, String> {
         "ip" => ip_command(rest)?,
         "exit-node" => exit_node_command(rest)?,
         "dns" => match rest {
-            [s] if s == "status" => Command::DnsStatus { all: false },
-            [s, f] if s == "status" => match split_flag(f)? {
-                ("all", inline) => Command::DnsStatus {
-                    all: bool_value("all", inline)?,
-                },
-                (name, _) => return Err(format!("dns status: unknown flag -{name}")),
-            },
+            [s, flags @ ..] if s == "status" => {
+                let (mut all, mut json) = (false, false);
+                for f in flags {
+                    match split_flag(f)? {
+                        ("all", inline) => all = bool_value("all", inline)?,
+                        ("json", inline) => json = bool_value("json", inline)?,
+                        (name, _) => return Err(format!("dns status: unknown flag -{name}")),
+                    }
+                }
+                Command::DnsStatus { all, json }
+            }
             // Arguments past the type are ignored, as by the official command.
             [q, rest @ ..] if q == "query" => Command::DnsQuery {
                 name: rest.first().cloned(),
@@ -933,11 +938,16 @@ mod tests {
 
     #[test]
     fn dns_netcheck_metrics_commands() {
-        assert_eq!(cmd(&["dns", "status"]), Command::DnsStatus { all: false });
+        let dns = |all, json| Command::DnsStatus { all, json };
+        assert_eq!(cmd(&["dns", "status"]), dns(false, false));
+        assert_eq!(cmd(&["dns", "status", "--all"]), dns(true, false));
+        assert_eq!(cmd(&["dns", "status", "--json"]), dns(false, true));
+        assert_eq!(cmd(&["dns", "status", "--json", "--all"]), dns(true, true));
         assert_eq!(
-            cmd(&["dns", "status", "--all"]),
-            Command::DnsStatus { all: true }
+            cmd(&["dns", "status", "--all=false", "-json"]),
+            dns(false, true)
         );
+        assert!(p(&["dns", "status", "--bogus"]).is_err());
         assert!(p(&["dns"]).is_err());
         assert_eq!(
             cmd(&["dns", "query", "a", "b", "c"]),
