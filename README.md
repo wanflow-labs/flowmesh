@@ -1,44 +1,33 @@
 # FlowMesh
 
-**把你的 Linux 服务器与 OpenWrt 路由器接入万联私有网络。** 开源 Rust 客户端，轻量、低资源占用。
+**让电脑、手机、服务器和路由器连成一张私有网络。** 万联提供全平台客户端，本仓库是面向 Linux 与 OpenWrt 的轻量开源 Rust 客户端。
 
-[**创建免费组网 →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh) · [万联控制台](https://console.wanflow.com/) · [下载其他平台客户端](https://www.wanflow.com/downloads) · [English](README.en.md)
+[**创建免费组网 →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh) · [万联控制台](https://console.wanflow.com/) · [全平台客户端](#全平台客户端) · [使用方法](#使用方法) · [English](README.en.md)
 
 家里的 NAS、办公室的服务器、云主机和随身的电脑、手机，都可以通过 Wanflow FlowMesh 加入同一张加密私有网络。设备之间尽量直接互连，无法直连时自动通过万联中继转发，无需开放入站端口，也无需自建 VPN 网关。
 
-在万联后台创建组网、添加设备、管理访问权限；FlowMesh 负责把 Linux 和 OpenWrt 设备接入网络。控制服务和中继由万联托管，你可以专注于使用自己的设备和服务。
+万联提供托管控制服务和中继，通过统一后台管理设备与访问权限，让不同平台、不同地点的设备互联。
 
 ## 用它做什么
 
-| 你的场景 | 如何使用 |
+| 你的场景 | 能带来什么 |
 |---|---|
-| **出门访问家里的 NAS 或服务** | 在家中的 Linux 设备或 OpenWrt 路由器上安装 FlowMesh，再用万联客户端接入电脑或手机；访问整个家庭网段时配置子网路由 |
-| **连接办公室与云服务器** | 把 Linux 服务器加入同一个组网，通过组网地址访问业务服务，并在控制台设置访问权限 |
-| **让 OpenWrt 路由器接入组网** | 使用 LuCI 界面接入万联，按需开启局域网共享或出口节点；详见 [OpenWrt 安装说明](docs/install.zh-CN.md#openwrt-路由器) |
+| **出门访问家里的 NAS 或服务** | 通过加密私有网络远程访问文件、家庭服务和设备，无需把服务端口暴露到公网 |
+| **连接办公室与云服务器** | 跨地点访问业务服务，统一管理设备与访问权限 |
+| **让 OpenWrt 路由器接入组网** | 通过子网路由连接整个局域网，或将路由器作为出口节点 |
 
-## 快速开始
+## 全平台客户端
 
-### 1. 在万联创建免费组网
+**支持 Windows、macOS、Linux、iOS、Android 和 OpenWrt。** 电脑、手机、服务器与路由器可以加入同一个万联组网。
 
-打开 [**创建免费组网**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh)，注册或登录后完成创建。免费版可长期使用，当前额度和功能以创建页面为准；更多方案见 [套餐说明](https://www.wanflow.com/pricing)。
+| 平台 | 客户端 |
+|---|---|
+| Windows / macOS | 万联桌面客户端 |
+| iOS / Android | 万联移动客户端 |
+| Linux | 本仓库的 FlowMesh 开源客户端，支持 x86_64 / aarch64 |
+| OpenWrt | 本仓库的 FlowMesh 开源客户端，带 LuCI 管理界面；支持 x86_64 / aarch64 / 带 VFP 的 armv7，暂不支持 MIPS |
 
-### 2. 接入第一台设备
-
-- **Linux 服务器：** 在组网控制台选择「添加设备 → Linux 服务器」，复制生成的安装命令到服务器执行。命令包含你的组网地址和接入密钥，请勿公开分享。
-- **OpenWrt 路由器：** 按 [安装说明](docs/install.zh-CN.md#openwrt-路由器) 安装 FlowMesh 和 LuCI 界面，在「服务 → FlowMesh」粘贴控制台生成的命令并接入。
-
-需要手动安装、升级或卸载？查看 [Linux 与 OpenWrt 安装文档](docs/install.zh-CN.md)。
-
-### 3. 添加第二台设备，确认连通
-
-在另一台 Linux 或 OpenWrt 设备上重复接入，或下载 [macOS、Windows、iOS、Android 万联客户端](https://www.wanflow.com/downloads)，加入同一个组网。确认控制台中两台设备都已在线，然后在 Linux 设备上运行：
-
-```bash
-flowmesh status
-flowmesh ping '另一台设备的组网IP'
-```
-
-将占位符替换为控制台显示的实际组网 IP。连通后，就可以用组网 IP 访问对端的 SSH、网页或其他服务；服务需要在对端监听，且组网访问策略与设备防火墙允许连接。访问路由器后面的 NAS 等设备，还需要配置并批准子网路由，见 [安装文档](docs/install.zh-CN.md#3-加入组网)。
+[下载桌面与移动客户端](https://www.wanflow.com/downloads) · [查看使用方法](#使用方法)
 
 ## 为什么选 FlowMesh
 
@@ -76,6 +65,30 @@ flowmesh ping '另一台设备的组网IP'
 - **零遥测。** `flowmeshd` 只连接你组网的控制服务器、它指定的中继、组网内的对端和你的 DNS 服务器。没有默认服务器，没有自动更新，不会偷偷回传任何数据。
 - **可复现构建。** 发布的二进制可以由这份源码逐字节重建（[方法](docs/reproducible-builds.md)）。
 - **内存安全。** Rust 编写，所有 crate 都禁止 `unsafe`。
+
+## 使用方法
+
+### 1. 在万联创建免费组网
+
+打开 [**创建免费组网**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=zh)，注册或登录后完成创建。免费版可长期使用，当前额度和功能以创建页面为准；更多方案见 [套餐说明](https://www.wanflow.com/pricing)。
+
+### 2. 接入第一台设备
+
+- **Linux 服务器：** 在组网控制台选择「添加设备 → Linux 服务器」，复制生成的安装命令到服务器执行。命令包含你的组网地址和接入密钥，请勿公开分享。
+- **OpenWrt 路由器：** 按 [安装说明](docs/install.zh-CN.md#openwrt-路由器) 安装 FlowMesh 和 LuCI 界面，在「服务 → FlowMesh」粘贴控制台生成的命令并接入。
+
+需要手动安装、升级或卸载？查看 [Linux 与 OpenWrt 安装文档](docs/install.zh-CN.md)。
+
+### 3. 添加第二台设备，确认连通
+
+在另一台 Linux 或 OpenWrt 设备上重复接入，或下载 [macOS、Windows、iOS、Android 万联客户端](https://www.wanflow.com/downloads)，加入同一个组网。确认控制台中两台设备都已在线，然后在 Linux 设备上运行：
+
+```bash
+flowmesh status
+flowmesh ping '另一台设备的组网IP'
+```
+
+将占位符替换为控制台显示的实际组网 IP。连通后，就可以用组网 IP 访问对端的 SSH、网页或其他服务；服务需要在对端监听，且组网访问策略与设备防火墙允许连接。访问路由器后面的 NAS 等设备，还需要配置并批准子网路由，见 [安装文档](docs/install.zh-CN.md#3-加入组网)。
 
 ## 协议与兼容性
 

@@ -1,44 +1,33 @@
 # FlowMesh
 
-**Connect your Linux servers and OpenWrt routers to a private Wanflow network.** An open-source Rust client with a small resource footprint.
+**One private network for your computers, phones, servers and routers.** Wanflow offers clients across platforms; this repository contains the lightweight, open-source Rust client for Linux and OpenWrt.
 
-[**Create a free mesh →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en) · [Wanflow console](https://console.wanflow.com/) · [Apps for other platforms](https://www.wanflow.com/downloads) · [中文](README.md)
+[**Create a free mesh →**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en) · [Wanflow console](https://console.wanflow.com/) · [Clients for every platform](#clients-for-every-platform) · [How to use](#how-to-use) · [中文](README.md)
 
 Bring your home NAS, office servers, cloud instances, laptops and phones onto one encrypted private network with Wanflow FlowMesh. Devices connect directly where possible and automatically use Wanflow relays otherwise. No inbound ports to open and no VPN gateway to host yourself.
 
-Create your mesh, add devices and manage access in the Wanflow console. FlowMesh connects your Linux and OpenWrt devices, while Wanflow hosts the control service and relays.
+Wanflow hosts the control service and relays, with one console for devices and access policies across platforms and locations.
 
 ## What can you do with it?
 
-| Your use case | How it works |
+| Your use case | What you get |
 |---|---|
-| **Reach your home NAS or services while away** | Install FlowMesh on a home Linux device or OpenWrt router, then connect your laptop or phone with a Wanflow app; configure subnet routing to reach the rest of your home network |
-| **Connect office and cloud servers** | Join Linux servers to the same mesh, reach services over mesh IPs, and manage access in the console |
-| **Connect an OpenWrt router** | Join Wanflow through the LuCI interface, with optional subnet sharing or exit-node routing; see the [OpenWrt installation guide](docs/install.md#openwrt-routers) |
+| **Reach your home NAS or services while away** | Remote access to files, home services and devices over an encrypted private network, without exposing service ports to the internet |
+| **Connect office and cloud servers** | Access to business services across locations, with central device and access management |
+| **Connect an OpenWrt router** | Subnet routing for an entire LAN, or exit-node routing through your router |
 
-## Get started
+## Clients for every platform
 
-### 1. Create a free mesh in Wanflow
+**Available for Windows, macOS, Linux, iOS, Android and OpenWrt.** Computers, phones, servers and routers can share the same Wanflow mesh.
 
-Open [**Create a free mesh**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en), sign up or log in, and complete setup. The free plan has no expiry; check the creation page for current allowances and features. See [plans](https://www.wanflow.com/pricing) for other options.
+| Platform | Client |
+|---|---|
+| Windows / macOS | Wanflow desktop apps |
+| iOS / Android | Wanflow mobile apps |
+| Linux | The open-source FlowMesh client in this repository, for x86_64 / aarch64 |
+| OpenWrt | The open-source FlowMesh client in this repository, with a LuCI interface; supports x86_64 / aarch64 / armv7 with VFP, not MIPS |
 
-### 2. Connect your first device
-
-- **Linux server:** In your mesh console, choose "Add device → Linux server" and run the generated installation command on your server. It includes your mesh address and auth key; do not share it publicly.
-- **OpenWrt router:** Follow the [installation guide](docs/install.md#openwrt-routers) to install FlowMesh and its LuCI interface. Open "Services → FlowMesh", paste the command from the console, and join.
-
-For manual installation, upgrades or removal, see the [Linux and OpenWrt installation guide](docs/install.md).
-
-### 3. Add a second device and check the connection
-
-Connect another Linux or OpenWrt device, or install the Wanflow app for [macOS, Windows, iOS or Android](https://www.wanflow.com/downloads) and join the same mesh. Once both devices appear online in the console, run this on your Linux device:
-
-```bash
-flowmesh status
-flowmesh ping 'OTHER_DEVICE_MESH_IP'
-```
-
-Replace the placeholder with the actual mesh IP shown in the console. You can then use that IP to reach SSH, web apps or other services on the peer. The service must be listening, and both the mesh access policy and the device firewall must allow the connection. To reach a NAS or other device behind a router, also configure and approve subnet routes; see [joining a network](docs/install.md#3-joining-a-mesh).
+[Download desktop and mobile apps](https://www.wanflow.com/downloads) · [How to use](#how-to-use)
 
 ## Why FlowMesh
 
@@ -76,6 +65,30 @@ The same throughput class at **a third to a half of the CPU** and **a fifth of t
 - **No telemetry.** `flowmeshd` connects only to your mesh's control server, the relays it names, your peers and your DNS servers. No default server, no auto-update, nothing phoning home.
 - **Reproducible builds.** Released binaries can be rebuilt from this source byte for byte ([how](docs/reproducible-builds.md)).
 - **Memory safe.** Rust with `unsafe` forbidden in every crate.
+
+## How to use
+
+### 1. Create a free mesh in Wanflow
+
+Open [**Create a free mesh**](https://console.wanflow.com/order/mesh/configure?tier=free&utm_source=github&utm_medium=readme&utm_campaign=flowmesh&utm_content=en), sign up or log in, and complete setup. The free plan has no expiry; check the creation page for current allowances and features. See [plans](https://www.wanflow.com/pricing) for other options.
+
+### 2. Connect your first device
+
+- **Linux server:** In your mesh console, choose "Add device → Linux server" and run the generated installation command on your server. It includes your mesh address and auth key; do not share it publicly.
+- **OpenWrt router:** Follow the [installation guide](docs/install.md#openwrt-routers) to install FlowMesh and its LuCI interface. Open "Services → FlowMesh", paste the command from the console, and join.
+
+For manual installation, upgrades or removal, see the [Linux and OpenWrt installation guide](docs/install.md).
+
+### 3. Add a second device and check the connection
+
+Connect another Linux or OpenWrt device, or install the Wanflow app for [macOS, Windows, iOS or Android](https://www.wanflow.com/downloads) and join the same mesh. Once both devices appear online in the console, run this on your Linux device:
+
+```bash
+flowmesh status
+flowmesh ping 'OTHER_DEVICE_MESH_IP'
+```
+
+Replace the placeholder with the actual mesh IP shown in the console. You can then use that IP to reach SSH, web apps or other services on the peer. The service must be listening, and both the mesh access policy and the device firewall must allow the connection. To reach a NAS or other device behind a router, also configure and approve subnet routes; see [joining a network](docs/install.md#3-joining-a-mesh).
 
 ## Protocol and compatibility
 
