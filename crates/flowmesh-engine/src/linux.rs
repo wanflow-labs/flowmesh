@@ -1658,6 +1658,7 @@ pub async fn run(
                     if now.saturating_sub(last_lan_check) >= EXIT_LAN_CHECK {
                         last_lan_check = now;
                         features.refresh_exit_lan(&cur);
+                        features.reassert_exit_snat();
                     }
                     let acts = ctx.ps.tick(now, &mut ctx.rng);
                     ctx.run_actions(acts).await;

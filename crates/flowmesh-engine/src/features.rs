@@ -375,6 +375,44 @@ impl Features {
         }
     }
 
+    /// Router-mode exit SNAT is the daemon's, but the host's firewall can remove it under us
+    /// (OpenWrt's fw3 flushes the whole nat table on every restart or reload): put it back when
+    /// it is gone, with the same exclusions. Called periodically; without exit SNAT in place, or
+    /// with it still there, this is a check only.
+    pub fn reassert_exit_snat(&mut self) {
+        let Some(snat) = &self.exit_snat else {
+            return;
+        };
+        if flowmesh_netcfg::forward::exit_snat_present(snat.backend, &snat.tun) {
+            return;
+        }
+        let Some(excluded) = self.exit_snat_plan.clone() else {
+            return;
+        };
+        let tun = snat.tun.clone();
+        match flowmesh_netcfg::forward::exit_snat_install(&tun, &excluded) {
+            Ok(backend) => {
+                log(format!(
+                    "exit node: router-mode SNAT was removed (a firewall restart?); reinstalled via {backend:?}"
+                ));
+                // (Replaced in place: the old guard's Drop would remove what was just installed.)
+                if let Some(s) = self.exit_snat.as_mut() {
+                    s.backend = backend;
+                }
+                self.exit_snat_msg = None;
+            }
+            Err(e) => {
+                let msg = format!(
+                    "exit node: router-mode SNAT was removed and could not be reinstalled: {e}"
+                );
+                if self.exit_snat_msg.as_deref() != Some(&msg) {
+                    log(&msg);
+                }
+                self.exit_snat_msg = Some(msg);
+            }
+        }
+    }
+
     /// The DNS proxy runs while offering an exit node. Returns whether the advertised services
     /// changed (the caller then sends the new host info).
     pub async fn sync_peerapi(

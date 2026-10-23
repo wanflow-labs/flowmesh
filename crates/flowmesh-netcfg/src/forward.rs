@@ -384,6 +384,49 @@ pub fn exit_snat_install(tun: &str, excluded: &[ipnet::Ipv4Net]) -> Result<Backe
     Err("neither iptables nor nft is installed".into())
 }
 
+/// Commands that all succeed only while router-mode exit SNAT is in place: with iptables the jump
+/// from POSTROUTING and the chain's closing MASQUERADE (`-C` of what the install appended), with nft
+/// its chain. Someone else can remove them under us: OpenWrt's fw3 flushes the whole nat table on
+/// every firewall restart or reload, an `nft flush ruleset` drops the table.
+pub fn exit_snat_check_cmds(backend: Backend, tun: &str) -> Vec<Cmd> {
+    match backend {
+        Backend::Iptables => vec![
+            ipt(
+                "iptables",
+                &[
+                    "-t",
+                    "nat",
+                    "-C",
+                    "POSTROUTING",
+                    "-o",
+                    tun,
+                    "-j",
+                    EXIT_NAT_CHAIN,
+                ],
+            ),
+            ipt(
+                "iptables",
+                &["-t", "nat", "-C", EXIT_NAT_CHAIN, "-j", "MASQUERADE"],
+            ),
+        ],
+        Backend::Nft => vec![(
+            "nft",
+            ["list", "chain", "ip", EXIT_NFT_TABLE, "postrouting"]
+                .iter()
+                .map(|s| s.to_string())
+                .collect(),
+        )],
+    }
+}
+
+/// Whether router-mode exit SNAT installed with `backend` is still in place (one or two short
+/// commands; cheap enough to ask every few seconds).
+pub fn exit_snat_present(backend: Backend, tun: &str) -> bool {
+    exit_snat_check_cmds(backend, tun)
+        .iter()
+        .all(|cmd| run(cmd).is_ok())
+}
+
 /// Remove router-mode exit SNAT; errors are ignored (it may already be gone).
 pub fn exit_snat_remove(backend: Backend, tun: &str) {
     match backend {
@@ -591,6 +634,40 @@ mod tests {
                 "iptables -w -t nat -F fm-exit-snat",
                 "iptables -w -t nat -X fm-exit-snat",
             ]
+        );
+    }
+
+    #[test]
+    fn exit_snat_check_matches_what_the_install_adds() {
+        let ex = exit_snat_plan(true, true, &nets(&["10.99.0.0/24"])).unwrap();
+        let installed = lines(&exit_snat_iptables_install("flowmesh0", &ex));
+        let checks = lines(&exit_snat_check_cmds(Backend::Iptables, "flowmesh0"));
+        assert_eq!(
+            checks,
+            [
+                "iptables -w -t nat -C POSTROUTING -o flowmesh0 -j fm-exit-snat",
+                "iptables -w -t nat -C fm-exit-snat -j MASQUERADE",
+            ]
+        );
+        // Each check is an installed rule, asked for with -C instead of added: the jump (inserted
+        // first in POSTROUTING) and the chain's last rule, so a half-flushed chain counts as gone.
+        assert!(installed.contains(
+            &"iptables -w -t nat -I POSTROUTING 1 -o flowmesh0 -j fm-exit-snat".to_string()
+        ));
+        assert_eq!(
+            installed.last().map(String::as_str),
+            Some("iptables -w -t nat -I POSTROUTING 1 -o flowmesh0 -j fm-exit-snat")
+        );
+        assert_eq!(
+            installed[installed.len() - 2],
+            "iptables -w -t nat -A fm-exit-snat -j MASQUERADE"
+        );
+        // nft: the chain the install script creates.
+        let script = exit_snat_nft_install("flowmesh0", &ex);
+        assert!(script.contains("table ip flowmesh_exit {\n\tchain postrouting {"));
+        assert_eq!(
+            lines(&exit_snat_check_cmds(Backend::Nft, "flowmesh0")),
+            ["nft list chain ip flowmesh_exit postrouting"]
         );
     }
 
