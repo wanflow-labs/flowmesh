@@ -9,6 +9,12 @@
 //! same one Docker and firewalld-iptables use, so a FORWARD policy of DROP set there is overridden by
 //! our accept rules. Without it, an `inet flowmesh` nftables table does the same.
 //!
+//! Router exit mode (`--exit-node-forwarded-only`, not in the official client) adds its own SNAT:
+//! forwarded IPv4 traffic leaving through the mesh interface towards the exit node is masqueraded
+//! to this node's mesh address, except traffic to the mesh range or to a peer's approved subnet
+//! route (those keep their real source, as without an exit node). It lives in chain
+//! `fm-exit-snat` (or an `ip flowmesh_exit` nftables table), apart from the subnet router rules.
+//!
 //! The builders are pure (tested anywhere); `install` and `remove` run the commands.
 
 use std::process::Command;
@@ -20,6 +26,8 @@ pub const MESH_V6: &str = "fd7a:115c:a1e0::/48";
 const FORWARD_CHAIN: &str = "fm-forward";
 const NAT_CHAIN: &str = "fm-postrouting";
 const NFT_TABLE: &str = "flowmesh";
+const EXIT_NAT_CHAIN: &str = "fm-exit-snat";
+const EXIT_NFT_TABLE: &str = "flowmesh_exit";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -142,6 +150,125 @@ pub fn nft_install(tun: &str, snat: bool, stateful: bool) -> String {
     )
 }
 
+/// The destinations router-mode exit SNAT leaves alone, or None when there is no exit SNAT (it
+/// exists only while an exit node is used with `forwarded_only`): the mesh's IPv4 range and every
+/// IPv4 subnet route approved for a peer, merged (an nftables interval set refuses overlaps).
+/// Exit routes (/0) are not subnets; IPv6 is not translated (no NAT66).
+pub fn exit_snat_plan(
+    using_exit: bool,
+    forwarded_only: bool,
+    approved: &[ipnet::IpNet],
+) -> Option<Vec<ipnet::Ipv4Net>> {
+    if !(using_exit && forwarded_only) {
+        return None;
+    }
+    let mesh = ipnet::Ipv4Net::new(std::net::Ipv4Addr::new(100, 64, 0, 0), 10).ok()?;
+    let mut nets: Vec<ipnet::Ipv4Net> = approved
+        .iter()
+        .filter_map(|n| match n {
+            ipnet::IpNet::V4(n) if n.prefix_len() != 0 => Some(n.trunc()),
+            _ => None,
+        })
+        .collect();
+    nets.push(mesh);
+    Some(ipnet::Ipv4Net::aggregate(&nets))
+}
+
+/// The iptables commands that install router-mode exit SNAT (see `exit_snat_plan`).
+pub fn exit_snat_iptables_install(tun: &str, excluded: &[ipnet::Ipv4Net]) -> Vec<Cmd> {
+    let p = "iptables";
+    let mut out = vec![
+        ipt(p, &["-t", "nat", "-N", EXIT_NAT_CHAIN]),
+        ipt(p, &["-t", "nat", "-F", EXIT_NAT_CHAIN]),
+        ipt(
+            p,
+            &[
+                "-t",
+                "nat",
+                "-A",
+                EXIT_NAT_CHAIN,
+                "-s",
+                MESH_V4,
+                "-j",
+                "RETURN",
+            ],
+        ),
+    ];
+    for net in excluded {
+        out.push(ipt(
+            p,
+            &[
+                "-t",
+                "nat",
+                "-A",
+                EXIT_NAT_CHAIN,
+                "-d",
+                &net.to_string(),
+                "-j",
+                "RETURN",
+            ],
+        ));
+    }
+    out.push(ipt(
+        p,
+        &["-t", "nat", "-A", EXIT_NAT_CHAIN, "-j", "MASQUERADE"],
+    ));
+    out.push(ipt(
+        p,
+        &[
+            "-t",
+            "nat",
+            "-I",
+            "POSTROUTING",
+            "1",
+            "-o",
+            tun,
+            "-j",
+            EXIT_NAT_CHAIN,
+        ],
+    ));
+    out
+}
+
+/// The commands that remove what `exit_snat_iptables_install` added.
+pub fn exit_snat_iptables_remove(tun: &str) -> Vec<Cmd> {
+    let p = "iptables";
+    vec![
+        ipt(
+            p,
+            &[
+                "-t",
+                "nat",
+                "-D",
+                "POSTROUTING",
+                "-o",
+                tun,
+                "-j",
+                EXIT_NAT_CHAIN,
+            ],
+        ),
+        ipt(p, &["-t", "nat", "-F", EXIT_NAT_CHAIN]),
+        ipt(p, &["-t", "nat", "-X", EXIT_NAT_CHAIN]),
+    ]
+}
+
+/// An nft script that replaces the `ip flowmesh_exit` table (router-mode exit SNAT) in one
+/// transaction. Masquerade on the mesh interface takes its IPv4 address: this node's mesh address.
+pub fn exit_snat_nft_install(tun: &str, excluded: &[ipnet::Ipv4Net]) -> String {
+    let set: Vec<String> = excluded.iter().map(ToString::to_string).collect();
+    format!(
+        "add table ip {EXIT_NFT_TABLE}\n\
+         delete table ip {EXIT_NFT_TABLE}\n\
+         table ip {EXIT_NFT_TABLE} {{\n\
+         \tchain postrouting {{\n\
+         \t\ttype nat hook postrouting priority srcnat; policy accept;\n\
+         \t\toifname \"{tun}\" ip saddr != {MESH_V4} ip daddr != {{ {} }} masquerade\n\
+         \t}}\n\
+         }}\n",
+        set.join(", ")
+    )
+}
+
 fn have(prog: &str) -> bool {
     Command::new(prog)
         .arg("--version")
@@ -199,31 +326,94 @@ pub fn install(tun: &str, snat: bool, stateful: bool) -> Result<Installed, Strin
         });
     }
     if have("nft") {
-        let mut child = Command::new("nft")
-            .args(["-f", "-"])
-            .stdin(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .spawn()
-            .map_err(|e| format!("nft: {e}"))?;
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            stdin
-                .write_all(nft_install(tun, snat, stateful).as_bytes())
-                .map_err(|e| format!("nft: {e}"))?;
-        }
-        let out = child.wait_with_output().map_err(|e| format!("nft: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "nft: {}",
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
+        nft_script(&nft_install(tun, snat, stateful))?;
         return Ok(Installed {
             backend: Backend::Nft,
             warning: None,
         });
     }
     Err("neither iptables nor nft is installed".into())
+}
+
+fn nft_script(script: &str) -> Result<(), String> {
+    let mut child = Command::new("nft")
+        .args(["-f", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("nft: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin
+            .write_all(script.as_bytes())
+            .map_err(|e| format!("nft: {e}"))?;
+    }
+    let out = child.wait_with_output().map_err(|e| format!("nft: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "nft: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        ))
+    }
+}
+
+/// Install router-mode exit SNAT (`exit_snat_plan`'s exclusions) with whichever tool the host has,
+/// replacing an earlier install. Returns the tool used, for `exit_snat_remove`.
+pub fn exit_snat_install(tun: &str, excluded: &[ipnet::Ipv4Net]) -> Result<Backend, String> {
+    if have("iptables") {
+        exit_snat_remove(Backend::Iptables, tun);
+        for cmd in exit_snat_iptables_install(tun, excluded) {
+            match run(&cmd) {
+                Ok(()) => {}
+                // Left over from an unclean exit; the next command flushes it.
+                Err(_) if cmd.1.iter().any(|a| a == "-N") => {}
+                Err(e) => {
+                    exit_snat_remove(Backend::Iptables, tun);
+                    return Err(e);
+                }
+            }
+        }
+        return Ok(Backend::Iptables);
+    }
+    if have("nft") {
+        nft_script(&exit_snat_nft_install(tun, excluded))?;
+        return Ok(Backend::Nft);
+    }
+    Err("neither iptables nor nft is installed".into())
+}
+
+/// Remove router-mode exit SNAT; errors are ignored (it may already be gone).
+pub fn exit_snat_remove(backend: Backend, tun: &str) {
+    match backend {
+        Backend::Iptables => {
+            for cmd in exit_snat_iptables_remove(tun) {
+                // A jump inserted more than once is deleted until none is left.
+                let tries = if cmd.1.iter().any(|a| a == "-D") {
+                    8
+                } else {
+                    1
+                };
+                for _ in 0..tries {
+                    if run(&cmd).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+        Backend::Nft => {
+            let _ = run(&(
+                "nft",
+                vec![
+                    "delete".into(),
+                    "table".into(),
+                    "ip".into(),
+                    EXIT_NFT_TABLE.into(),
+                ],
+            ));
+        }
+    }
 }
 
 /// Remove what `install` added; errors are ignored (the rules may already be gone).
@@ -338,6 +528,89 @@ mod tests {
             )));
             assert!(l.contains(&format!("{prog} -w -t nat -X fm-postrouting")));
         }
+    }
+
+    fn nets(v: &[&str]) -> Vec<ipnet::IpNet> {
+        v.iter().map(|s| s.parse().unwrap()).collect()
+    }
+
+    /// Exit SNAT exists only when an exit node is used in router mode; it never covers the mesh
+    /// range or a peer's approved subnet route, and exit routes (/0) are not exclusions.
+    #[test]
+    fn exit_snat_only_with_an_exit_node_in_forwarded_only_mode() {
+        let approved = nets(&["10.99.0.0/24", "fd00:1::/64", "0.0.0.0/0", "::/0"]);
+        assert_eq!(exit_snat_plan(false, false, &approved), None);
+        assert_eq!(exit_snat_plan(true, false, &approved), None);
+        assert_eq!(exit_snat_plan(false, true, &approved), None);
+        let got: Vec<String> = exit_snat_plan(true, true, &approved)
+            .unwrap()
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        assert_eq!(got, ["10.99.0.0/24", "100.64.0.0/10"]);
+    }
+
+    /// Overlapping approved routes are merged (an nft interval set refuses overlaps), and a
+    /// subnet inside the mesh range adds nothing.
+    #[test]
+    fn exit_snat_exclusions_are_merged() {
+        let got: Vec<String> = exit_snat_plan(
+            true,
+            true,
+            &nets(&["10.0.0.0/8", "10.1.0.0/24", "100.100.0.0/16", "10.1.2.3/24"]),
+        )
+        .unwrap()
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+        assert_eq!(got, ["10.0.0.0/8", "100.64.0.0/10"]);
+    }
+
+    #[test]
+    fn exit_snat_iptables_masquerades_only_what_goes_to_the_internet() {
+        let ex = exit_snat_plan(true, true, &nets(&["10.99.0.0/24"])).unwrap();
+        let l = lines(&exit_snat_iptables_install("flowmesh0", &ex));
+        assert_eq!(
+            l,
+            vec![
+                "iptables -w -t nat -N fm-exit-snat",
+                "iptables -w -t nat -F fm-exit-snat",
+                "iptables -w -t nat -A fm-exit-snat -s 100.64.0.0/10 -j RETURN",
+                "iptables -w -t nat -A fm-exit-snat -d 10.99.0.0/24 -j RETURN",
+                "iptables -w -t nat -A fm-exit-snat -d 100.64.0.0/10 -j RETURN",
+                "iptables -w -t nat -A fm-exit-snat -j MASQUERADE",
+                "iptables -w -t nat -I POSTROUTING 1 -o flowmesh0 -j fm-exit-snat",
+            ]
+        );
+        assert!(l.iter().all(|x| x.starts_with("iptables ")), "IPv4 only");
+        let r = lines(&exit_snat_iptables_remove("flowmesh0"));
+        assert_eq!(
+            r,
+            vec![
+                "iptables -w -t nat -D POSTROUTING -o flowmesh0 -j fm-exit-snat",
+                "iptables -w -t nat -F fm-exit-snat",
+                "iptables -w -t nat -X fm-exit-snat",
+            ]
+        );
+    }
+
+    #[test]
+    fn exit_snat_nft_table_is_separate_and_ipv4_only() {
+        let ex = exit_snat_plan(true, true, &nets(&["10.99.0.0/24"])).unwrap();
+        let s = exit_snat_nft_install("flowmesh0", &ex);
+        assert_eq!(
+            s,
+            "add table ip flowmesh_exit\n\
+             delete table ip flowmesh_exit\n\
+             table ip flowmesh_exit {\n\
+             \tchain postrouting {\n\
+             \t\ttype nat hook postrouting priority srcnat; policy accept;\n\
+             \t\toifname \"flowmesh0\" ip saddr != 100.64.0.0/10 ip daddr != { 10.99.0.0/24, 100.64.0.0/10 } masquerade\n\
+             \t}\n\
+             }\n"
+        );
+        // The subnet router's own table is untouched by it.
+        assert!(!s.contains("inet flowmesh"));
     }
 
     #[test]

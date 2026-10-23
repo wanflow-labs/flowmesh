@@ -490,6 +490,9 @@ fn prefs_command(rest: &[String], is_up: bool) -> Result<Command, String> {
             "exit-node-allow-lan-access" => {
                 update.exit_node_allow_lan_access = Some(bool_value(name, inline)?)
             }
+            "exit-node-forwarded-only" => {
+                update.exit_node_forwarded_only = Some(bool_value(name, inline)?)
+            }
             "ssh" => update.run_ssh = Some(bool_value(name, inline)?),
             // Accepted as given, like the official client (an unknown user simply matches nobody).
             "operator" => update.operator_user = Some(take_value(name, inline, rest, &mut i)?),
@@ -723,6 +726,19 @@ mod tests {
         };
         assert_eq!(update.exit_node.as_deref(), Some("100.64.0.9"));
         assert_eq!(update.exit_node_allow_lan_access, Some(true));
+        let Command::Up { update, .. } = cmd(&["up", "--exit-node-forwarded-only"]) else {
+            panic!()
+        };
+        assert_eq!(update.exit_node_forwarded_only, Some(true));
+        let Command::Set(update) = cmd(&["set", "--exit-node-forwarded-only=false"]) else {
+            panic!()
+        };
+        assert_eq!(update.exit_node_forwarded_only, Some(false));
+        let Command::Set(update) = cmd(&["set", "--exit-node-forwarded-only=true"]) else {
+            panic!()
+        };
+        assert_eq!(update.exit_node_forwarded_only, Some(true));
+        assert!(p(&["set", "--exit-node-forwarded-only=maybe"]).is_err());
         let Command::Set(update) = cmd(&["set", "--exit-node="]) else {
             panic!()
         };

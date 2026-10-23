@@ -35,8 +35,26 @@ impl Drop for ForwardRules {
     }
 }
 
-/// Removes the exit node policy routing when dropped.
-pub(crate) struct ExitRouting;
+/// Removes the exit node policy routing when dropped. Holds the host networks its throw routes
+/// cover, and whether they follow address changes (router mode).
+pub(crate) struct ExitRouting {
+    lan: Vec<IpNet>,
+    follow_lan: bool,
+    ipv6: bool,
+}
+
+/// Removes the router-mode exit SNAT when dropped.
+pub(crate) struct ExitSnat {
+    backend: flowmesh_netcfg::forward::Backend,
+    tun: String,
+}
+
+impl Drop for ExitSnat {
+    fn drop(&mut self) {
+        flowmesh_netcfg::forward::exit_snat_remove(self.backend, &self.tun);
+        log("exit node: router-mode SNAT removed");
+    }
+}
 
 impl Drop for ExitRouting {
     fn drop(&mut self) {
@@ -60,6 +78,10 @@ pub(crate) struct Features {
     forward_msg: Option<String>,
     exit_routing: Option<ExitRouting>,
     exit_msg: Option<String>,
+    exit_snat: Option<ExitSnat>,
+    /// What the SNAT in place was planned for (`exit_snat_plan`), installed or not.
+    exit_snat_plan: Option<Vec<ipnet::Ipv4Net>>,
+    exit_snat_msg: Option<String>,
     pub peerapi: Option<PeerApi>,
     ssh: Option<crate::sshd::SshServer>,
     ssh_msg: Option<String>,
@@ -75,6 +97,7 @@ impl Features {
         self.forward_msg
             .iter()
             .chain(self.exit_msg.iter())
+            .chain(self.exit_snat_msg.iter())
             .chain(self.ssh_msg.iter())
             .chain(self.served.msg.iter())
             .cloned()
@@ -218,15 +241,23 @@ impl Features {
         }
     }
 
-    /// Exit node policy routing: needed while an exit node is set; reinstalled when that or LAN
-    /// access changed (switching from one exit node to another keeps it: only AllowedIPs move).
+    /// Exit node policy routing: needed while an exit node is set; reinstalled when that, LAN
+    /// access or router mode changed (switching from one exit node to another keeps it: only
+    /// AllowedIPs move). Router mode always throws the host's networks: the replies to the LAN
+    /// it forwards for come back through table 52 too.
     pub fn sync_exit_routing(
         &mut self,
         cfg: &EngineConfig,
         old: Option<&EngineConfig>,
         ipv6: bool,
     ) {
-        let key = |c: &EngineConfig| (!c.exit_node.is_empty(), c.exit_node_allow_lan_access);
+        let key = |c: &EngineConfig| {
+            (
+                !c.exit_node.is_empty(),
+                c.exit_node_allow_lan_access,
+                c.exit_node_forwarded_only,
+            )
+        };
         if old.is_some_and(|o| key(o) == key(cfg)) {
             return;
         }
@@ -235,7 +266,8 @@ impl Features {
         if cfg.exit_node.is_empty() {
             return;
         }
-        let lan = if cfg.exit_node_allow_lan_access {
+        let lan_access = cfg.exit_node_allow_lan_access || cfg.exit_node_forwarded_only;
+        let lan = if lan_access {
             crate::linux::interfaces(&cfg.tun).nets
         } else {
             Vec::new()
@@ -246,22 +278,32 @@ impl Features {
             flowmesh_net::BYPASS_MASK,
             &lan,
             ipv6,
+            cfg.exit_node_forwarded_only,
         ) {
             Ok(warning) => {
                 log(format!(
-                    "exit node: using {}; LAN access {}",
+                    "exit node: using {}; LAN access {}{}",
                     cfg.exit_node,
-                    if cfg.exit_node_allow_lan_access {
+                    if lan_access {
                         format!("allowed {lan:?}")
                     } else {
                         "blocked".into()
+                    },
+                    if cfg.exit_node_forwarded_only {
+                        "; router mode: only forwarded traffic uses it"
+                    } else {
+                        ""
                     }
                 ));
                 if let Some(w) = warning {
                     log(&w);
                     self.exit_msg = Some(w);
                 }
-                self.exit_routing = Some(ExitRouting);
+                self.exit_routing = Some(ExitRouting {
+                    lan,
+                    follow_lan: cfg.exit_node_forwarded_only,
+                    ipv6,
+                });
             }
             Err(e) => {
                 let msg = format!(
@@ -270,6 +312,65 @@ impl Features {
                 );
                 log(&msg);
                 self.exit_msg = Some(msg);
+            }
+        }
+    }
+
+    /// Router mode: when the host's networks changed, move the throw routes to follow them (no
+    /// reinstall: the rules stay in place). Called periodically; cheap when nothing changed.
+    pub fn refresh_exit_lan(&mut self, cfg: &EngineConfig) {
+        let Some(r) = self.exit_routing.as_mut().filter(|r| r.follow_lan) else {
+            return;
+        };
+        let new = crate::linux::interfaces(&cfg.tun).nets;
+        if !flowmesh_netcfg::exit_route::needs_refresh(&r.lan, &new) {
+            return;
+        }
+        match flowmesh_netcfg::exit_route::update_throws(&r.lan, &new, r.ipv6) {
+            Ok(()) => {
+                log(format!(
+                    "exit node: host networks changed; LAN access now {new:?}"
+                ));
+                r.lan = new;
+            }
+            Err(e) => log(format!("exit node: following the host networks: {e}")),
+        }
+    }
+
+    /// Router-mode exit SNAT: present while an exit node is used with `forwarded_only`;
+    /// reinstalled when the peers' approved subnet routes (left untranslated) change.
+    pub fn sync_exit_snat(&mut self, cfg: &EngineConfig, approved: &[IpNet]) {
+        let plan = flowmesh_netcfg::forward::exit_snat_plan(
+            !cfg.exit_node.is_empty(),
+            cfg.exit_node_forwarded_only,
+            approved,
+        );
+        if plan == self.exit_snat_plan {
+            return;
+        }
+        self.exit_snat = None; // Drop removes the old rules first.
+        self.exit_snat_msg = None;
+        self.exit_snat_plan.clone_from(&plan);
+        let Some(excluded) = plan else {
+            return;
+        };
+        match flowmesh_netcfg::forward::exit_snat_install(&cfg.tun, &excluded) {
+            Ok(backend) => {
+                log(format!(
+                    "exit node: router-mode SNAT via {backend:?}, not for {excluded:?}"
+                ));
+                self.exit_snat = Some(ExitSnat {
+                    backend,
+                    tun: cfg.tun.clone(),
+                });
+            }
+            Err(e) => {
+                let msg = format!(
+                    "exit node {}: the LAN's traffic cannot use it, SNAT could not be installed: {e}",
+                    cfg.exit_node
+                );
+                log(&msg);
+                self.exit_snat_msg = Some(msg);
             }
         }
     }
