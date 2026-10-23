@@ -35,6 +35,18 @@ apply_prefs() {
 	until err=$(flowmesh_cli set 2>&1); do
 		case "$err" in
 		*"cannot reach flowmeshd"*) ;;
+		*"no node found in netmap with IP"* | *"is not advertising an exit node"*)
+			# The chosen exit node left the mesh or stopped offering itself: the other settings
+			# still apply. With the kill switch the daemon keeps the exit node it has (the LAN
+			# stays off the local uplink), without it the LAN uses the local uplink.
+			[ -n "$FM_EXIT_IP" ] && [ -z "$FM_EXIT_KEEP" ] || {
+				echo "flowmesh: could not apply settings: $err" >&2
+				return 1
+			}
+			echo "flowmesh: exit node $FM_EXIT_IP cannot be used: $err" >&2
+			if [ "$FM_KILL_SWITCH" = 1 ]; then FM_EXIT_KEEP=1; else FM_EXIT_IP=; fi
+			continue
+			;;
 		*) echo "flowmesh: could not apply settings: $err" >&2; return 1 ;;
 		esac
 		[ "$wait" -gt 0 ] || { echo "$err" >&2; return 1; }
@@ -64,6 +76,11 @@ service_started() {
 	[ -n "$FLOWMESH_SYNC_APPLY" ] && return 0
 	flowmesh_enabled || return 0
 	( apply_prefs 30 2>&1 | logger -t flowmesh ) &
+}
+
+# With the daemon stopped the LAN uses the local uplink, IPv6 included.
+service_stopped() {
+	/usr/libexec/flowmesh-fw exit-v6-block-off
 }
 
 reload_service() {

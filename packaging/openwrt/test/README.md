@@ -6,7 +6,7 @@ directory and sysupgrade keep list, the firewall zone (as fw3 or fw4 actually lo
 and its helper's locking (no truncation through a symlink, staged changes restored on SIGTERM, a
 held lock given up after 60 s), joining a mesh from the command line as `docs/install.md` describes,
 traffic from a LAN host to another mesh node through the router, settings applied by `reload`
-without a restart, a reboot (still online, no key re-entered), the Linux `install.sh` refusing to
+without a restart, the LAN using an exit node (below), a reboot (still online, no key re-entered), the Linux `install.sh` refusing to
 run on OpenWrt, `stop` (no forwarding rules left) and removal (no zone or forwardings left, other
 zones unchanged, identity kept).
 
@@ -26,7 +26,8 @@ and `ip-full` from the official package feeds through QEMU user networking).
 | Part | Where |
 |---|---|
 | Control server: an upstream headscale release (v0.26.x), sqlite, embedded relay and STUN | `http://10.231.0.1:18480` (STUN UDP 18478) |
-| A second mesh node (the plain Linux release binary), accepting subnet routes | namespace `owt-peer`, 10.231.0.2 |
+| A second mesh node (the plain Linux release binary), accepting subnet routes, an approved exit node | namespace `owt-peer`, 10.231.0.2 |
+| "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer` |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
 
@@ -37,6 +38,21 @@ the bridge and the lab's files.
 
 The relay is not reachable over plain HTTP, so the nodes talk directly (they share the host); that is
 enough for these tests.
+
+## The exit node checks
+
+With `use_exit_node` set to the peer, the LAN host's request to 198.51.100.1 must arrive from the
+router's mesh address (the router translates what it forwards to the exit node), while the router's
+own traffic keeps to its uplink (`ip route get`, and the same request from the router fails). The
+LAN's IPv6 to the uplink must be rejected by the rule `flowmesh_exit_block_ipv6` (UCI, and in the
+running fw3/fw4 ruleset): the uplink here is QEMU user networking, whose IPv6 (fec0::/64) answers
+only the router itself, so what is checked is the router's ICMPv6 reject, not a missing answer. The
+LAN host gets an IPv6 default route via the router's ULA address for this, and the ULA prefix is
+shared and approved so that IPv6 to the peer's mesh address keeps working. Also checked: the
+defaults of `kill_switch` and `lan_dns`, what `flowmesh_cli` sends, the watcher's
+`exit-state.json` (`offline_fallback` keeps the exit node off on reload), `/etc/init.d/firewall
+restart` and `reload` leaving the exit node working, an exit node that is not in the mesh, and that
+`stop` and package removal leave no exit routing, SNAT or IPv6 rule behind.
 
 ## Running
 

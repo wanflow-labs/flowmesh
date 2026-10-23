@@ -6,14 +6,32 @@
 #   remove        every zone named "flowmesh" and every forwarding from or to it
 #   exitnode-on   forwarding flowmesh -> wan (this router offers itself as an exit node)
 #   exitnode-off  the forwardings flowmesh -> wan
-# Nothing else in /etc/config/firewall is touched. Access control is the mesh's ACL, which also
-# decides what the device list shows. Firewall changes the user has staged with the uci command but
+#   exit-v6-block-on   rule "flowmesh_exit_block_ipv6": IPv6 forwarded from lan to wan is
+#                      rejected (this router sends its LAN through an exit node; lan -> flowmesh
+#                      and the router's own traffic are not affected)
+#   exit-v6-block-off  every rule of that name
+# Several actions may be given; they are applied in one commit and one firewall reload. `remove`
+# also removes the rule. Nothing else in /etc/config/firewall is touched. Access control is the
+# mesh's ACL, which also decides what the device list shows. Firewall changes the user has staged with the uci command but
 # not applied are set aside while we commit, so they are neither committed with ours nor lost.
 # The firewall is reloaded when something changed, unless FLOWMESH_FW_NORELOAD=1 (first boot, where
 # the firewall starts later on its own).
 
 ZONE=flowmesh
 DEVICE=flowmesh0
+V6_BLOCK=flowmesh_exit_block_ipv6
+
+usage() {
+	echo "usage: $0 add|remove|exitnode-on|exitnode-off|exit-v6-block-on|exit-v6-block-off..." >&2
+	exit 2
+}
+[ $# -gt 0 ] || usage
+for a in "$@"; do
+	case "$a" in
+	add | remove | exitnode-on | exitnode-off | exit-v6-block-on | exit-v6-block-off) ;;
+	*) usage ;;
+	esac
+done
 
 # One run at a time: the init's background apply, a reload and LuCI can overlap, and the staged-change
 # shuffle below (and uci's own add-then-set) is not safe against a concurrent run.
@@ -72,6 +90,11 @@ zones() {
 	sections | awk -v z="$ZONE" '$2 == "zone" && $3 == z { print $1 }'
 }
 
+# Rules named $1.
+rules() {
+	sections | awk -v n="$1" '$2 == "rule" && $3 == n { print $1 }'
+}
+
 # Forwardings from $1 to $2 ("*" matches any zone).
 forwardings() {
 	sections | awk -v s="$1" -v d="$2" '$2 == "forwarding" && (s == "*" || $4 == s) && (d == "*" || $5 == d) { print $1 }'
@@ -110,19 +133,35 @@ add_zone() {
 	add_forwarding "$ZONE" lan
 }
 
-case "$1" in
+# REJECT, not DROP: the LAN's dual-stack hosts give up on IPv6 at once and use IPv4 (through the
+# exit node) instead of waiting for timeouts. proto all: a rule's default is tcp and udp only.
+add_v6_block() {
+	local id
+	[ -n "$(rules "$V6_BLOCK")" ] && return 0
+	id=$(u add firewall rule)
+	u set "firewall.$id.name=$V6_BLOCK"
+	u set "firewall.$id.family=ipv6"
+	u set "firewall.$id.src=lan"
+	u set "firewall.$id.dest=wan"
+	u set "firewall.$id.proto=all"
+	u set "firewall.$id.target=REJECT"
+	changed=1
+}
+
+for a in "$@"; do
+	case "$a" in
 	add) add_zone ;;
 	remove)
 		delete $(forwardings "$ZONE" "*") $(forwardings "*" "$ZONE")
 		delete $(zones)
+		delete $(rules "$V6_BLOCK")
 		;;
 	exitnode-on) add_forwarding "$ZONE" wan ;;
 	exitnode-off) delete $(forwardings "$ZONE" wan) ;;
-	*)
-		echo "usage: $0 add|remove|exitnode-on|exitnode-off" >&2
-		exit 2
-		;;
-esac
+	exit-v6-block-on) add_v6_block ;;
+	exit-v6-block-off) delete $(rules "$V6_BLOCK") ;;
+	esac
+done
 
 [ "$changed" = 1 ] || exit 0
 u commit firewall || exit 1

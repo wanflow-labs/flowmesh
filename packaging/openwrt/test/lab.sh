@@ -2,7 +2,9 @@
 # SPDX-License-Identifier: Apache-2.0
 # Test lab for the OpenWrt package tests (run.sh), on one Linux host with KVM:
 #   - a control server (upstream headscale release, sqlite, embedded relay + STUN) on $OWT_HOST_IP
-#   - a second mesh node ("peer", the linux-x86_64 release binary) in network namespace owt-peer
+#   - a second mesh node ("peer", the linux-x86_64 release binary) in network namespace owt-peer,
+#     also an approved exit node; behind it an "Internet" address ($OWT_INET_IP, on a dummy device
+#     in owt-peer) where an HTTP server answers every request with the client's address
 #   - the router's LAN: bridge owtbr0 ($OWT_LAN_HOST_IP, used to reach the VM over SSH) and a LAN
 #     client in network namespace owt-lan ($OWT_LAN_CLIENT_IP, default route via the router)
 # The router VM itself (run.sh) gets a tap on owtbr0 as LAN and QEMU user networking as WAN.
@@ -19,6 +21,8 @@ OWT_STUN_PORT=${OWT_STUN_PORT:-18478}
 OWT_LAN_HOST_IP=${OWT_LAN_HOST_IP:-192.168.1.2}
 OWT_LAN_CLIENT_IP=${OWT_LAN_CLIENT_IP:-192.168.1.50}
 OWT_ROUTER_LAN_IP=${OWT_ROUTER_LAN_IP:-192.168.1.1}
+OWT_INET_IP=${OWT_INET_IP:-198.51.100.1}   # TEST-NET-2: reachable only through the peer as exit node
+OWT_INET_PORT=${OWT_INET_PORT:-18492}
 
 die() { echo "lab: $*" >&2; exit 1; }
 
@@ -53,6 +57,9 @@ up() {
   sudo ip -n owt-peer addr add "$OWT_PEER_IP/30" dev owt-peer1
   sudo ip -n owt-peer link set owt-peer1 up
   sudo ip -n owt-peer link set lo up
+  sudo ip -n owt-peer link add owtinet0 type dummy
+  sudo ip -n owt-peer addr add "$OWT_INET_IP/32" dev owtinet0
+  sudo ip -n owt-peer link set owtinet0 up
 
   sudo ip link add owtbr0 type bridge
   sudo ip addr add "$OWT_LAN_HOST_IP/24" dev owtbr0
@@ -123,15 +130,35 @@ EOF
   # Reusable: run.sh joins one router per OpenWrt version with it.
   key=$($hsc preauthkeys create -u "$uid" --reusable -e 24h -o json | jq -r .key)
 
+  # The "Internet" behind the exit node: who is asking, as this side sees it.
+  cat > "$w/peer/echo.py" <<'EOF2'
+import http.server, sys
+class H(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = (self.client_address[0] + "\n").encode()
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+    def log_message(self, *a):
+        pass
+http.server.HTTPServer((sys.argv[1], int(sys.argv[2])), H).serve_forever()
+EOF2
+  sudo sh -c "ip netns exec owt-peer python3 '$w/peer/echo.py' '$OWT_INET_IP' '$OWT_INET_PORT' > '$w/peer/echo.log' 2>&1 & echo \$! > '$w/peer/echo.pid'"
+
   # The peer node accepts subnet routes, so its replies to the router's LAN go back over the mesh.
+  # It is also an exit node (approved below), for the router's LAN.
   sudo sh -c "ip netns exec owt-peer '$w/peer/flowmeshd' --state-dir '$w/peer/state' \
       --socket '$w/peer/flowmeshd.sock' --tun owtpeer0 > '$w/peer/flowmeshd.log' 2>&1 & echo \$! > '$w/peer/flowmeshd.pid'"
   for _ in $(seq 1 30); do sudo test -S "$w/peer/flowmeshd.sock" && break; sleep 0.5; done
   sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" up --login-server "http://$OWT_HOST_IP:$OWT_HS_PORT" \
-      --auth-key "$key" --hostname owt-peer --accept-routes --accept-dns=false --timeout 30s
+      --auth-key "$key" --hostname owt-peer --accept-routes --advertise-exit-node --accept-dns=false --timeout 30s
   local peer_ip
   peer_ip=$(sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" status --json | jq -r '.Self.TailscaleIPs[0]')
   [ -n "$peer_ip" ] && [ "$peer_ip" != null ] || die "peer did not get a mesh address"
+  local peer_id
+  peer_id=$($hsc nodes list -o json | jq -r '.[] | select(.given_name == "owt-peer" or .name == "owt-peer") | .id' | head -1)
+  $hsc nodes approve-routes -i "$peer_id" -r 0.0.0.0/0,::/0 >/dev/null || die "could not approve the peer's exit routes"
 
   cat > "$w/lab.env" <<EOF
 OWT_LOGIN_SERVER=http://$OWT_HOST_IP:$OWT_HS_PORT
@@ -142,6 +169,8 @@ OWT_PEER_CLI="sudo $w/peer/flowmesh --socket $w/peer/flowmeshd.sock"
 OWT_LAN_HOST_IP=$OWT_LAN_HOST_IP
 OWT_LAN_CLIENT_IP=$OWT_LAN_CLIENT_IP
 OWT_ROUTER_LAN_IP=$OWT_ROUTER_LAN_IP
+OWT_INET_IP=$OWT_INET_IP
+OWT_INET_PORT=$OWT_INET_PORT
 EOF
   chmod 0600 "$w/lab.env"
   echo "lab up: control server http://$OWT_HOST_IP:$OWT_HS_PORT, peer $peer_ip; env in $w/lab.env"
@@ -151,6 +180,7 @@ down() {
   local w
   w=$(realpath -m "$1")
   stop_pidfile "$w/peer/flowmeshd.pid"
+  stop_pidfile "$w/peer/echo.pid"
   stop_pidfile "$w/hs/headscale.pid"
   sudo ip link del owt-peer0 2>/dev/null || true
   sudo ip link del owt-lan0 2>/dev/null || true

@@ -27,15 +27,48 @@ flowmesh_append_route() {
 	FM_ROUTES="${FM_ROUTES:+$FM_ROUTES,}$1"
 }
 
-# Read the intent into FM_HOSTNAME, FM_ROUTES, FM_EXIT_NODE and FM_ACCEPT_ROUTES.
+# Where the exit node watcher records what it sees: {"want":"<ip>","state":"none|active|
+# offline_blocked|offline_fallback|missing","since":N}. (FLOWMESH_EXIT_STATE: for tests.)
+FM_EXIT_STATE_FILE=${FLOWMESH_EXIT_STATE:-/var/run/flowmesh/exit-state.json}
+
+# True when the watcher has fallen back to the local uplink for exit node $1 (kill switch off, the
+# exit node offline). A missing or unreadable file, or one about another exit node, is not.
+flowmesh_exit_fell_back() {
+	local want state
+	[ -r "$FM_EXIT_STATE_FILE" ] || return 1
+	want=$(jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.want' 2>/dev/null) || return 1
+	state=$(jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.state' 2>/dev/null) || return 1
+	[ "$want" = "$1" ] && [ "$state" = offline_fallback ]
+}
+
+# Read the intent into FM_HOSTNAME, FM_ROUTES, FM_EXIT_NODE (offer this router as an exit node),
+# FM_ACCEPT_ROUTES, FM_USE_EXIT_NODE (the exit node chosen, empty: none), FM_EXIT_IP (the exit
+# node to send the LAN through now: FM_USE_EXIT_NODE unless that is overruled or has fallen
+# back), FM_KILL_SWITCH and FM_LAN_DNS.
 flowmesh_load_prefs() {
 	local advertise_lan n
 	FM_ROUTES=
+	FM_EXIT_KEEP=
 	config_load flowmesh
 	config_get FM_HOSTNAME main hostname
 	config_get_bool advertise_lan main advertise_lan 0
 	config_get_bool FM_EXIT_NODE main exit_node 0
 	config_get_bool FM_ACCEPT_ROUTES main accept_routes 0
+	config_get FM_USE_EXIT_NODE main use_exit_node
+	# Both default to on when absent (an older /etc/config/flowmesh has neither).
+	config_get_bool FM_KILL_SWITCH main kill_switch 1
+	config_get_bool FM_LAN_DNS main lan_dns 1
+	FM_EXIT_IP=$FM_USE_EXIT_NODE
+	if [ -n "$FM_EXIT_IP" ] && [ "$FM_EXIT_NODE" = 1 ]; then
+		# The page offers one or the other; a hand-edited config may have both.
+		logger -t flowmesh "exit_node and use_exit_node are both set: offering this router as an exit node, not using $FM_EXIT_IP"
+		FM_EXIT_IP=
+	fi
+	# The watcher has moved the LAN to the local uplink while this exit node is offline: a reload
+	# must not put it back on the dead exit node (the watcher switches back when it returns).
+	if [ -n "$FM_EXIT_IP" ] && flowmesh_exit_fell_back "$FM_EXIT_IP"; then
+		FM_EXIT_IP=
+	fi
 	# The daemon does not fall back to the system hostname itself, and a node without a name is
 	# refused by the control server.
 	[ -n "$FM_HOSTNAME" ] || FM_HOSTNAME=$(cat /proc/sys/kernel/hostname)
@@ -51,21 +84,30 @@ flowmesh_load_prefs() {
 # flag, from the FM_* variables; with "exec" the CLI replaces the calling (sub)shell, so a background
 # job's PID is the CLI's own. The router's DNS belongs to dnsmasq: the daemon never rewrites
 # resolv.conf.
+# Using an exit node, the router sends only what it forwards for the LAN through it, translated to
+# its mesh address (--exit-node-forwarded-only), and always lets the LAN through to its own networks
+# (without that, the replies to the LAN would go to the exit node too). --stateful-filtering stays
+# at the client's default: on, it would drop the LAN's traffic to the exit node.
+# FM_EXIT_KEEP=1 leaves out --exit-node (`set` then keeps the daemon's current one; not for `up`).
 flowmesh_cli() {
-	local run="" sub
+	local run="" sub via=false
 	[ "$1" = exec ] && { run="exec"; shift; }
 	sub=$1
 	shift
-	$run flowmesh "$sub" "$@" --accept-dns=false --hostname="$FM_HOSTNAME" \
+	[ -n "$FM_EXIT_IP" ] && via=true
+	set -- "$@" --accept-dns=false --hostname="$FM_HOSTNAME" \
 		--accept-routes="$FM_ACCEPT_ROUTES" --advertise-routes="$FM_ROUTES" \
-		--advertise-exit-node="$FM_EXIT_NODE"
+		--advertise-exit-node="$FM_EXIT_NODE" \
+		--exit-node-allow-lan-access="$via" --exit-node-forwarded-only="$via"
+	[ "$FM_EXIT_KEEP" = 1 ] || set -- "$@" --exit-node="$FM_EXIT_IP"
+	$run flowmesh "$sub" "$@"
 }
 
-# The firewall side of FM_EXIT_NODE (the forwarding flowmesh -> wan).
+# The firewall side of FM_EXIT_NODE (the forwarding flowmesh -> wan) and of FM_EXIT_IP (the LAN's
+# IPv6 kept off the local uplink while its IPv4 goes through the exit node; no NAT66).
 flowmesh_apply_fw() {
-	if [ "$FM_EXIT_NODE" = 1 ]; then
-		/usr/libexec/flowmesh-fw exitnode-on
-	else
-		/usr/libexec/flowmesh-fw exitnode-off
-	fi
+	local exit=exitnode-off v6="exit-v6-block-off"
+	[ "$FM_EXIT_NODE" = 1 ] && exit=exitnode-on
+	[ -n "$FM_EXIT_IP" ] && v6="exit-v6-block-on"
+	/usr/libexec/flowmesh-fw "$exit" "$v6"
 }
