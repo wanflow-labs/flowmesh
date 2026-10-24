@@ -3,9 +3,73 @@
 		"title": "FlowMesh",
 		"order": 60,
 		"action": {
+			"type": "firstchild"
+		},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	},
+
+	"admin/services/flowmesh/overview": {
+		"title": "Overview",
+		"order": 10,
+		"action": {
 			"type": "view",
 			"path": "flowmesh/overview"
-		},
+				},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	},
+
+	"admin/services/flowmesh/devices": {
+		"title": "Devices",
+		"order": 20,
+		"action": {
+			"type": "view",
+			"path": "flowmesh/devices"
+				},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	},
+
+	"admin/services/flowmesh/settings": {
+		"title": "Settings",
+		"order": 30,
+		"action": {
+			"type": "view",
+			"path": "flowmesh/settings"
+				},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	},
+
+	"admin/services/flowmesh/diagnostics": {
+		"title": "Diagnostics",
+		"order": 40,
+		"action": {
+			"type": "view",
+			"path": "flowmesh/diagnostics"
+				},
+		"depends": {
+			"acl": [ "luci-app-flowmesh" ],
+			"uci": { "flowmesh": true }
+		}
+	},
+
+	"admin/services/flowmesh/logs": {
+		"title": "Logs",
+		"order": 50,
+		"action": {
+			"type": "view",
+			"path": "flowmesh/logs"
+				},
 		"depends": {
 			"acl": [ "luci-app-flowmesh" ],
 			"uci": { "flowmesh": true }

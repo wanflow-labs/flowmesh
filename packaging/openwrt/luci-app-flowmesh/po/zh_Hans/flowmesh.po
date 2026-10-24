@@ -7,348 +7,789 @@ msgstr ""
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=1; plural=0;\n"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:538
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:183
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:161
+msgid "%d ms"
+msgstr "%d 毫秒"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:285
+msgid "%d of %d online"
+msgstr "%d / %d 台在线"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:170
+msgid "%s (%s)"
+msgstr "%s（%s）"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:170
+msgid "%s (%s, offline)"
+msgstr "%s（%s，离线）"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:174
+msgid "%s (not available in the mesh)"
+msgstr "%s（组网中不可用）"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:86
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:109
+msgid "%s ms"
+msgstr "%s 毫秒"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:321
 msgid ""
-"%s overlaps a network that %s already shares. Devices may not reach the "
-"right one; consider changing this router's LAN network."
+"%s overlaps a network that %s already shares. Devices may not reach "
+"the right one; consider changing this router's LAN network."
 msgstr "%s 与 %s 已共享的网段重叠，设备可能访问不到正确的那一个；建议修改本路由器的局域网网段。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:446
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:30
+msgid ""
+"A default route cannot be shared. To carry other devices' Internet "
+"traffic, use \"Act as exit node\"."
+msgstr "不能共享默认路由。如要为其他设备转发互联网流量，请使用「作为出口节点」。"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:160
 msgid "Act as exit node"
 msgstr "作为出口节点"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:516
+#: htdocs/luci-static/resources/flowmesh/common.js:278
 msgid "Active"
 msgstr "已生效"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:517
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:196
+msgid "Advanced"
+msgstr "高级"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:279
 msgid "Advertised — waiting for an admin to approve it in the console"
 msgstr "已通告，等待管理员在控制台批准"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:656
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:157
+msgid ""
+"An exit node carries Internet traffic for other devices. This router "
+"can be one, or send its LAN's Internet traffic through one, but not "
+"both at once."
+msgstr "出口节点为其他设备转发互联网流量。本路由器可以作为出口节点，也可以让局域网经其他出口节点上网，但两者不能同时启用。"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:356
+msgid "Applying settings…"
+msgstr "正在应用设置…"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "Available"
+msgstr "可用"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "Blocked: connections go through a relay"
+msgstr "被阻断：连接将经中继"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:377
 msgid "Cancel"
 msgstr "取消"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:118
+#: htdocs/luci-static/resources/flowmesh/common.js:117
 msgid ""
-"Cannot reach the mesh server. Check the address and this router's Internet "
-"connection."
+"Cannot reach the mesh server. Check the address and this router's "
+"Internet connection."
 msgstr "无法连接组网服务器，请检查组网地址和本路由器的互联网连接。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:477
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:70
+msgid "Checking the network…"
+msgstr "正在检测网络…"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:229
+msgid "Checking…"
+msgstr "检测中…"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:60
+msgid ""
+"Checks how this router's Internet connection suits the mesh: whether "
+"UDP gets through, how easily direct connections can be made, and the "
+"latency to each relay region. Takes up to 20 seconds."
+msgstr "检测本路由器的网络连接对组网的适应情况：UDP 是否可用、直连建立的难易程度，以及到各中继区域的延迟。最长约 20 秒。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:46
+msgid ""
+"Checks to run when something does not work as expected. Each one runs "
+"once, when you click its button."
+msgstr "遇到问题时可运行以下检查。每项检查仅在点击按钮时运行一次。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:177
+msgid ""
+"Collects this router's FlowMesh state into a report you can copy and "
+"send to support. Nothing is sent automatically."
+msgstr "汇总本路由器的 FlowMesh 状态生成报告，可复制后发给客服。不会自动发送任何内容。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:264
 msgid "Connecting…"
 msgstr "正在连接…"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:573
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:69
 msgid "Connection"
 msgstr "连接方式"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:499
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:292
 msgid "Connections"
 msgstr "连接"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:301
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:498
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:205
+msgid "Copied."
+msgstr "已复制。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:228
+msgid "Copy"
+msgstr "复制"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:139
+msgid "Current exit node"
+msgstr "当前出口"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:152
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:163
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:176
+msgid "Current state"
+msgstr "当前状态"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:95
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:154
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:289
 msgid "Device name"
 msgstr "设备名"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:450
-msgid "Devices in this mesh"
-msgstr "组网内的设备"
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:28
+msgid "Devices"
+msgstr "设备"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:558
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:176
+msgid "Diagnostic report"
+msgstr "诊断报告"
+
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:54
+msgid "Diagnostics"
+msgstr "诊断"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:20
 msgid "Direct"
 msgstr "直连"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:594
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:29
+msgid "Direct connection"
+msgstr "直连"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:91
+msgid "Direct connections"
+msgstr "直连"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:313
 msgid "Disconnect"
 msgstr "断开"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:478
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:265
 msgid "Disconnected"
 msgstr "已断开"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:645
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:366
 msgid "Disconnecting…"
 msgstr "正在断开…"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:308
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:168
+msgid "Don't use"
+msgstr "不使用"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:82
+msgid "Easy: direct connections usually work"
+msgstr "容易：通常可以直连"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:34
+msgid "Enter a network as address/prefix length, such as 192.168.1.0/24."
+msgstr "请按「地址/前缀长度」格式输入网段，例如 192.168.1.0/24。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:161
 msgid "Enter manually"
 msgstr "手动填写"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:340
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:193
 msgid "Enter the join key."
 msgstr "请填写接入密钥。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:338
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:191
 msgid "Enter the mesh address, starting with https:// or http://."
 msgstr "请填写组网地址，以 https:// 或 http:// 开头。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:198
-#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:3
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:191
+msgid "Example"
+msgstr "示例"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:98
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:141
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:294
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:157
+msgid "Exit node"
+msgstr "出口节点"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:225
+msgid "Exit node %s is not available in the mesh"
+msgstr "出口节点 %s 在组网中不可用"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:221
+msgid "Exit node %s is offline: the LAN has no Internet access (Kill Switch)"
+msgstr "出口节点 %s 离线，局域网已断网（Kill Switch）"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:223
+msgid ""
+"Exit node %s is offline: the LAN uses the local Internet connection "
+"for now"
+msgstr "出口节点 %s 离线，局域网暂时改走本地宽带"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:209
 msgid "FlowMesh"
 msgstr "FlowMesh"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:233
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:83
 msgid "FlowMesh is turned off."
 msgstr "FlowMesh 已关闭。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:181
+msgid "Generate report"
+msgstr "生成报告"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:187
+msgid "Generating the report…"
+msgstr "正在生成报告…"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:179
+msgid "Go to Overview"
+msgstr "前往概览"
 
 #: root/usr/share/rpcd/acl.d/luci-app-flowmesh.json:3
 msgid "Grant access to FlowMesh"
 msgstr "授予访问 FlowMesh 的权限"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:560
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:83
+msgid ""
+"Hard: this network's NAT changes ports per destination; connections "
+"may go through a relay"
+msgstr "较难：本网络的 NAT 对不同目标使用不同端口，连接可能经中继"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:22
 msgid "High-speed relay"
 msgstr "高性能中继"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:304
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:157
 msgid "How this router appears in the mesh."
 msgstr "本路由器在组网中显示的名称。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:561
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:102
+msgid ""
+"IPv4 or IPv6 networks, such as 192.168.1.0/24. Starts with this "
+"router's LAN networks."
+msgstr "IPv4 或 IPv6 网段，例如 192.168.1.0/24。默认为本路由器的局域网网段。"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:23
 msgid "Idle"
 msgstr "空闲"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:295
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:148
 msgid ""
-"In the console, add a device to your mesh and copy its join code (or the "
-"Linux install command), then paste it here."
+"In the console, add a device to your mesh and copy its join code (or "
+"the Linux install command), then paste it here."
 msgstr "在控制台的组网中添加设备，复制接入码（或 Linux 安装命令），粘贴到这里。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:130
+#: htdocs/luci-static/resources/flowmesh/common.js:131
 msgid "Invalid request."
 msgstr "请求无效。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:325
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:178
 msgid "Join"
 msgstr "接入"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:294
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:147
 msgid "Join a mesh"
 msgstr "接入组网"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:297
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:150
 msgid "Join code"
 msgstr "接入码"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:314
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:167
 msgid "Join key"
 msgstr "接入密钥"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:199
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:48
 msgid "Join this router to a Wanflow FlowMesh mesh network."
 msgstr "把本路由器接入 Wanflow FlowMesh 组网。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:373
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:226
 msgid "Joining the mesh… This can take up to half a minute."
 msgstr "正在接入组网…最多需要半分钟。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:444
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:179
+msgid "Kill Switch"
+msgstr "Kill Switch"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:71
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:102
+msgid "Latency"
+msgstr "延迟"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:96
 msgid ""
-"Lets other devices in the mesh reach this router's LAN. A mesh administrator "
-"approves it in the console."
-msgstr "让组网内的其他设备访问本路由器的局域网，需要组网管理员在控制台批准。"
+"Let other devices in the mesh reach networks behind this router. A "
+"mesh administrator approves each network in the console."
+msgstr "让组网内的其他设备访问本路由器后面的网段。每个网段需由组网管理员在控制台批准。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:424
-msgid "Loading…"
-msgstr "正在加载…"
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:184
+msgid ""
+"Lets devices on the LAN reach mesh devices by name. Only mesh names "
+"are answered by FlowMesh; every other lookup works as before."
+msgstr "让局域网设备用名字访问组网设备。只有组网内的名字由 FlowMesh 解析，其他域名解析保持不变。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:597
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:663
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:316
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:384
 msgid "Log out"
 msgstr "退出登录"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:653
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:374
 msgid "Log out of the mesh?"
 msgstr "退出组网登录？"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:661
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:382
 msgid "Logging out…"
 msgstr "正在退出登录…"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:427
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:67
 msgid "Logs"
 msgstr "日志"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:497
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:571
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:67
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:96
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:290
 msgid "Mesh IP"
 msgstr "组网 IP"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:310
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:163
 msgid "Mesh address"
 msgstr "组网地址"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:570
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:187
+msgid "Mesh names for the LAN"
+msgstr "让局域网设备用名字访问组网"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:66
 msgid "Name"
 msgstr "名称"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:526
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:184
+msgid "Name resolution"
+msgstr "名字解析"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:108
+msgid "Nearest"
+msgstr "最近"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:94
+msgid "Nearest relay region"
+msgstr "最近的中继区域"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:59
+msgid "Network check"
+msgstr "网络检测"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:102
+msgid "Networks"
+msgstr "网段"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:328
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:306
 msgid "No LAN network found to share."
 msgstr "没有找到可共享的局域网网段。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:605
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:33
 msgid "No log lines."
 msgstr "暂无日志。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:285
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:345
+msgid "No mesh names yet."
+msgstr "暂无组网名字。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:138
 msgid "No mesh yet? Wanflow FlowMesh Free is free forever."
 msgstr "还没有组网？Wanflow FlowMesh 免费版永久免费。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:565
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:75
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:140
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
 msgid "No other devices yet."
 msgstr "暂无其他设备。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:513
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:165
+msgid "No output."
+msgstr "无输出。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:114
+msgid "No relay region answered."
+msgstr "没有中继区域响应。"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:180
+msgid "No reply"
+msgstr "无响应"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:160
+msgid "No reply."
+msgstr "无响应。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:86
+msgid "None"
+msgstr "无"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:278
+msgid "Not available while this router acts as an exit node."
+msgstr "本路由器作为出口节点时不可用。"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:279
+msgid ""
+"Not available while this router uses an exit node. Choose \"Don't use\" "
+"first."
+msgstr "本路由器正在使用出口节点时不可用。请先选择「不使用」。"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:330
+msgid "Not offered yet: save to offer it."
+msgstr "尚未提供：保存后生效。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:323
+msgid "Not shared"
+msgstr "未共享"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:275
 msgid "Not shared while disconnected"
 msgstr "断开期间不共享"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:579
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:302
+msgid "Not shared yet: save to start sharing."
+msgstr "尚未共享：保存后开始共享。"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:227
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:344
+msgid "Not used"
+msgstr "未使用"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:98
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:338
+msgid "Offered to other devices"
+msgstr "已提供给其他设备"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:147
 msgid "Offline"
 msgstr "离线"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:476
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:579
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:146
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:263
 msgid "Online"
 msgstr "在线"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:107
+#: htdocs/luci-static/resources/flowmesh/common.js:106
 msgid "Open the console"
 msgstr "前往控制台"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:446
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:79
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
+msgid "Other devices"
+msgstr "其他设备"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:160
 msgid ""
-"Other devices may send their Internet traffic through this router. A mesh "
-"administrator approves it in the console."
+"Other devices may send their Internet traffic through this router. A "
+"mesh administrator approves it in the console."
 msgstr "其他设备可以经由本路由器访问互联网，需要组网管理员在控制台批准。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:351
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:15
+msgid "Overview"
+msgstr "概览"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:204
 msgid "Paste a join code first."
 msgstr "请先粘贴接入码。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:448
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:132
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:139
+msgid "Ping"
+msgstr "Ping"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:151
+msgid "Pinging %s…"
+msgstr "正在 Ping %s…"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:92
+msgid "Public IPv4 address"
+msgstr "公网 IPv4 地址"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:93
+msgid "Public IPv6 address"
+msgstr "公网 IPv6 地址"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:199
 msgid "Reach the LANs other mesh devices share."
 msgstr "访问组网内其他设备共享的局域网。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:595
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:70
+msgid "Received / sent"
+msgstr "接收 / 发送"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:314
 msgid "Reconnect"
 msgstr "重新连接"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:649
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:370
 msgid "Reconnecting…"
 msgstr "正在重新连接…"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:431
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:25
 msgid "Refresh"
 msgstr "刷新"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:559
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:101
+msgid "Region"
+msgstr "区域"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:21
 msgid "Relay"
 msgstr "中继"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:443
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:99
+msgid "Relay region latency"
+msgstr "中继区域延迟"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:64
+msgid "Run network check"
+msgstr "运行网络检测"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:344
+msgid "Run this on a LAN device."
+msgstr "在局域网设备上运行。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:211
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:221
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:224
+msgid "Select the text and copy it with Ctrl+C."
+msgstr "请选中文本后按 Ctrl+C 复制。"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:167
+msgid ""
+"Send the Internet traffic of every LAN device through this mesh "
+"device. The router's own traffic keeps using the local Internet "
+"connection, and the LAN's IPv6 Internet access is blocked meanwhile."
+msgstr "让所有局域网设备的互联网流量经此组网设备出去。路由器自身的流量仍走本地宽带；期间局域网的 IPv6 互联网访问会被阻断。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:133
+msgid ""
+"Sends three pings to a device in the mesh and shows whether they go "
+"directly or through a relay. A ping also prompts the two devices to "
+"try a direct connection."
+msgstr "向组网内的一台设备发送三次 Ping，显示走直连还是经中继。Ping 也会促使两台设备尝试建立直连。"
+
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:41
 msgid "Settings"
 msgstr "设置"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:444
-msgid "Share local LAN"
-msgstr "共享本地局域网"
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:363
+msgid "Settings applied."
+msgstr "设置已应用。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:99
+msgid "Share networks"
+msgstr "共享网段"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:72
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:97
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:293
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:96
+msgid "Shared networks"
+msgstr "共享网段"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:144
 msgid "Sign up free"
 msgstr "免费注册"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:237
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:369
+msgid "Some settings are not valid; nothing was saved."
+msgstr "部分设置无效，未保存任何更改。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:87
 msgid "Start"
 msgstr "启动"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:441
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:496
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:572
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:68
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:252
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:288
 msgid "Status"
 msgstr "状态"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:122
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:233
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:127
+msgid "Test"
+msgstr "测延迟"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:176
+msgid "Testing…"
+msgstr "测试中…"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:123
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:83
 msgid "The FlowMesh service is not running."
 msgstr "FlowMesh 服务未运行。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:125
+#: htdocs/luci-static/resources/flowmesh/common.js:177
+msgid "The FlowMesh service is not running. Start it on the Overview page."
+msgstr "FlowMesh 服务未运行，请在概览页启动。"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:219
+msgid "The LAN reaches the Internet through %s"
+msgstr "局域网经 %s 出口上网"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:126
 msgid ""
-"The device name may only contain letters, digits and hyphens (at most 63)."
+"The device name may only contain letters, digits and hyphens (at most "
+"63)."
 msgstr "设备名只能包含字母、数字和连字符（最多 63 个）。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:127
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:49
+msgid "The devices in this mesh and how this router reaches them."
+msgstr "组网内的设备，以及本路由器与它们的连接方式。"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:128
 msgid "The join key is not valid."
 msgstr "接入密钥无效。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:129
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:21
+msgid "The latest FlowMesh lines of the system log, newest at the bottom."
+msgstr "系统日志中最近的 FlowMesh 记录，最新的在底部。"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:130
 msgid "The mesh address is not valid."
 msgstr "组网地址无效。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:120
+#: htdocs/luci-static/resources/flowmesh/common.js:120
 msgid "The mesh server did not answer in time. Please try again."
 msgstr "组网服务器没有及时响应，请重试。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:134
+#: htdocs/luci-static/resources/flowmesh/common.js:135
 msgid "The operation failed."
 msgstr "操作失败。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:132
+#: htdocs/luci-static/resources/flowmesh/common.js:133
 msgid "The router did not answer: %s"
 msgstr "路由器没有响应：%s"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:355
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:208
 msgid ""
-"This is not a join code. Paste the join code or the Linux install command "
-"from the console."
+"This is not a join code. Paste the join code or the Linux install "
+"command from the console."
 msgstr "这不是接入码。请粘贴控制台给出的接入码或 Linux 安装命令。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:114
+#: htdocs/luci-static/resources/flowmesh/common.js:113
 msgid ""
-"This join code has expired or was already used. Generate a new one in the "
-"console."
+"This join code has expired or was already used. Generate a new one in "
+"the console."
 msgstr "接入码已过期或已被使用，请在控制台重新生成。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:353
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:206
 msgid ""
-"This join code is newer than this plugin. Please upgrade luci-app-flowmesh."
+"This join code is newer than this plugin. Please upgrade "
+"luci-app-flowmesh."
 msgstr "接入码版本过新，请升级插件"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:654
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:32
+msgid "This network overlaps the mesh's own addresses."
+msgstr "该网段与组网自身的地址段重叠。"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:77
+msgid "This router"
+msgstr "本路由器"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:178
 msgid ""
-"This router leaves the mesh. Joining again needs a new join code from the "
-"console."
+"This router has not joined a mesh yet. Join one on the Overview page "
+"first."
+msgstr "本路由器尚未接入组网，请先在概览页接入组网。"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:375
+msgid ""
+"This router leaves the mesh. Joining again needs a new join code from "
+"the console."
 msgstr "本路由器将退出组网。重新接入需要在控制台生成新的接入码。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:448
+#: htdocs/luci-static/resources/flowmesh/common.js:121
+msgid ""
+"This took too long; FlowMesh may still be applying an earlier change. "
+"Please try again in a moment."
+msgstr "操作超时，FlowMesh 可能仍在应用之前的更改，请稍后重试。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:31
+msgid "Through a high-speed relay"
+msgstr "经高速中继"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:30
+msgid "Through a relay"
+msgstr "经中继"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:82
+msgid ""
+"Traffic is counted since the current connection to each device was "
+"set up. Latency is measured only when you ask for it."
+msgstr "流量为与各设备本次连接建立以来的统计。延迟仅在点击时测量。"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "UDP"
+msgstr "UDP"
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:24
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:32
+msgid "Unknown"
+msgstr "未知"
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:84
+msgid "Unknown (finding out needs answers from two or more relay servers)"
+msgstr "未知（需要两个及以上中继服务器的响应才能判断）"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:167
+msgid "Use exit node"
+msgstr "使用出口节点"
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:199
 msgid "Use networks shared by other devices"
 msgstr "使用其他设备共享的网段"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:317
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:170
 msgid "Used when the join code box is empty."
 msgstr "接入码输入框为空时使用。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:116
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:179
+msgid ""
+"While the exit node is offline, the LAN has no Internet access. Off: "
+"the LAN uses the local Internet connection until the exit node is "
+"back."
+msgstr "出口节点离线期间局域网断网。关闭时：局域网改走本地宽带，出口节点恢复后自动切回。"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:115
 msgid "Your mesh has reached its site limit."
 msgstr "组网的站点数已达上限。"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:489
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:278
 msgid "direct: %d"
 msgstr "直连 %d 台"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:491
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:280
 msgid "high-speed relay: %d"
 msgstr "高性能中继 %d 台"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:499
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:292
 msgid "none active"
 msgstr "暂无活动连接"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:493
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:128
+msgid "offline"
+msgstr "离线"
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:282
 msgid "relay: %d"
 msgstr "中继 %d 台"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:260
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:113
 msgid "wanflow://… or the Linux install command from the console"
 msgstr "wanflow://… 或控制台给出的 Linux 安装命令"
