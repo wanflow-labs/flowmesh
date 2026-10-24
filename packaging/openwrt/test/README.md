@@ -166,6 +166,39 @@ same image (settings kept): the packages are gone, `/etc/config/flowmesh` and `/
 not, and after `add-feed.sh` and a reinstall the node is back with the same address, no key needed.
 This mode replaces the usual checks.
 
+### From the first version
+
+`OWT_UPGRADE_V1` names the released feed of the first version instead (the GitHub Release attachment
+`flowmesh-openwrt-feed-0.1.8.tar.gz`; check it against that release's `SHA256SUMS`), and the feed
+argument is this build's. The released feed carries the real signing keys, and its own `add-feed.sh`
+imports them, so it installs the way users do, with no `--allow-untrusted`. This build's version
+must sort higher than the released one: the scratch build here is `0.1.9` (the `version` in
+`Cargo.toml` and the lock file, bumped in a copy of the tree; `build/release.sh` and
+`build-packages.sh` derive everything from it).
+
+    OWT_UPGRADE_V1=v0.1.8/flowmesh-openwrt-feed-0.1.8.tar.gz OWT_WORK=owt-work \
+        packaging/openwrt/test/run.sh 24.10.8 feed/flowmesh-openwrt-feed-0.1.9.tar.gz
+
+The router installs `luci-app-flowmesh` from the released feed, joins with the LuCI helper and sets
+what the first version had: a name, LAN sharing with two `lan_routes`, an exit node offer and
+`accept_routes`. After `opkg upgrade` / `apk upgrade`: those settings are in effect, and
+`/etc/config/flowmesh` is byte for byte the user's (the package manager keeps it and puts the new
+file beside it as `-opkg` / `.apk-new`); `use_exit_node` is empty and `kill_switch` and `lan_dns` are
+not written; the daemon runs on the new binary under the same identity and mesh address (no second
+node); no exit node is in use, and there is no exit routing, SNAT, IPv6 block or kill switch rule;
+the watcher runs; the LAN host resolves the peer's mesh name through the router; the firewall zone
+and forwardings exist once. Last, an exit node is set and removed on the upgraded router.
+
+### The router's LAN address
+
+In the normal modes, while the exit node is in use, the router's LAN moves from 192.168.1.1/24 to
+192.168.5.1/24 (`uci set network.lan.ipaddr`, `ifup lan`) and back. The lab follows (a second address
+on the bridge, a route in the peer, the lab routes' gateway; the LAN host takes an address in the new
+subnet). The LAN host must reach the router, and table 52's throw routes must have followed, within
+15 s of `ifup lan`. The daemon announces the addresses it had at start, so without a relay (as in
+this lab) a mesh peer does not find the router at its new address until the service is restarted:
+the checks after that run after a restart.
+
 ## luci-app-flowmesh
 
 The page's pure modules (join code parsing, status reading) are tested with node, on any machine:

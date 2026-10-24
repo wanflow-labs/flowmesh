@@ -54,7 +54,16 @@ apk update && apk add luci-app-flowmesh          # OpenWrt 25.12 and later
 
 For the command line only, install just `flowmesh` (`opkg install flowmesh` / `apk add flowmesh`). Do not run the Linux install command (`install.sh`) on a router: it refuses on OpenWrt, since it would replace the package's files and start a second daemon next to the service.
 
-To join a mesh, open "Services → FlowMesh" in LuCI. In the Wanflow console, add a device to your mesh and paste the Linux install command it shows, or enter the mesh address and join key by hand; give the router a name and press "Join". The same page switches "Share local LAN", "Act as exit node" and the other settings. Settings live in `/etc/config/flowmesh` (each option is described there) and the node identity in `/etc/flowmesh/`. Installing adds a firewall zone `flowmesh` (device `flowmesh0`, forwarding to and from `lan`); removing the package deletes it.
+To join a mesh, open "Services → FlowMesh" in LuCI. In the Wanflow console, add a device to your mesh and paste the Linux install command it shows, or enter the mesh address and join key by hand; give the router a name and press "Join". The same page switches "Share networks", "Act as exit node" and the other settings. Settings live in `/etc/config/flowmesh` (each option is described there) and the node identity in `/etc/flowmesh/`. Installing adds a firewall zone `flowmesh` (device `flowmesh0`, forwarding to and from `lan`); removing the package deletes it.
+
+The page has five tabs: Overview (connection state, mesh address, exit node), Devices (the other devices, their connection path and approval state), Settings, Diagnostics and Logs. Under Settings:
+
+- **Shared networks.** "Share networks" offers networks behind the router to the mesh; the list starts with the router's LAN networks and takes other IPv4 or IPv6 networks as well (`lan_routes`). A mesh administrator approves each network in the console.
+- **Use exit node.** Pick a mesh device that is an exit node (`use_exit_node`) and every device on the LAN reaches the Internet through it. The router's own traffic keeps using its local connection, and the LAN's IPv6 Internet access is blocked meanwhile (IPv6 to the mesh keeps working). A router either acts as an exit node or uses one, not both.
+- **Kill Switch** (on by default, `kill_switch`). While the chosen exit node is offline the LAN has no Internet access; off, the LAN uses the local connection until the exit node is back. The router's own connection and DNS are not affected. The Kill Switch acts while the router runs and watches the exit node: it does not cover the moments of a router start or a restart of the FlowMesh service, so do not rely on it to keep traffic off the local uplink during those.
+- **Mesh names for the LAN** (on by default, `lan_dns`). LAN devices resolve mesh device names through the router's own DNS (dnsmasq), with no setting on the devices; your own dnsmasq entries are left alone.
+
+Diagnostics runs a network check on demand (whether UDP gets through, how easily direct connections can be made, latency to each relay region) and produces a report to copy for support.
 
 Without LuCI, join from the command line. The service applies the settings in `/etc/config/flowmesh`, so put the name there first; `up --reset` then joins with default settings (`--accept-dns=false` leaves the router's DNS to dnsmasq) and the reload applies the rest:
 
