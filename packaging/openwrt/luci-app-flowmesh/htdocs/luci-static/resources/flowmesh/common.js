@@ -223,6 +223,12 @@ function exitStateText(state, name) {
 		return _('Exit node %s is offline: the LAN uses the local Internet connection for now').format(name);
 	case 'missing':
 		return _('Exit node %s is not available in the mesh').format(name);
+	case 'down_blocked':
+		return _('FlowMesh is not connected: the LAN has no Internet access (Kill Switch)');
+	case 'down_fallback':
+		return _('FlowMesh is not connected: the LAN uses the local Internet connection for now');
+	case 'stopped':
+		return _('Disconnected: the LAN uses the local Internet connection');
 	case 'none':
 		return _('Not used');
 	default:
@@ -237,8 +243,10 @@ function exitStateClass(state) {
 		return 'flowmesh-active';
 	case 'offline_blocked':
 	case 'missing':
+	case 'down_blocked':
 		return 'flowmesh-bad';
 	case 'offline_fallback':
+	case 'down_fallback':
 		return 'flowmesh-pending';
 	default:
 		return 'flowmesh-muted';

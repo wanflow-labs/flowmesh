@@ -228,6 +228,18 @@ msgstr "出口节点"
 msgid "Exit node %s is not available in the mesh"
 msgstr "出口节点 %s 在组网中不可用"
 
+#: htdocs/luci-static/resources/flowmesh/common.js:227
+msgid "FlowMesh is not connected: the LAN has no Internet access (Kill Switch)"
+msgstr "FlowMesh 未连接，局域网已断网（Kill Switch）"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:229
+msgid "FlowMesh is not connected: the LAN uses the local Internet connection for now"
+msgstr "FlowMesh 未连接，局域网暂时改走本地宽带"
+
+#: htdocs/luci-static/resources/flowmesh/common.js:231
+msgid "Disconnected: the LAN uses the local Internet connection"
+msgstr "已断开连接，局域网改走本地宽带"
+
 #: htdocs/luci-static/resources/flowmesh/common.js:221
 msgid "Exit node %s is offline: the LAN has no Internet access (Kill Switch)"
 msgstr "出口节点 %s 离线，局域网已断网（Kill Switch）"

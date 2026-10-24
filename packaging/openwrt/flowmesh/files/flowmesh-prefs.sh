@@ -58,23 +58,28 @@ flowmesh_apply_unlock() {
 }
 
 # Where the exit node watcher records what it sees: {"want":"<ip>","state":"none|active|
-# offline_blocked|offline_fallback|missing","since":N}. (FLOWMESH_EXIT_STATE: for tests.)
+# offline_blocked|offline_fallback|missing|down_blocked|down_fallback|stopped","since":N}.
+# (FLOWMESH_EXIT_STATE: for tests.)
 FM_EXIT_STATE_FILE=${FLOWMESH_EXIT_STATE:-/var/run/flowmesh/exit-state.json}
+# Left by the LuCI helper's down/logout (the user stopped FlowMesh), removed by its up/reconnect and
+# by the watcher once the daemon runs again. (FLOWMESH_USER_STOPPED: for tests.)
+FM_USER_STOPPED=${FLOWMESH_USER_STOPPED:-/etc/flowmesh/user-stopped}
 
-# True when the watcher has fallen back to the local uplink for exit node $1 (kill switch off, the
-# exit node offline). A missing or unreadable file, or one about another exit node, is not.
-flowmesh_exit_fell_back() {
-	local want state
-	[ -r "$FM_EXIT_STATE_FILE" ] || return 1
-	want=$(jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.want' 2>/dev/null) || return 1
-	state=$(jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.state' 2>/dev/null) || return 1
-	[ "$want" = "$1" ] && [ "$state" = offline_fallback ]
+# The watcher's state for exit node $1; nothing when the file is missing, unreadable or about
+# another exit node.
+flowmesh_exit_state() {
+	local want
+	[ -r "$FM_EXIT_STATE_FILE" ] || return 0
+	want=$(jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.want' 2>/dev/null) || return 0
+	[ "$want" = "$1" ] || return 0
+	jsonfilter -i "$FM_EXIT_STATE_FILE" -e '@.state' 2>/dev/null
 }
 
 # Read the intent into FM_HOSTNAME, FM_ROUTES, FM_EXIT_NODE (offer this router as an exit node),
 # FM_ACCEPT_ROUTES, FM_USE_EXIT_NODE (the exit node chosen, empty: none), FM_EXIT_IP (the exit
 # node to send the LAN through now: FM_USE_EXIT_NODE unless that is overruled or has fallen
-# back), FM_KILL_SWITCH and FM_LAN_DNS.
+# back), FM_KILL_SWITCH and FM_LAN_DNS; FM_EXIT_BLOCK is set when the watcher keeps the kill switch
+# rule in place (down_blocked), else cleared.
 flowmesh_load_prefs() {
 	local advertise_lan n
 	FM_ROUTES=
@@ -94,10 +99,21 @@ flowmesh_load_prefs() {
 		logger -t flowmesh "exit_node and use_exit_node are both set: offering this router as an exit node, not using $FM_EXIT_IP"
 		FM_EXIT_IP=
 	fi
-	# The watcher has moved the LAN to the local uplink while this exit node is offline: a reload
-	# must not put it back on the dead exit node (the watcher switches back when it returns).
-	if [ -n "$FM_EXIT_IP" ] && flowmesh_exit_fell_back "$FM_EXIT_IP"; then
-		FM_EXIT_IP=
+	# The user stopped FlowMesh (Disconnect, Log out): no exit node, so no IPv6 block or kill switch
+	# rule either; the LAN uses the local uplink until the user reconnects.
+	[ -n "$FM_EXIT_IP" ] && [ -e "$FM_USER_STOPPED" ] && FM_EXIT_IP=
+	if [ -n "$FM_EXIT_IP" ]; then
+		case "$(flowmesh_exit_state "$FM_EXIT_IP")" in
+		offline_fallback | down_fallback)
+			# The watcher has moved the LAN to the local uplink while this exit node (or FlowMesh)
+			# is down: a reload must not put it back on the dead exit node (the watcher switches
+			# back when it returns).
+			FM_EXIT_IP= ;;
+		down_blocked)
+			# FlowMesh is not running and the watcher keeps the LAN off the uplink: a reload must
+			# not lift that (it would, as the daemon takes any exit node while it has no map).
+			[ "$FM_KILL_SWITCH" = 1 ] && FM_EXIT_BLOCK=1 ;;
+		esac
 	fi
 	# The daemon does not fall back to the system hostname itself, and a node without a name is
 	# refused by the control server.

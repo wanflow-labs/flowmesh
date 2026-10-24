@@ -31,9 +31,20 @@
 #    kill switch rule and uses it). If the daemon's exit node is not what the state calls for (e.g.
 #    right after a start it took one that turned out not to be in the mesh), the settings are
 #    re-applied, at most every 30 s. Otherwise settings are re-applied only on a change of state.
+#    FlowMesh itself not running (the daemon not Running for 3 checks in a row: not answering, still
+#    starting because the control server cannot be reached, its login refused or expired) means no
+#    exit node either, and the LAN would go straight out of the uplink: with the kill switch on the
+#    state is "down_blocked" and the watcher puts the kill switch rule in place itself
+#    (flowmesh-fw exit-kill-on; the IPv6 block stays); off, "down_fallback" and both rules are lifted.
+#    Not so after the user's own Disconnect or Log out (the LuCI helper's down/logout leave the
+#    marker /etc/flowmesh/user-stopped, which its up/reconnect remove): then the state is "stopped",
+#    and the kill switch rule and the IPv6 block are lifted (the LAN uses the local uplink). A marker
+#    is also removed once the daemon is Running again (it was brought up some other way). Running
+#    again after down_*: the state goes back to "active" and the settings are re-applied (which
+#    lifts the rule once the exit node is usable).
 #    The state, for the LuCI page: /var/run/flowmesh/exit-state.json,
-#    {"want":"<use_exit_node>","state":"none|active|offline_blocked|offline_fallback|missing","since":N}
-#    ("want" exactly as in UCI).
+#    {"want":"<use_exit_node>","state":"none|active|offline_blocked|offline_fallback|missing|
+#    down_blocked|down_fallback|stopped","since":N} ("want" exactly as in UCI).
 # 2. Mesh names for the LAN (lan_dns, on when unset). While the node is logged in, every 10 s it reads
 #    `flowmesh dns status --json`. The router runs the client with --accept-dns=false, so FlowMesh's
 #    resolver (100.100.100.100) answers only the mesh's own names and fails everything else; so
@@ -59,6 +70,9 @@ DNS_PERIOD=10     # seconds between name checks (and the daemon consistency chec
 DEBOUNCE=3        # probes in a row that change the verdict
 FIX_INTERVAL=30   # minimum seconds between consistency re-applies
 EXIT_STATE=${FLOWMESH_EXIT_STATE:-/var/run/flowmesh/exit-state.json}
+USER_STOPPED=${FLOWMESH_USER_STOPPED:-/etc/flowmesh/user-stopped}   # see 1. above (the LuCI helper)
+APPLY_LOCK=${FLOWMESH_APPLY_LOCK:-/var/lock/flowmesh-apply.lock}   # prefs.sh's FM_APPLY_LOCK
+FW_CMD=${FLOWMESH_WATCH_FW:-/usr/libexec/flowmesh-fw}
 DNS_OWNED=${FLOWMESH_DNS_OWNED:-/etc/flowmesh/lan-dns.owned}
 DNS_LOCK=${FLOWMESH_DNS_LOCK:-/var/lock/flowmesh-dns.lock}
 HOSTS_FILE=${FLOWMESH_HOSTS_FILE:-/tmp/hosts/flowmesh}
@@ -162,22 +176,94 @@ adopt_recorded() {
 	state=$(jsonfilter -i "$EXIT_STATE" -e '@.state' 2>/dev/null) || return 1
 	since=$(jsonfilter -i "$EXIT_STATE" -e '@.since' 2>/dev/null) || return 1
 	[ "$want" = "$1" ] || return 1
-	case "$state" in active | offline_blocked | offline_fallback | missing) ;; *) return 1 ;; esac
+	case "$state" in active | offline_blocked | offline_fallback | missing | down_blocked | down_fallback | stopped) ;;
+	*) return 1 ;; esac
 	case "$since" in '' | *[!0-9]*) return 1 ;; esac
 	E_STATE=$state E_SINCE=$since
 }
 
+# The user stopped FlowMesh (Disconnect or Log out in LuCI): the marker exists.
+user_stopped() { [ -e "$USER_STOPPED" ]; }
+
+# The daemon is Running: a marker written before this check's status was read (by the helper, just
+# before its down/logout) belongs to a stop that is over: FlowMesh was brought up again, maybe not
+# through LuCI. (The marker holds the time it was written; one from the same second is left for the
+# next check, so a status read just before the stop cannot remove it.)
+user_stop_expire() {
+	local t
+	user_stopped || return 0
+	t=$(cat "$USER_STOPPED" 2> /dev/null)
+	case "$t" in '' | *[!0-9]*) t=0 ;; esac
+	[ "$t" -lt "${T_STATUS:-0}" ] || return 0
+	rm -f "$USER_STOPPED"
+	log "FlowMesh is running again: the user's stop is over"
+}
+
+# fw_has <rule name>: the firewall has that rule (UCI; flowmesh-fw is its only writer).
+fw_has() { uci -q -X show firewall | grep -q "\.name='$1'\$"; }
+
+# exit_fw block|open: block, the kill switch rule in place (the IPv6 block left as it is); open,
+# neither the kill switch rule nor the IPv6 block. Through flowmesh-fw, holding the apply lock (an
+# apply in progress decides the firewall too), and only when something is to change; not done when
+# the lock stays taken for 10 s (the next check tries again) or the watcher is being stopped.
+exit_fw() {
+	local args=
+	case "$1" in
+	block) fw_has flowmesh_exit_kill_switch || args="exit-kill-on" ;;
+	open)
+		fw_has flowmesh_exit_kill_switch && args="exit-kill-off"
+		fw_has flowmesh_exit_block_ipv6 && args="$args exit-v6-block-off"
+		;;
+	esac
+	[ -n "$args" ] && [ -z "$STOP" ] || return 0
+	mkdir -p "$(dirname "$APPLY_LOCK")"
+	(
+		w=0
+		until flock -n 7; do
+			[ "$w" -ge 10 ] && { log "the apply lock stays taken: firewall ($args) left for the next check"; exit 1; }
+			sleep 1
+			w=$((w + 1))
+		done
+		log "firewall: $args (exit node ${E_WANT}, $E_STATE)"
+		# shellcheck disable=SC2086 # the actions, one word each
+		$FW_CMD $args 2>&1 | logger -t flowmesh-watch
+	) 7<> "$APPLY_LOCK"
+}
+
+# down_tick <kill switch>: the daemon is not Running ($STATUS_BACKEND, empty when it does not answer).
+down_tick() {
+	E_OK=0 E_FAIL=0 E_ABSENT=0
+	if user_stopped; then
+		E_DOWN=0
+		set_state stopped
+		exit_fw open
+		return 0
+	fi
+	E_DOWN=$((E_DOWN + 1))
+	[ "$E_DOWN" -ge "$DEBOUNCE" ] || return 0
+	if [ "$1" = 1 ]; then
+		set_state down_blocked
+		exit_fw block
+	else
+		set_state down_fallback
+		exit_fw open
+	fi
+}
+
 # exit_tick <status json>: one step, once the daemon's status was read ($STATUS_BACKEND: its state).
 exit_tick() {
-	local status=$1 want kill present
+	local status=$1 want kill present prev
 	want=$(wanted_exit)
 	if [ "$want" != "$E_WANT" ] || [ -z "$E_STATE" ]; then
+		prev=$E_STATE
 		E_WANT=$want
-		E_OK=0 E_FAIL=0 E_ABSENT=0
+		E_OK=0 E_FAIL=0 E_ABSENT=0 E_DOWN=0
 		E_ICMP= E_ICMP_NOTED=
 		E_STATE=
 		if [ -z "$want" ]; then
 			set_state none
+			# (A kill switch rule this watcher put in place has no exit node to stand for now.)
+			[ "$prev" = down_blocked ] && exit_fw open
 		elif ! adopt_recorded "$want"; then
 			set_state active
 		fi
@@ -185,15 +271,25 @@ exit_tick() {
 	[ -n "$want" ] || return 0
 	kill=$(opt_bool kill_switch 1)
 
-	case "$STATUS_BACKEND" in
-	Running)
-		present=0
-		echo "$status" | jsonfilter -e '@.Peer[@.ExitNodeOption=true].TailscaleIPs[*]' 2>/dev/null |
-			grep -qxF "$want" && present=1
+	if [ "$STATUS_BACKEND" != Running ]; then
+		down_tick "$kill"
+		return 0
+	fi
+	E_DOWN=0
+	user_stop_expire
+	case "$E_STATE" in
+	down_* | stopped)
+		# FlowMesh is running again: the exit node (if it is in the mesh) is back in the daemon's
+		# routing; the re-apply lifts the kill switch rule, or keeps it when the exit node is refused.
+		E_OK=0 E_FAIL=0 E_ABSENT=0
+		set_state active
+		reapply "FlowMesh is running again"
+		return 0
 		;;
-	NeedsLogin | NeedsMachineAuth | Stopped) present=0 ;;
-	*) return 0 ;;   # starting: wait
 	esac
+	present=0
+	echo "$status" | jsonfilter -e '@.Peer[@.ExitNodeOption=true].TailscaleIPs[*]' 2>/dev/null |
+		grep -qxF "$want" && present=1
 
 	if [ "$present" = 0 ]; then
 		E_OK=0 E_FAIL=0
@@ -569,16 +665,17 @@ dns_tick() {
 watch_tick() {
 	local status t
 	# (`status` exits 1 unless the node is Running, so its output decides. The daemon not answering,
-	# e.g. restarting: nothing is changed.)
+	# e.g. restarting: an empty state, which only the exit node part acts on.)
+	T_STATUS=$(now)
 	status=$(bounded 5 flowmesh status --json 2> /dev/null)
 	STATUS_BACKEND=$(echo "$status" | jsonfilter -e '@.BackendState' 2> /dev/null)
-	[ -n "$STATUS_BACKEND" ] || return 0
 	exit_tick "$status"
 	[ -n "$STOP" ] && return 0
+	[ -n "$STATUS_BACKEND" ] || return 0
 	t=$(now)
 	if [ "$t" -ge "${DNS_AT:-0}" ]; then
 		DNS_AT=$((t + DNS_PERIOD))
-		dns_tick
+		dns_tick "$status"
 		exit_consistency
 	fi
 }

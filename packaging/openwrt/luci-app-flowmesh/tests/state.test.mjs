@@ -240,8 +240,8 @@ test('validateRoute: errors', () => {
 	assert.deepEqual(st.validateRoute('fd7a::/16'), { ok: false, error: 'mesh' });
 });
 
-test('exitStateLabel: the five states, anything else unknown', () => {
-	for (const s of ['none', 'active', 'offline_blocked', 'offline_fallback', 'missing'])
+test('exitStateLabel: the eight states, anything else unknown', () => {
+	for (const s of ['none', 'active', 'offline_blocked', 'offline_fallback', 'missing', 'down_blocked', 'down_fallback', 'stopped'])
 		assert.equal(st.exitStateLabel(s), s);
 	for (const s of ['', null, undefined, 'weird', 7])
 		assert.equal(st.exitStateLabel(s), 'unknown', String(s));

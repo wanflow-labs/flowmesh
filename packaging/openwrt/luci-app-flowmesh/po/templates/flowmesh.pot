@@ -222,6 +222,18 @@ msgstr ""
 msgid "Exit node %s is not available in the mesh"
 msgstr ""
 
+#: htdocs/luci-static/resources/flowmesh/common.js:227
+msgid "FlowMesh is not connected: the LAN has no Internet access (Kill Switch)"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:229
+msgid "FlowMesh is not connected: the LAN uses the local Internet connection for now"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:231
+msgid "Disconnected: the LAN uses the local Internet connection"
+msgstr ""
+
 #: htdocs/luci-static/resources/flowmesh/common.js:221
 msgid "Exit node %s is offline: the LAN has no Internet access (Kill Switch)"
 msgstr ""

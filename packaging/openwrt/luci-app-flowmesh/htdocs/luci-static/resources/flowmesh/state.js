@@ -190,7 +190,7 @@ var MESH_RANGES = [ '100.64.0.0/10', 'fd7a:115c:a1e0::/48' ].map(parsePrefix);
 // shown (the page never names it), the region ID is.
 var INTERNAL_NAME = /tailscale|headscale|derp|wireguard/i;
 
-var EXIT_STATES = [ 'none', 'active', 'offline_blocked', 'offline_fallback', 'missing' ];
+var EXIT_STATES = [ 'none', 'active', 'offline_blocked', 'offline_fallback', 'missing', 'down_blocked', 'down_fallback', 'stopped' ];
 
 // The network an address/length belongs to ("192.168.1.1/24" -> "192.168.1.0/24"), or null.
 function network(cidr) {
@@ -368,7 +368,8 @@ return baseclass.extend({
 	},
 
 	// The exit-node state the page shows: none, active, offline_blocked, offline_fallback, missing,
-	// or unknown. Takes the state or `flowmesh-luci exitstate`'s whole answer.
+	// down_blocked, down_fallback (FlowMesh itself not running), stopped (the user disconnected or
+	// logged out), or unknown. Takes the state or `flowmesh-luci exitstate`'s whole answer.
 	exitStateLabel: function(state) {
 		if (state != null && typeof state == 'object')
 			state = state.state;

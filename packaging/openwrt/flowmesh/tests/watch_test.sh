@@ -80,28 +80,47 @@ a=\$(head -1 $work/ping 2>/dev/null); sed -i 1d $work/ping 2>/dev/null
 [ "\$a" = ok ] && { echo "64 bytes from 100.64.0.1: seq=0 ttl=64 time=1.0 ms"; exit 0; }
 exit 1
 FAKE
-chmod 0755 "$work/bin/reload" "$work/bin/dnsmasq-reload" "$work/bin/ping"
+# Fake flowmesh-fw: records its arguments in $work/fwcalls and keeps the rule names it has put in
+# place in $work/fwstate (read by the fw_has below).
+cat > "$work/bin/fw" << FAKE
+#!/bin/sh
+echo "\$*" >> $work/fwcalls
+touch $work/fwstate
+for a in "\$@"; do
+	case "\$a" in
+	exit-kill-on) grep -qx flowmesh_exit_kill_switch $work/fwstate || echo flowmesh_exit_kill_switch >> $work/fwstate ;;
+	exit-kill-off) sed -i '/^flowmesh_exit_kill_switch\$/d' $work/fwstate ;;
+	exit-v6-block-on) grep -qx flowmesh_exit_block_ipv6 $work/fwstate || echo flowmesh_exit_block_ipv6 >> $work/fwstate ;;
+	exit-v6-block-off) sed -i '/^flowmesh_exit_block_ipv6\$/d' $work/fwstate ;;
+	esac
+done
+FAKE
+chmod 0755 "$work/bin/reload" "$work/bin/dnsmasq-reload" "$work/bin/ping" "$work/bin/fw"
 
 PATH=$work/bin:$PATH
 export FLOWMESH_EXIT_STATE=$work/exit-state.json FLOWMESH_DNS_OWNED=$work/lan-dns.owned \
 	FLOWMESH_DNS_LOCK=$work/dns.lock FLOWMESH_WATCH_RELOAD=$work/bin/reload FLOWMESH_HOSTS_FILE=$work/hosts/flowmesh \
-	FLOWMESH_WATCH_DNSMASQ_RELOAD=$work/bin/dnsmasq-reload FLOWMESH_WATCH_LIB=1
+	FLOWMESH_WATCH_DNSMASQ_RELOAD=$work/bin/dnsmasq-reload FLOWMESH_WATCH_LIB=1 \
+	FLOWMESH_USER_STOPPED=$work/user-stopped FLOWMESH_APPLY_LOCK=$work/apply.lock FLOWMESH_WATCH_FW=$work/bin/fw
 . "$src"
+fw_has() { grep -qxF "$1" "$work/fwstate" 2> /dev/null; }
 NOW=1000
 now() { echo "$NOW"; }
 logger() { echo "$*" >> "$work/log"; }   # (the watcher's log, for the notes it must write once)
 
 EXIT=100.64.0.1
 peer_status() {   # peer_status <exit node option true|false>
-	printf '{"BackendState":"Running","Self":{"TailscaleIPs":["100.64.0.2"]},"Peer":{"k1":{"HostName":"peer","TailscaleIPs":["%s","fd7a:115c:a1e0::1"],"ExitNodeOption":%s,"Online":true},"k2":{"HostName":"other","TailscaleIPs":["100.64.0.3"],"ExitNodeOption":false}}}\n' "$EXIT" "$1" > "$work/status"
+	printf '{"BackendState":"Running","Self":{"TailscaleIPs":["100.64.0.2"]},"Peer":{"k1":{"HostName":"peer","TailscaleIPs":["%s","fd7a:115c:a1e0::1"],"ExitNodeOption":%s,"Online":true,"PrimaryRoutes":["10.0.0.0/24"]},"k2":{"HostName":"other","TailscaleIPs":["100.64.0.3"],"ExitNodeOption":false}}}\n' "$EXIT" "$1" > "$work/status"
 }
 no_peer_status() {
 	printf '{"BackendState":"Running","Self":{"TailscaleIPs":["100.64.0.2"]},"Peer":{"k2":{"HostName":"other","TailscaleIPs":["100.64.0.3"],"ExitNodeOption":false}}}\n' > "$work/status"
 }
 # fresh <kill_switch>: a watcher that has seen nothing yet, exit node $EXIT chosen.
 fresh() {
-	E_WANT= E_STATE= E_OK= E_FAIL= E_ABSENT= E_FIX_AT= E_SINCE= E_ICMP= E_ICMP_NOTED=
-	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/disco" "$work/calls" "$work/icmp" "$work/log"
+	E_WANT= E_STATE= E_OK= E_FAIL= E_ABSENT= E_FIX_AT= E_SINCE= E_ICMP= E_ICMP_NOTED= E_DOWN=
+	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/disco" "$work/calls" "$work/icmp" "$work/log" \
+		"$work/fwcalls" "$work/user-stopped"
+	: > "$work/fwstate"
 	uci set flowmesh.main.use_exit_node=$EXIT
 	uci set flowmesh.main.exit_node=0
 	if [ "$1" = - ]; then uci -q delete flowmesh.main.kill_switch; else uci set flowmesh.main.kill_switch="$1"; fi
@@ -120,7 +139,8 @@ ticks() {
 		fail) echo fail >> "$work/disco" ;;
 		nodata) echo ok >> "$work/disco"; echo fail >> "$work/ping" ;;
 		esac
-		STATUS_BACKEND=$(jsonfilter -i "$work/status" -e @.BackendState)
+		STATUS_BACKEND=$(jsonfilter -i "$work/status" -e @.BackendState 2> /dev/null)
+		T_STATUS=$NOW
 		exit_tick "$(cat "$work/status")"
 		NOW=$((NOW + 3))
 		got="$got${got:+ }$(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
@@ -245,13 +265,112 @@ ticks - ok
 expect "back in the mesh as an exit node: active at once, re-applied (lifts the kill switch rule)" \
 	"active active reload active," "$got $(reloads)"
 
+# --- FlowMesh itself not running (the daemon not Running) ---
+backend() { if [ -n "$1" ]; then printf '{"BackendState":"%s"}\n' "$1" > "$work/status"; else : > "$work/status"; fi; }
+fwcalls() { cat "$work/fwcalls" 2> /dev/null | tr '\n' ','; }
+fwstate() { sort "$work/fwstate" 2> /dev/null | tr '\n' ','; }
+V6=flowmesh_exit_block_ipv6 KS=flowmesh_exit_kill_switch
+
 fresh 1
-printf '{"BackendState":"NeedsLogin"}\n' > "$work/status"
+echo $V6 > "$work/fwstate"
+ticks ok
+backend Starting
+ticks - - - -
+expect "kill switch on, the daemon starting (the control server cannot be reached): down_blocked on the 3rd check" \
+	"active active down_blocked down_blocked" "$got"
+expect "  ... the kill switch rule put in place once, the IPv6 block kept, nothing re-applied, no probe" \
+	"exit-kill-on, $V6,$KS, [] 1" "$(fwcalls) $(fwstate) [$(reloads)] $(pings)"
+sed -i "/^$KS\$/d" "$work/fwstate"
+ticks -
+expect "  ... the rule removed meanwhile (a reload): put back at the next check" "down_blocked exit-kill-on,exit-kill-on," "$got $(fwcalls)"
+peer_status true
+ticks ok
+expect "  ... Running again: active, re-applied (that lifts the rule once the exit node is accepted)" \
+	"active reload active," "$got $(reloads)"
+expect "  ... the state file says active" "active" "$(jsonfilter -i "$work/exit-state.json" -e @.state)"
+
+# Every way of not running, without and with the user's stop.
+for b in Starting NeedsLogin NeedsMachineAuth Stopped NoState ""; do
+	fresh 1
+	echo $V6 > "$work/fwstate"
+	ticks ok
+	backend "$b"
+	ticks - - -
+	expect "daemon ${b:-not answering}, kill switch on: down_blocked on the 3rd check, kill switch rule in place" \
+		"active active down_blocked exit-kill-on, $V6,$KS," "$got $(fwcalls) $(fwstate)"
+	fresh 1
+	printf '%s\n' $V6 $KS > "$work/fwstate"
+	ticks ok
+	echo "$NOW" > "$work/user-stopped"
+	backend "$b"
+	ticks -
+	expect "  ... after the user's Disconnect or Log out (marker): stopped at once, kill switch rule and IPv6 block lifted" \
+		"stopped exit-kill-off exit-v6-block-off, " "$got $(fwcalls) $(fwstate)"
+	ticks - - -
+	expect "  ... and it stays so (nothing more to change)" "stopped stopped stopped exit-kill-off exit-v6-block-off," "$got $(fwcalls)"
+done
+
+fresh 0
+echo $V6 > "$work/fwstate"
+ticks ok
+backend Starting
 ticks - - -
-expect "logged out: the exit node is missing" "active active missing" "$got"
-printf '{"BackendState":"Starting"}\n' > "$work/status"
+expect "kill switch off, the daemon starting: down_fallback on the 3rd check, the IPv6 block lifted (the LAN uses the uplink)" \
+	"active active down_fallback exit-v6-block-off, " "$got $(fwcalls) $(fwstate)"
+uci set flowmesh.main.kill_switch=1
+ticks -
+expect "  ... kill switch turned on meanwhile: down_blocked, rule in place" "down_blocked exit-v6-block-off,exit-kill-on, $KS," "$got $(fwcalls) $(fwstate)"
+uci set flowmesh.main.kill_switch=0
+ticks -
+expect "  ... and off again: down_fallback, rule lifted" "down_fallback exit-v6-block-off,exit-kill-on,exit-kill-off, " "$got $(fwcalls) $(fwstate)"
+peer_status true
+ticks ok
+expect "  ... Running again: active, re-applied" "active reload active," "$got $(reloads)"
+
+fresh 1
+ticks ok
+backend Starting
 ticks - - -
-expect "  ... starting: no verdict either way" "missing missing missing" "$got"
+uci delete flowmesh.main.use_exit_node
+ticks -
+expect "exit node unset while down_blocked: none, the watcher's kill switch rule lifted" "none exit-kill-on,exit-kill-off, " "$got $(fwcalls) $(fwstate)"
+uci set flowmesh.main.use_exit_node=$EXIT
+
+fresh 1
+ticks ok
+backend Starting
+STOP=1
+ticks - - -
+STOP=
+expect "being stopped (SIGTERM): the state is recorded, the firewall left alone" "active active down_blocked " "$got $(fwcalls)"
+
+# The marker against a Running daemon.
+fresh 1
+echo $((NOW - 10)) > "$work/user-stopped"
+ticks ok
+expect "Running, marker from before the status was read: removed (FlowMesh was brought up again)" "active no" \
+	"$got $([ -e "$work/user-stopped" ] && echo yes || echo no)"
+fresh 1
+echo garbage > "$work/user-stopped"
+ticks ok
+expect "  ... an unreadable marker too" "no" "$([ -e "$work/user-stopped" ] && echo yes || echo no)"
+fresh 1
+echo "$NOW" > "$work/user-stopped"
+ticks ok
+expect "  ... one from the same second is kept (the status may predate the stop), the exit node handled as usual" \
+	"active yes" "$got $([ -e "$work/user-stopped" ] && echo yes || echo no)"
+# Disconnect, Reconnect.
+fresh 1
+echo $V6 > "$work/fwstate"
+ticks ok
+echo "$NOW" > "$work/user-stopped"
+backend Stopped
+ticks - -
+rm -f "$work/user-stopped"   # (the helper's reconnect)
+peer_status true
+ticks ok
+expect "Disconnect then Reconnect: stopped, then active and re-applied (the IPv6 block comes back with it)" \
+	"active reload active," "$got $(reloads)"
 
 # A restarted watcher takes over the recorded state for the same exit node.
 fresh 0
@@ -263,6 +382,10 @@ printf '{"want":"100.64.0.250","state":"offline_fallback","since":77}\n' > "$wor
 E_WANT= E_STATE=
 ticks ok
 expect "  ... but not one recorded for another exit node" "active" "$got"
+fresh 1
+printf '{"want":"%s","state":"down_blocked","since":77}\n' $EXIT > "$work/exit-state.json"
+ticks ok
+expect "  ... a recorded down_blocked, the daemon Running now: active, re-applied" "active reload active," "$got $(reloads)"
 
 fresh 0
 uci delete flowmesh.main.use_exit_node

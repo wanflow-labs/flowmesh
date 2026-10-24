@@ -29,10 +29,18 @@ fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
 # The helper under test, with the fake bin first on its PATH and a short hard deadline.
 helper=$work/flowmesh-luci
 sed -e "s|^PATH=/usr/sbin:/usr/bin:/sbin:/bin\$|PATH=$fakebin:/usr/sbin:/usr/bin:/sbin:/bin|" \
-	-e 's|^UP_DEADLINE=25 |UP_DEADLINE=3 |' "$src" > "$helper"
+	-e 's|^UP_DEADLINE=25 |UP_DEADLINE=3 |' \
+	-e "s|^USER_STOPPED=/etc/flowmesh/user-stopped\$|USER_STOPPED=$work/user-stopped|" \
+	-e "s|^FW=/usr/libexec/flowmesh-fw\$|FW=$fakebin/fw|" "$src" > "$helper"
 chmod 0755 "$helper"
-[ "$(grep -c "^PATH=$fakebin:" "$helper")" = 1 ] && [ "$(grep -c '^UP_DEADLINE=3 ' "$helper")" = 1 ] ||
+[ "$(grep -c "^PATH=$fakebin:" "$helper")" = 1 ] && [ "$(grep -c '^UP_DEADLINE=3 ' "$helper")" = 1 ] &&
+	[ "$(grep -c "^USER_STOPPED=$work/" "$helper")" = 1 ] && [ "$(grep -c "^FW=$fakebin/fw\$" "$helper")" = 1 ] ||
 	{ echo "could not point the helper at the fakes"; exit 100; }
+# (prefs.sh, read by up and reconnect, looks for the marker here too.)
+export FLOWMESH_USER_STOPPED=$work/user-stopped
+# Fake flowmesh-fw: records its arguments.
+printf '#!/bin/sh\necho "$*" >> %s/fwcalls\n' "$work" > "$fakebin/fw"
+chmod 0755 "$fakebin/fw"
 
 # Fake flowmesh: appends "<args, one per line>" and a "--" line to $work/calls; for --auth-key=file:
 # records the file's mode and content in $work/keyfile; prints $work/out; exits with $work/rc;
@@ -41,6 +49,7 @@ chmod 0755 "$helper"
 cat > "$fakebin/flowmesh" <<FAKE
 #!/bin/sh
 [ "\$1 \$2" = "debug prefs" ] && [ -f $work/prefs ] && { cat $work/prefs; exit 0; }
+[ "\$1" = status ] && [ -f $work/status-out ] && { cat $work/status-out; exit 1; }
 echo \$\$ > $work/pid
 [ "\$1" = netcheck ] && echo "# Warning: this JSON format is not yet considered a stable interface" >&2
 if [ "\$1" = bugreport ]; then
@@ -81,7 +90,8 @@ chmod 0755 "$fakebin/logread"
 
 # fake <rc> [output file]
 fake() {
-	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs" "$work/report" "$work/reportpath" "$work/pid"
+	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs" "$work/report" "$work/reportpath" "$work/pid" \
+		"$work/fwcalls" "$work/status-out"
 	echo "$1" > "$work/rc"
 	[ -n "$2" ] && cp "$2" "$work/out"
 }
@@ -249,12 +259,35 @@ run status
 fake 1 "$work/other.txt"; run status; expect_code unknown "status, non-JSON failure"
 
 echo "== down / logout"
+marker() { [ -e "$work/user-stopped" ] && echo yes || echo no; }
 for c in down logout; do
-	fake 0; run $c; expect_ok "$c succeeds"
+	rm -f "$work/user-stopped"
+	fake 0; t0=$(date +%s); run $c; expect_ok "$c succeeds"
 	[ "$(sed -n 1p "$work/calls")" = $c ] && pass "$c runs flowmesh $c" || fail "$c runs flowmesh $c"
+	t=$(cat "$work/user-stopped" 2>/dev/null)
+	[ -n "$t" ] && [ "$t" -ge "$t0" ] && [ "$t" -le "$(date +%s)" ] && pass "$c records the user's stop, with the time" ||
+		fail "$c records the user's stop, with the time (got: $t)"
+	[ "$(cat "$work/fwcalls" 2>/dev/null)" = "exit-kill-off exit-v6-block-off" ] && pass "$c lifts the kill switch rule and the IPv6 block" ||
+		fail "$c lifts the kill switch rule and the IPv6 block (got: $(cat "$work/fwcalls" 2>/dev/null))"
+	rm -f "$work/user-stopped"
 	fake 1 "$fx/daemon-down.txt"; run $c; expect_code daemon_down "$c, daemon down"
+	[ "$(marker)" = no ] && pass "$c failed with the daemon down: no stop recorded" || fail "$c failed with the daemon down: no stop recorded"
+	[ -e "$work/fwcalls" ] && fail "$c failed: the firewall left alone" || pass "$c failed: the firewall left alone"
+	fake 1 "$work/other.txt"; printf '{"BackendState":"Stopped"}\n' > "$work/status-out"; run $c
+	expect_code unknown "$c failed, the node stopped all the same"
+	[ "$(marker)" = yes ] && pass "  ... the stop stays recorded" || fail "  ... the stop stays recorded"
 	fake 0; run $c now; expect_code invalid_arg "$c with an argument"
 done
+echo 1 > "$work/user-stopped"
+uci -q set flowmesh.main.use_exit_node=100.64.0.9; uci commit flowmesh
+fake 0; prefs "$URL"; run reconnect; expect_ok "reconnect after a stop"
+[ "$(marker)" = no ] && pass "reconnect removes the user's stop" || fail "reconnect removes the user's stop"
+grep -qxF -- --exit-node=100.64.0.9 "$work/calls" && pass "  ... before reading the settings: the chosen exit node goes with it" ||
+	fail "  ... before reading the settings: the chosen exit node goes with it"
+uci -q delete flowmesh.main.use_exit_node; uci commit flowmesh
+echo 1 > "$work/user-stopped"
+fake 0; run up "$URL" "$KEY" gw-test; expect_ok "up after a logout"
+[ "$(marker)" = no ] && pass "up removes the user's stop" || fail "up removes the user's stop"
 
 echo "== logs"
 fake 0

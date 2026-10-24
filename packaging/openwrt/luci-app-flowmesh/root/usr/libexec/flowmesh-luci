@@ -7,7 +7,9 @@
 #   up <server_url> <auth_key> <hostname>
 #                                       join; the key reaches the CLI only through a 0600 file
 #   reconnect                           bring a joined node back up after `down` (no key needed)
-#   down | logout                       {"ok":true} or an error
+#   down | logout                       {"ok":true} or an error; the user's stop is recorded
+#                                       (USER_STOPPED: the exit node's kill switch does not hold the LAN
+#                                       off the uplink then) and the exit node's firewall rules lifted
 #   apply                               push /etc/config/flowmesh to the daemon (the init's reload)
 #   logs                                {"ok":true,"lines":[...]}: the last 200 flowmesh log lines
 #   exitstate                           the watcher's exit-node state file, {"state":"none"} without one
@@ -33,6 +35,10 @@ EXIT_STATE=/var/run/flowmesh/exit-state.json   # written by flowmesh-watch
 PING_COUNT=3
 PING_TIMEOUT=3     # seconds per ping attempt: PING_COUNT * PING_TIMEOUT stays under UP_DEADLINE
 APPLY_LOCK_WAIT=4  # seconds to wait for another apply (the init's, the watcher's) to finish
+# The user stopped FlowMesh (down, logout): read by flowmesh-watch and prefs.sh, removed by up and
+# reconnect. Holds the time it was written.
+USER_STOPPED=/etc/flowmesh/user-stopped
+FW=/usr/libexec/flowmesh-fw
 
 . /usr/share/libubox/jshn.sh
 
@@ -153,6 +159,7 @@ cmd_up() {
 	. /lib/functions.sh
 	. "$PREFS"
 	apply_lock
+	user_resume
 	flowmesh_load_prefs
 	FM_HOSTNAME=$host
 
@@ -182,9 +189,34 @@ cmd_reconnect() {
 	. /lib/functions.sh
 	. "$PREFS"
 	apply_lock
+	user_resume
 	flowmesh_load_prefs
 	up_cli --login-server="$url"
 	flowmesh_apply_fw > /dev/null 2>&1
+	ok
+}
+
+# The user brings FlowMesh up again: their stop is over (before the settings are read: with the
+# marker they leave the exit node out).
+user_resume() {
+	rm -f "$USER_STOPPED"
+}
+
+# down | logout: the marker first (the watcher must not take the daemon going down for a failure
+# and block the LAN), then the CLI. Failed while the daemon still runs (or does not answer): no
+# stop happened, the marker goes again. Stopped: no exit node any more, so its IPv6 block and kill
+# switch rule are lifted now (the watcher would within seconds).
+cmd_stop() {
+	local st
+	mkdir -p "$(dirname "$USER_STOPPED")"
+	date +%s > "$USER_STOPPED"
+	run_cli "$1"
+	if [ "$RC" != 0 ]; then
+		st=$(flowmesh status --json 2>/dev/null | jsonfilter -e '@.BackendState' 2>/dev/null)
+		case "$st" in Stopped | NeedsLogin) ;; *) rm -f "$USER_STOPPED" ;; esac
+		check_cli
+	fi
+	"$FW" exit-kill-off exit-v6-block-off > /dev/null 2>&1
 	ok
 }
 
@@ -373,11 +405,7 @@ case "$cmd" in
 status) cmd_status ;;
 up) cmd_up "$@" ;;
 reconnect) cmd_reconnect ;;
-down | logout)
-	run_cli "$cmd"
-	check_cli
-	ok
-	;;
+down | logout) cmd_stop "$cmd" ;;
 apply) cmd_apply ;;
 logs) cmd_logs ;;
 exitstate) cmd_exitstate ;;
