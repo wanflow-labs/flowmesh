@@ -43,18 +43,20 @@ expect() {
 
 [ -f "$src" ] || { fail "flowmesh-watch.sh exists"; exit "$fails"; }
 
-# Fake flowmesh. status --json: $work/status (exit status 1 unless Running, as the real CLI). ping: answers the first line of $work/ping ("ok" or
-# "fail"), which it removes; no line left: fail. debug prefs: $work/prefs. dns status --json:
-# $work/dns. Every call is appended to $work/calls.
+# Fake flowmesh. status --json: $work/status (exit status 1 unless Running, as the real CLI). ping
+# (discovery level): answers the first line of $work/disco ("ok" or "fail"), which it removes; no
+# line left: answers (it keeps answering while IP through the tunnel is dead, so the IP ping
+# decides). debug prefs: $work/prefs. dns status --json: $work/dns. Every call is appended to
+# $work/calls.
 cat > "$work/bin/flowmesh" << FAKE
 #!/bin/sh
 echo "\$*" >> $work/calls
 case "\$1" in
 status) cat $work/status; grep -q '"Running"' $work/status || exit 1 ;;   # (as the real one: 1 unless Running)
 ping)
-	a=\$(head -1 $work/ping 2>/dev/null); sed -i 1d $work/ping 2>/dev/null
-	if [ "\$a" = ok ]; then echo "pong from peer (100.64.0.1) via 10.0.0.1:41641 in 2ms"; exit 0; fi
-	echo "ping \"100.64.0.1\" timed out"; echo "no reply" >&2; exit 1 ;;
+	a=\$(head -1 $work/disco 2>/dev/null); sed -i 1d $work/disco 2>/dev/null
+	[ "\$a" = fail ] && { echo "ping \"100.64.0.1\" timed out"; echo "no reply" >&2; exit 1; }
+	echo "pong from peer (100.64.0.1) via 10.0.0.1:41641 in 2ms"; exit 0 ;;
 debug) cat $work/prefs 2>/dev/null || exit 1 ;;
 dns) cat $work/dns ;;
 esac
@@ -69,10 +71,14 @@ cat > "$work/bin/dnsmasq-reload" << FAKE
 #!/bin/sh
 echo reload >> $work/dnsmasq-reloads
 FAKE
-# Fake ping (the tunnel warm-up): records its arguments.
+# Fake ping (the probe, an ICMP echo through the tunnel): records its arguments in $work/icmp and
+# answers the first line of $work/ping ("ok" or "fail"), which it removes; no line left: fail.
 cat > "$work/bin/ping" << FAKE
 #!/bin/sh
 echo "\$*" >> $work/icmp
+a=\$(head -1 $work/ping 2>/dev/null); sed -i 1d $work/ping 2>/dev/null
+[ "\$a" = ok ] && { echo "64 bytes from 100.64.0.1: seq=0 ttl=64 time=1.0 ms"; exit 0; }
+exit 1
 FAKE
 chmod 0755 "$work/bin/reload" "$work/bin/dnsmasq-reload" "$work/bin/ping"
 
@@ -95,7 +101,7 @@ no_peer_status() {
 # fresh <kill_switch>: a watcher that has seen nothing yet, exit node $EXIT chosen.
 fresh() {
 	E_WANT= E_STATE= E_OK= E_FAIL= E_ABSENT= E_FIX_AT= E_SINCE=
-	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/calls" "$work/icmp"
+	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/disco" "$work/calls" "$work/icmp"
 	uci set flowmesh.main.use_exit_node=$EXIT
 	uci set flowmesh.main.exit_node=0
 	if [ "$1" = - ]; then uci -q delete flowmesh.main.kill_switch; else uci set flowmesh.main.kill_switch="$1"; fi
@@ -114,7 +120,7 @@ ticks() {
 		got="$got${got:+ }$(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
 	done
 }
-pings() { cat "$work/calls" 2> /dev/null | grep -c '^ping '; }
+pings() { cat "$work/icmp" 2> /dev/null | wc -l | tr -d ' '; }
 reloads() { cat "$work/reloads" 2> /dev/null | tr '\n' ',' ; }
 
 # --- the exit node ---
@@ -127,11 +133,46 @@ expect "  ... re-applied twice: state file offline_fallback before the first, ac
 expect "  ... the state file: want exactly as in UCI, since the last change" \
 	"$EXIT active $((NOW - 3))" \
 	"$(jsonfilter -i "$work/exit-state.json" -e @.want) $(jsonfilter -i "$work/exit-state.json" -e @.state) $(jsonfilter -i "$work/exit-state.json" -e @.since)"
-sleep 1   # (sent in the background)
-expect "  ... coming back, each answer also sends one packet through the tunnel (WireGuard's session); none before" \
-	"3 3" "$(cat "$work/icmp" 2>/dev/null | wc -l | tr -d ' ') $(cat "$work/icmp" 2>/dev/null | grep -c "^-c 1 -W 1 $EXIT\$")"
-expect "  ... one probe per tick, of the chosen exit node, bounded to 2 s" \
-	"9 9" "$(pings) $(cat "$work/calls" 2>/dev/null | grep -c "^ping -c 1 --until-direct=false --timeout=2s $EXIT\$")"
+expect "  ... one probe per tick: a discovery ping, then an ICMP echo through the tunnel, each 2 s, to the chosen exit node" \
+	"9 9 9" "$(pings) $(cat "$work/icmp" 2>/dev/null | grep -c "^-c 1 -W 2 $EXIT\$") $(cat "$work/calls" 2>/dev/null | grep -c "^ping -c 1 --until-direct=false --timeout=2s $EXIT\$")"
+
+# The data plane dead while the exit node is in the map, online and answering discovery pings
+# (fake `flowmesh ping` answers): only the IP echo notices.
+fresh 1
+ticks ok fail fail fail
+expect "IP through the tunnel dead, discovery still answering: offline_blocked on the 3rd failed echo" \
+	"active active active offline_blocked" "$got"
+fresh 0
+ticks fail fail fail
+expect "  ... kill switch off: falls back" "active active offline_fallback reload offline_fallback," "$got $(reloads)"
+# The exit node away: discovery fails, and no IP packet is sent to it (they would make the tunnel
+# back off its handshakes and come back late).
+fresh 1
+printf 'fail\nfail\nfail\n' > "$work/disco"
+ticks - - -
+expect "discovery not answering: a failed probe, no ICMP echo sent; offline_blocked on the 3rd" \
+	"active active offline_blocked 0" "$got $(pings)"
+ticks ok ok ok
+expect "  ... discovery answering again: the echoes decide, back on the 3rd answer" "offline_blocked offline_blocked active 3" "$got $(pings)"
+
+# next <answers...>: like ticks, also collecting the delay the loop would wait before the next probe
+# ($nx) and the states ($sts).
+next() {
+	local a
+	nx= sts=
+	for a in "$@"; do
+		E_NEXT=$PERIOD
+		ticks "$a"
+		nx="$nx${nx:+ }$E_NEXT"
+		sts="$sts${sts:+ }$got"
+	done
+}
+fresh 1
+next fail fail fail fail ok ok ok fail
+expect "probe period 3 s, but 1 s between the probes that confirm an offline exit node is back" \
+	"3 3 3 3 1 1 1 3" "$nx"
+expect "  ... still 3 answers in a row to come back" \
+	"active active offline_blocked offline_blocked offline_blocked offline_blocked active active" "$sts"
 
 fresh 1
 ticks ok fail fail fail fail ok ok ok

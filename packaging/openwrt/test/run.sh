@@ -81,6 +81,11 @@ cleanup() {
   fi
   sudo ip link del owttap0 2>/dev/null
   sudo ip netns exec owt-lan ip -6 route del default 2>/dev/null
+  # (the data-plane check's drop rules in the peer, should this run stop in the middle of it)
+  local c
+  for c in INPUT FORWARD; do
+    while sudo ip netns exec owt-peer iptables -D "$c" -i owtpeer0 -j DROP 2>/dev/null; do :; done
+  done
   rm -rf "$vm"
 }
 trap cleanup EXIT
@@ -531,6 +536,16 @@ r 'uci revert firewall; F=/usr/libexec/flowmesh-fw; FLOWMESH_FW_NORELOAD=1 $F ad
 
 # --- join, settings ---------------------------------------------------------------------------
 host="owt-$(tr -c 'a-z0-9\n' '-' <<< "$label")"
+# The router reaches the control server and the peer over the lab LAN (this host routes), not
+# through its WAN: QEMU user networking maps every destination to a different port (a symmetric
+# NAT), the relay is not reachable here, and the peer could then not send to the router at all.
+# Probing the exit node at the IP level (the watcher) needs both directions. UCI routes: they
+# survive the reboot below. (lab.sh gives the peer the way back.)
+# (Host routes: 21.02's netifd ignores a target with host bits set.)
+r "for n in host:$OWT_HOST_IP peer:$OWT_PEER_IP; do s=owt_lab_\${n%%:*}; uci set network.\$s=route; uci set network.\$s.interface=lan;
+   uci set network.\$s.target=\${n#*:}/32; uci set network.\$s.gateway=$OWT_LAN_HOST_IP; done; uci commit network; /etc/init.d/network reload" >/dev/null 2>&1
+check "lab: the router reaches the control server and the peer over the lab LAN" eventually 20 eval '
+  r "ip route get $OWT_HOST_IP; ip route get $OWT_PEER_IP" | grep -c "via $OWT_LAN_HOST_IP" | grep -qx 2'
 check "daemon got accept-dns=false from the service" eventually 30 eval '[ "$(pref accept_dns)" = false ]'
 # The command-line join of docs/install.md ("OpenWrt routers"), with LAN sharing switched on in the
 # settings beforehand: up --reset starts from the defaults, the reload applies the settings.
@@ -928,6 +943,28 @@ check "  ... exit node back: the LAN through it again after $dt s from the peer'
   [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ] && v6_blocked'
 r 'uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 check "  ... kill switch back on (unset): still through the exit node" eventually 20 eval 'via_exit && [ "$(exit_state)" = active ]'
+
+# The data plane dead while the exit node stays online: the peer drops every IP packet that comes
+# out of its tunnel (INPUT and FORWARD on its tun device), so its daemon, its control connection and
+# the discovery-level `flowmesh ping` (UDP on the uplink) all keep working. The watcher's probe is an
+# ICMP echo through the tunnel and must see the exit node as offline all the same.
+peer_ipt() { sudo ip netns exec owt-peer iptables "$@"; }
+peer_tun_drop() { peer_ipt -"$1" INPUT -i owtpeer0 -j DROP && peer_ipt -"$1" FORWARD -i owtpeer0 -j DROP; }
+peer_online() {
+  r 'flowmesh status --json' 2>/dev/null |
+    jq -e --arg ip "$P" '[(.Peer // {})[] | select((.TailscaleIPs // []) | index($ip))][0].Online == true' >/dev/null
+}
+peer_tun_drop I
+dt=$(time_until 30 state_is offline_blocked)
+check "IP through the tunnel dead, exit node still online: offline_blocked after $dt s (at most 15)" eval '
+  [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ]'
+check "  ... meanwhile the exit node is online in the map and answers the discovery-level ping (the old probe would say active)" eval '
+  peer_online && r "flowmesh ping -c 1 --until-direct=false --timeout=2s $P" >/dev/null 2>&1'
+check "  ... the LAN does not get through it" not_via_exit
+peer_tun_drop D
+dt=$(time_until 30 back_now)
+check "  ... data plane back: active, the LAN through it again after $dt s (at most 15)" eval '
+  [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ]'
 
 # Applies running while the watcher switches over (LuCI's apply is the service's reload): one apply
 # at a time (/var/lock/flowmesh-apply.lock), so the end state agrees everywhere.

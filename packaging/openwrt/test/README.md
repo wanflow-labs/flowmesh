@@ -40,7 +40,10 @@ the bridge and the lab's files. `lab.sh peer-stop <work_dir>` stops the peer's d
 uses them to take the exit node offline.
 
 The relay is not reachable over plain HTTP, so the nodes talk directly (they share the host); that is
-enough for these tests.
+enough for these tests. The router reaches the control server and the peer over the lab LAN (run.sh
+adds UCI host routes, `network.owt_lab_host` and `owt_lab_peer`, via this host; lab.sh routes the peer back to 192.168.1.1):
+QEMU user networking is a symmetric NAT, and without a relay the peer could not send to the router
+through it, which the watcher's IP-level probe of the exit node would rightly report as offline.
 
 ## The exit node checks
 
@@ -79,7 +82,10 @@ agreement. The exit node: the peer is stopped and started (`lab.sh peer-stop/pee
 on: `offline_blocked`, the LAN reaches neither the exit node's Internet nor the uplink, the router
 keeps resolving names and its control connection, nothing is re-applied. Kill switch off: the LAN is
 on the uplink within 15 s (IPv6 open, UCI unchanged, a reload keeps it there) and back on the exit
-node within 15 s of the peer being Running again. Also: a chosen exit node that is not in the mesh
+node within 15 s of the peer being Running again. Data plane dead while the exit node stays online (the peer drops what comes out of its
+tunnel; its daemon and the discovery-level `flowmesh ping` keep working): the watcher, whose
+probe is a discovery ping followed by an ICMP echo through the tunnel, reports `offline_blocked` within 15 s and `active`
+again once the drop is lifted. Also: a chosen exit node that is not in the mesh
 is reported `missing`, and a restart in that state with the kill switch off leaves the LAN on the
 uplink without a reload by hand.
 

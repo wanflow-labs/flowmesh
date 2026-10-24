@@ -95,6 +95,9 @@ up() {
   sudo ip -n owt-lan link set owt-lan1 up
   sudo ip -n owt-lan link set lo up
   sudo ip -n owt-lan route add default via "$OWT_ROUTER_LAN_IP"
+  # The peer's way to the router's own LAN address (run.sh routes the router's side over the LAN):
+  # no NAT between the two, so each can send to the other's endpoint.
+  sudo ip -n owt-peer route add "$OWT_ROUTER_LAN_IP/32" via "$OWT_HOST_IP"
 
   # Control server. The embedded relay serves on the same HTTP port; STUN on its own UDP port.
   cat > "$w/hs/config.yaml" <<EOF
@@ -237,6 +240,7 @@ OWT_SPLIT_DOMAIN=$OWT_SPLIT_DOMAIN
 OWT_SPLIT_ANSWER=$OWT_SPLIT_ANSWER
 OWT_SPLIT_BAD=$OWT_SPLIT_BAD
 OWT_PEER_IP=$OWT_PEER_IP
+OWT_HOST_IP=$OWT_HOST_IP
 EOF
   chmod 0600 "$w/lab.env"
   echo "lab up: control server http://$OWT_HOST_IP:$OWT_HS_PORT, peer $peer_ip; env in $w/lab.env"

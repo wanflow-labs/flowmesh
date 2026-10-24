@@ -8,7 +8,17 @@
 #                            case the watcher is not running)
 #
 # 1. The exit node chosen in /etc/config/flowmesh (use_exit_node). Every 3 s it pings that node over
-#    the mesh (one `flowmesh ping`, 2 s); 3 failures in a row: offline, 3 answers in a row: back.
+#    the mesh (one ICMP echo through the tunnel, 2 s); 3 failures in a row: offline, 3 answers in a
+#    row: back (once an offline exit node answers, the two confirming probes follow 1 s apart: its
+#    tunnel needs some seconds before the first answer, and 2 x 3 s more on top would keep the LAN
+#    waiting past 15 s). A probe answers only when both the discovery-level `flowmesh ping` and then an IP
+#    ping through the tunnel do: the first alone keeps answering while IP traffic through the
+#    tunnel is dead (a stale endpoint, a broken WireGuard session), which is exactly when the LAN
+#    has lost its exit node. The IP ping is sent only once discovery answers: IP packets sent to an
+#    exit node that is away make the tunnel back off its handshakes, and it then comes back about
+#    10 s late. (The IP ping goes from the router itself, so through the mesh route of the main
+#    table, not the exit node's table. An ACL that refuses the router ICMP to the exit node would
+#    make it look offline.)
 #    With the kill switch on, offline only changes the state (the daemon itself drops the LAN's
 #    Internet traffic while its exit node is away). With it off, it falls back to the local uplink:
 #    it writes the state "offline_fallback" first and then re-applies the settings
@@ -42,6 +52,7 @@
 
 RESOLVER=100.100.100.100
 PERIOD=3          # seconds between exit node probes
+CONFIRM_PERIOD=1  # seconds between the probes that confirm an offline exit node is back
 DNS_PERIOD=10     # seconds between name checks (and the daemon consistency check)
 DEBOUNCE=3        # probes in a row that change the verdict
 FIX_INTERVAL=30   # minimum seconds between consistency re-applies
@@ -122,13 +133,11 @@ reapply() {
 	E_FIX_AT=$(($(now) + FIX_INTERVAL))
 }
 
-# One probe of the exit node: true when it answered.
+# One probe of the exit node: true when it answers discovery and then an ICMP echo through the
+# tunnel (see 1. above).
 probe() {
-	bounded $((PERIOD + 2)) flowmesh ping -c 1 --until-direct=false --timeout=2s "$E_WANT" > /dev/null 2>&1
-}
-
-warm_tunnel() {
-	ping -c 1 -W 1 "$E_WANT" > /dev/null 2>&1 &
+	bounded $((PERIOD + 2)) flowmesh ping -c 1 --until-direct=false --timeout=2s "$E_WANT" > /dev/null 2>&1 &&
+		bounded $((PERIOD + 2)) ping -c 1 -W 2 "$E_WANT" > /dev/null 2>&1
 }
 
 # adopt_recorded <want>: take over the state an earlier run of the watcher recorded for <want> (it
@@ -187,16 +196,16 @@ exit_tick() {
 	fi
 
 	if probe; then
+		# (The probe itself goes through the tunnel: by the time the LAN is moved back, WireGuard
+		# has its session.)
 		E_OK=$((E_OK + 1)) E_FAIL=0
-		# Coming back: one packet through the tunnel (its answer does not matter; the mesh's ACL may
-		# not even allow it), so that WireGuard has its session by the time the LAN is moved back.
-		# (The probe above does not need one, and a restarted exit node drops the first handshake:
-		# without this the LAN would wait another 5 s for WireGuard's retry.)
-		case "$E_STATE" in offline_*) warm_tunnel ;; esac
 	else
 		[ -n "$STOP" ] && return 0   # (interrupted by SIGTERM: not an answer either way)
 		E_FAIL=$((E_FAIL + 1)) E_OK=0
 	fi
+
+	# (the next probe: sooner while an offline exit node is being confirmed back)
+	case "$E_STATE" in offline_*) [ "$E_OK" -ge 1 ] && E_NEXT=$CONFIRM_PERIOD ;; esac
 
 	case "$E_STATE" in
 	active)
@@ -572,9 +581,10 @@ main() {
 	trap 'STOP=1; [ -n "$SLEEPER" ] && kill $SLEEPER 2>/dev/null' TERM INT HUP
 	while [ -z "$STOP" ]; do
 		t=$(now)
+		E_NEXT=$PERIOD
 		watch_tick
 		[ -n "$STOP" ] && break
-		d=$((PERIOD - ($(now) - t)))
+		d=$((E_NEXT - ($(now) - t)))
 		[ "$d" -ge 1 ] || d=1
 		sleep "$d" &
 		SLEEPER=$!
