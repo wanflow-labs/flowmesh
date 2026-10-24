@@ -26,10 +26,21 @@ flowmesh_enabled() {
 	[ "$enabled" = 1 ]
 }
 
-# Push the UCI intent to the daemon (waits up to $1 seconds for it to answer).
+# Push the UCI intent to the daemon (waits up to $1 seconds for it to answer), holding the apply
+# lock (FLOWMESH_APPLY_LOCK_WAIT: how long to wait for it, default 60 s; the LuCI helper's apply
+# must stay within rpcd's time limit).
 apply_prefs() {
-	local wait=${1:-10} err
+	local rc
 	. "$PREFS"
+	flowmesh_apply_lock "${FLOWMESH_APPLY_LOCK_WAIT:-60}" || return 1
+	apply_prefs_locked "$@"
+	rc=$?
+	flowmesh_apply_unlock
+	return $rc
+}
+
+apply_prefs_locked() {
+	local wait=${1:-10} err
 	flowmesh_load_prefs
 	# fw3 flushes the whole nat table on every firewall reload, and with it the SNAT the daemon puts
 	# in place for an exit node (it notices within 5 s). So when an exit node is to be used, the

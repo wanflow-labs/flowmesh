@@ -5,6 +5,8 @@
 #   - a second mesh node ("peer", the linux-x86_64 release binary) in network namespace owt-peer,
 #     also an approved exit node; behind it an "Internet" address ($OWT_INET_IP, on a dummy device
 #     in owt-peer) where an HTTP server answers every request with the client's address
+#   - split DNS: $OWT_SPLIT_DOMAIN is resolved by a tiny DNS server on $OWT_PEER_IP:53 (in owt-peer;
+#     the router reaches it from its uplink), answering $OWT_SPLIT_ANSWER for every name in it
 #   - the router's LAN: bridge owtbr0 ($OWT_LAN_HOST_IP, used to reach the VM over SSH) and a LAN
 #     client in network namespace owt-lan ($OWT_LAN_CLIENT_IP, default route via the router)
 # The router VM itself (run.sh) gets a tap on owtbr0 as LAN and QEMU user networking as WAN.
@@ -27,7 +29,10 @@ OWT_INET_IP=${OWT_INET_IP:-198.51.100.1}   # TEST-NET-2: reachable only through 
 OWT_INET_PORT=${OWT_INET_PORT:-18492}
 OWT_EXTRA_NAME=${OWT_EXTRA_NAME:-app.owt-extra.test}   # extra DNS record (not under the mesh suffix)
 OWT_EXTRA_IP=${OWT_EXTRA_IP:-100.64.0.200}
-OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}
+OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}   # split DNS: answered by a resolver in owt-peer
+# Its answer for every name in that domain: an ordinary public address. (Split domains get no
+# rebind exception, and dnsmasq 2.89 and later also discard special-use ranges such as TEST-NET.)
+OWT_SPLIT_ANSWER=${OWT_SPLIT_ANSWER:-9.9.9.53}
 
 die() { echo "lab: $*" >&2; exit 1; }
 
@@ -126,10 +131,10 @@ dns:
   override_local_dns: false
   nameservers:
     global: []
-    # A split-DNS domain (the router forwards it to FlowMesh's resolver too).
+    # A split-DNS domain, with its own resolver.
     split:
       $OWT_SPLIT_DOMAIN:
-        - $OWT_HOST_IP
+        - $OWT_PEER_IP
   # A record outside the mesh suffix, as the console's DNS settings make one.
   extra_records:
     - name: $OWT_EXTRA_NAME
@@ -171,6 +176,33 @@ http.server.HTTPServer((sys.argv[1], int(sys.argv[2])), H).serve_forever()
 EOF2
   sudo sh -c "ip netns exec owt-peer python3 '$w/peer/echo.py' '$OWT_INET_IP' '$OWT_INET_PORT' > '$w/peer/echo.log' 2>&1 & echo \$! > '$w/peer/echo.pid'"
 
+  # The split-DNS domain's resolver: A records for every name in the domain, NXDOMAIN otherwise.
+  cat > "$w/peer/dns.py" <<'EOF2'
+import socket, struct, sys
+addr, port, zone, answer = sys.argv[1], int(sys.argv[2]), sys.argv[3].lower().rstrip("."), sys.argv[4]
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind((addr, port))
+while True:
+    q, peer = s.recvfrom(512)
+    try:
+        tid = struct.unpack(">H", q[:2])[0]
+        i, labels = 12, []
+        while q[i]:
+            labels.append(q[i + 1:i + 1 + q[i]].decode().lower())
+            i += 1 + q[i]
+        qtype = struct.unpack(">H", q[i + 1:i + 3])[0]
+        name = ".".join(labels)
+        ok = name == zone or name.endswith("." + zone)
+        ans = b""
+        if ok and qtype == 1:
+            ans = b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, 60, 4) + socket.inet_aton(answer)
+        hdr = struct.pack(">HHHHHH", tid, 0x8180 | (0 if ok else 3), 1, 1 if ans else 0, 0, 0)
+        s.sendto(hdr + q[12:i + 5] + ans, peer)
+    except Exception:
+        pass
+EOF2
+  sudo sh -c "ip netns exec owt-peer python3 '$w/peer/dns.py' '$OWT_PEER_IP' 53 '$OWT_SPLIT_DOMAIN' '$OWT_SPLIT_ANSWER' > '$w/peer/dns.log' 2>&1 & echo \$! > '$w/peer/dns.pid'"
+
   # The peer node accepts subnet routes, so its replies to the router's LAN go back over the mesh.
   # It is also an exit node (approved below), for the router's LAN.
   start_peer "$w"
@@ -197,6 +229,8 @@ OWT_INET_PORT=$OWT_INET_PORT
 OWT_EXTRA_NAME=$OWT_EXTRA_NAME
 OWT_EXTRA_IP=$OWT_EXTRA_IP
 OWT_SPLIT_DOMAIN=$OWT_SPLIT_DOMAIN
+OWT_SPLIT_ANSWER=$OWT_SPLIT_ANSWER
+OWT_PEER_IP=$OWT_PEER_IP
 EOF
   chmod 0600 "$w/lab.env"
   echo "lab up: control server http://$OWT_HOST_IP:$OWT_HS_PORT, peer $peer_ip; env in $w/lab.env"
@@ -207,6 +241,7 @@ down() {
   w=$(realpath -m "$1")
   stop_pidfile "$w/peer/flowmeshd.pid"
   stop_pidfile "$w/peer/echo.pid"
+  stop_pidfile "$w/peer/dns.pid"
   stop_pidfile "$w/hs/headscale.pid"
   [ -n "${OWT_INET_IP:-}" ] && sudo ip route del blackhole "$OWT_INET_IP/32" 2>/dev/null || true
   sudo ip link del owt-peer0 2>/dev/null || true

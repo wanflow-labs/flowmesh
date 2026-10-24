@@ -174,5 +174,6 @@ done
 [ "$changed" = 1 ] || exit 0
 u commit firewall || exit 1
 # (Lock fd closed for the reload: nothing it starts may hold the lock.)
-[ "$FLOWMESH_FW_NORELOAD" = 1 ] || /etc/init.d/firewall reload >/dev/null 2>&1 9>&-
+# (Nor the apply lock, descriptor 7, when a caller holds it: see flowmesh_apply_lock.)
+[ "$FLOWMESH_FW_NORELOAD" = 1 ] || /etc/init.d/firewall reload >/dev/null 2>&1 9>&- 7>&-
 exit 0

@@ -27,6 +27,36 @@ flowmesh_append_route() {
 	FM_ROUTES="${FM_ROUTES:+$FM_ROUTES,}$1"
 }
 
+# One apply at a time: the init's apply (start, reload; the exit node watcher re-applies through the
+# reload) and the LuCI helper's up/reconnect each hold this lock from reading the intent through
+# `flowmesh set|up` to the firewall, so that two of them cannot interleave (one's firewall after the
+# other's set). Lock order: this one, then flowmesh-fw's own (flowmesh-fw never takes this one).
+FM_APPLY_LOCK=/var/lock/flowmesh-apply.lock
+
+# flowmesh_apply_lock [seconds]: take the lock on descriptor 7, waiting at most [seconds] (default
+# 60; BusyBox flock has no -w); false, with a message, when it stays taken. Released by
+# flowmesh_apply_unlock or when the process exits (children inherit the descriptor: one that must
+# outlive the apply has to close it, `7>&-`).
+flowmesh_apply_lock() {
+	local max=${1:-60} waited=0
+	mkdir -p /var/lock
+	# (Opened without truncating: the path may be a symlink to anything.)
+	exec 7<> "$FM_APPLY_LOCK" || return 1
+	until flock -n 7; do
+		if [ "$waited" -ge "$max" ]; then
+			echo "flowmesh: another apply has held $FM_APPLY_LOCK for $max s; giving up" >&2
+			exec 7>&-
+			return 1
+		fi
+		sleep 1
+		waited=$((waited + 1))
+	done
+}
+
+flowmesh_apply_unlock() {
+	exec 7>&-
+}
+
 # Where the exit node watcher records what it sees: {"want":"<ip>","state":"none|active|
 # offline_blocked|offline_fallback|missing","since":N}. (FLOWMESH_EXIT_STATE: for tests.)
 FM_EXIT_STATE_FILE=${FLOWMESH_EXIT_STATE:-/var/run/flowmesh/exit-state.json}

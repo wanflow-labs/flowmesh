@@ -78,7 +78,7 @@ chmod 0755 "$work/bin/reload" "$work/bin/dnsmasq-reload" "$work/bin/ping"
 
 PATH=$work/bin:$PATH
 export FLOWMESH_EXIT_STATE=$work/exit-state.json FLOWMESH_DNS_OWNED=$work/lan-dns.owned \
-	FLOWMESH_DNS_LOCK=$work/dns.lock FLOWMESH_WATCH_RELOAD=$work/bin/reload \
+	FLOWMESH_DNS_LOCK=$work/dns.lock FLOWMESH_WATCH_RELOAD=$work/bin/reload FLOWMESH_HOSTS_FILE=$work/hosts/flowmesh \
 	FLOWMESH_WATCH_DNSMASQ_RELOAD=$work/bin/dnsmasq-reload FLOWMESH_WATCH_LIB=1
 . "$src"
 NOW=1000
@@ -241,59 +241,80 @@ printf '{"exit_node":""}\n' > "$work/prefs"
 NOW=$((NOW + 60)); exit_consistency
 expect "  ... offline_fallback and the daemon uses none: nothing to do" "" "$(reloads)"
 
-# --- the domain set ---
-js='{"suffix":"Owt.Test.","extraRecords":[{"name":"app.owt-extra.test","type":"A","value":"100.64.0.200"},{"name":"APP.owt-extra.test.","type":"A","value":"100.64.0.200"},{"name":"svc.owt.test","type":"A","value":"100.64.0.201"},{"name":"*.wild.example","type":"A","value":"100.64.0.202"},{"name":"bad name","type":"A","value":"1.2.3.4"},{"name":"x/y","type":"A","value":"1.2.3.4"},{"name":"a#b","type":"A","value":"1.2.3.4"}],"routes":{"64.100.in-addr.arpa":[],"0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa":[],"corp.owt-split.test":["10.231.0.1"],"sub.corp.owt-split.test":["10.0.0.9","10.0.0.10"],"q\"uote.test":["1.1.1.1"]}}'
-expect "domains: suffix, extra records and split domains; case, trailing dots, duplicates, covered names, wildcards, invalid names, reverse zones" \
-	"app.owt-extra.test corp.owt-split.test owt.test wild.example" "$(dns_domains "$js" | tr '\n' ' ' | sed 's/ $//')"
-js='{"suffix":"","extraRecords":[{"name":"svc.example.org","type":"A","value":"100.64.0.5"}],"routes":{"100.100.in-addr.arpa":[]}}'
-expect "domains: no suffix (node name without a dot): only the extra records" "svc.example.org" "$(dns_domains "$js" | tr '\n' ' ' | sed 's/ $//')"
-expect "domains: nothing at all" "" "$(dns_domains '{"suffix":"","extraRecords":[],"routes":{}}')"
-expect "domains: not JSON" "" "$(dns_domains 'not json {')"
+# --- what the names become ---
+js='{"suffix":"Owt.Test.","extraRecords":[{"name":"app.owt-extra.test","type":"A","value":"100.64.0.200"},{"name":"APP.owt-extra.test.","type":"A","value":"100.64.0.200"},{"name":"app.owt-extra.test","type":"AAAA","value":"FD7A:115C:A1E0::C8"},{"name":"svc.owt.test","type":"a","value":"100.64.0.201"},{"name":"*.wild.example","type":"A","value":"100.64.0.202"},{"name":"bad name","type":"A","value":"1.2.3.4"},{"name":"x/y","type":"A","value":"1.2.3.4"},{"name":"v6inA.example","type":"A","value":"fd00::1"},{"name":"txt.example","type":"TXT","value":"hello"},{"name":"cname.example","type":"CNAME","value":"app.owt-extra.test"},{"name":"inj.example","type":"A","value":"1.2.3.4 evil.example"}],"routes":{"64.100.in-addr.arpa":[],"0.e.1.a.c.5.1.1.a.7.d.f.ip6.arpa":[],"Corp.Example.":["10.0.0.53","10.0.0.54:5353","[fd00::53]:53","fd00::54","https://dns.example/dns-query","1.2.3.4; rm -rf /"],"q\"uote.test":["1.1.1.1"]}}'
+expect "suffix: lower-cased, without the trailing dot" "owt.test" "$(dns_suffix "$js")"
+expect "suffix: none (a node name without a dot)" "" "$(dns_suffix '{"suffix":"","extraRecords":[],"routes":{}}')"
+expect "hosts: A and AAAA records only, valid names and addresses, case and trailing dots, no duplicates, no wildcards" \
+	"100.64.0.200 app.owt-extra.test,100.64.0.201 svc.owt.test,fd7a:115c:a1e0::c8 app.owt-extra.test," \
+	"$(dns_hosts "$js" | tr '\n' ',')"
+expect "splits: each resolver as dnsmasq takes it (port as #port), reverse zones and invalid names left out, URLs and garbage skipped and listed" \
+	"- corp.example 1.2.3.4;,- corp.example https://dns.example/dns-query,corp.example 10.0.0.53,corp.example 10.0.0.54#5353,corp.example fd00::53#53,corp.example fd00::54," \
+	"$(dns_splits "$js" | tr '\n' ',')"
+expect "entries: the suffix to FlowMesh's resolver with a rebind exception, split domains to their own resolvers without one" \
+	"server /owt.test/100.100.100.100,rebind_domain owt.test,server /corp.example/10.0.0.53,server /corp.example/10.0.0.54#5353," \
+	"$(dns_wanted owt.test "corp.example 10.0.0.53
+corp.example 10.0.0.54#5353" | tr '\n' ',')"
+expect "entries: no suffix, no splits: none" "" "$(dns_wanted "" "")"
+expect "not JSON: nothing" "||" "$(dns_suffix 'not json {')|$(dns_hosts 'not json {')|$(dns_splits 'not json {')"
 
-# --- dnsmasq entries ---
+# --- dnsmasq entries and the hosts file ---
 sec=$(dnsmasq_sections | head -1)
 d=dhcp.$sec
 count() { count_value "$sec" "$1" "$2"; }
 dnsmasq_reloads() { cat "$work/dnsmasq-reloads" 2> /dev/null | wc -l | tr -d ' '; }
+hosts() { cat "$work/hosts/flowmesh" 2> /dev/null | grep -v '^#' | tr '\n' ','; }
+E_SUF='server /owt.test/100.100.100.100
+rebind_domain owt.test'
+E_SPLIT='server /corp.owt-split.test/10.0.0.53'
+H1='100.64.0.200 app.owt-extra.test'
 # The user's own entries, one of them the same as one of ours.
 uci add_list $d.server=/corp.example/10.0.0.53
 uci add_list $d.rebind_domain=corp.example
 uci add_list $d.server=/owt.test/100.100.100.100
 uci commit dhcp
 uci set $d.owt_staged=1   # a user change staged, not applied
-dns_reconcile "owt.test
-app.owt-extra.test"
-expect "added: server and rebind_domain for each domain (the user's same server entry not doubled)" "1 1 1 1" \
-	"$(count server /owt.test/100.100.100.100) $(count rebind_domain owt.test) $(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain app.owt-extra.test)"
-expect "  ... in /etc/config/dhcp (committed)" "1" "$(grep -c "list server '/app.owt-extra.test/100.100.100.100'" /etc/config/dhcp)"
-expect "  ... recorded as ours: three entries (not the user's server /owt.test/)" \
-	"$sec rebind_domain app.owt-extra.test,$sec rebind_domain owt.test,$sec server /app.owt-extra.test/100.100.100.100," \
+dns_reconcile "$E_SUF
+$E_SPLIT" "$H1"
+expect "added: the suffix's server and rebind_domain, the split's server (the user's same server entry not doubled)" "1 1 1" \
+	"$(count server /owt.test/100.100.100.100) $(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53)"
+expect "  ... in /etc/config/dhcp (committed)" "1" "$(grep -c "list server '/corp.owt-split.test/10.0.0.53'" /etc/config/dhcp)"
+expect "  ... recorded as ours: two entries (not the user's server /owt.test/)" \
+	"$sec rebind_domain owt.test,$sec server /corp.owt-split.test/10.0.0.53," \
 	"$(sort "$work/lan-dns.owned" | tr '\n' ',')"
-expect "  ... dnsmasq reloaded once" "1" "$(dnsmasq_reloads)"
+expect "  ... the hosts file has the extra record" "$H1," "$(hosts)"
+expect "  ... dnsmasq reloaded once (for both)" "1" "$(dnsmasq_reloads)"
 expect "  ... the user's staged change still staged, not committed" "1 0" \
 	"$(uci changes dhcp | grep -c owt_staged) $(grep -c owt_staged /etc/config/dhcp)"
-dns_reconcile "app.owt-extra.test
-owt.test"
-expect "same set again: nothing changed, no reload" "1" "$(dnsmasq_reloads)"
-dns_reconcile "owt.test"
-expect "a domain gone: its entries removed, the rest kept, reloaded" "0 0 1 1 2" \
-	"$(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain app.owt-extra.test) $(count rebind_domain owt.test) $(count server /owt.test/100.100.100.100) $(dnsmasq_reloads)"
+dns_reconcile "$E_SPLIT
+$E_SUF" "$H1"
+expect "same again: nothing changed, no reload" "1" "$(dnsmasq_reloads)"
+dns_reconcile "$E_SUF" "$H1"
+expect "a split domain gone: its entry removed, the rest kept, reloaded" "0 1 1 2" \
+	"$(count server /corp.owt-split.test/10.0.0.53) $(count rebind_domain owt.test) $(count server /owt.test/100.100.100.100) $(dnsmasq_reloads)"
+dns_reconcile "$E_SUF" "$H1
+fd7a:115c:a1e0::c8 app.owt-extra.test"
+expect "hosts content changed (UCI not): file replaced, reloaded" "$H1,fd7a:115c:a1e0::c8 app.owt-extra.test, 3" "$(hosts) $(dnsmasq_reloads)"
+expect "  ... no temporary file left beside it" "flowmesh" "$(ls -A "$work/hosts")"
 uci -q revert dhcp
 uci del_list $d.rebind_domain=owt.test; uci commit dhcp
 uci set $d.owt_staged=1
-dns_reconcile "owt.test"
-expect "our entry removed by hand: put back" "1 3" "$(count rebind_domain owt.test) $(dnsmasq_reloads)"
-dns_reconcile ""
-expect "none wanted: ours removed; the user's server /owt.test/, /corp.example/ and rebind corp.example kept" \
-	"0 1 1 1 4" \
-	"$(count rebind_domain owt.test) $(count server /owt.test/100.100.100.100) $(count server /corp.example/10.0.0.53) $(count rebind_domain corp.example) $(dnsmasq_reloads)"
+dns_reconcile "$E_SUF" "$H1
+fd7a:115c:a1e0::c8 app.owt-extra.test"
+expect "our entry removed by hand: put back" "1 4" "$(count rebind_domain owt.test) $(dnsmasq_reloads)"
+dns_reconcile "" ""
+expect "none wanted: ours removed and the hosts file deleted; the user's server /owt.test/, /corp.example/ and rebind corp.example kept" \
+	"0 no 1 1 1 5" \
+	"$(count rebind_domain owt.test) $([ -e "$work/hosts/flowmesh" ] && echo yes || echo no) $(count server /owt.test/100.100.100.100) $(count server /corp.example/10.0.0.53) $(count rebind_domain corp.example) $(dnsmasq_reloads)"
 expect "  ... the owned list is gone" "no" "$([ -e "$work/lan-dns.owned" ] && echo yes || echo no)"
 expect "  ... the user's staged change still staged" "1 0" "$(uci changes dhcp | grep -c owt_staged) $(grep -c owt_staged /etc/config/dhcp)"
 uci -q revert dhcp
+dns_reconcile "" ""
+expect "nothing to remove: no reload" "5" "$(dnsmasq_reloads)"
 # An entry of ours that the user adds as well later: removing ours leaves theirs.
-dns_reconcile "dup.test"
+dns_reconcile "rebind_domain dup.test" ""
 uci add_list $d.rebind_domain=dup.test; uci commit dhcp
-dns_reconcile ""
+dns_reconcile "" ""
 expect "the user added the same entry as ours later: one is left (theirs)" "1" "$(count rebind_domain dup.test)"
 
 # --- the whole loop: lan_dns, logout, SIGTERM ---
@@ -301,45 +322,49 @@ uci set flowmesh.main.lan_dns=1
 uci -q delete flowmesh.main.use_exit_node
 uci commit flowmesh
 peer_status true
-printf '%s\n' '{"suffix":"owt.test","extraRecords":[{"name":"app.owt-extra.test","type":"A","value":"100.64.0.200"}],"routes":{}}' > "$work/dns"
+printf '%s\n' '{"suffix":"owt.test","extraRecords":[{"name":"app.owt-extra.test","type":"A","value":"100.64.0.200"}],"routes":{"corp.owt-split.test":["10.0.0.53"],"64.100.in-addr.arpa":[]}}' > "$work/dns"
+present() { echo "$(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53) $(hosts)"; }
 DNS_AT=0 NOW=5000
 watch_tick
-expect "loop, logged in, lan_dns on: entries for the suffix and the extra record" "1 1" \
-	"$(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain owt.test)"
+expect "loop, logged in, lan_dns on: the suffix, the split domain, the hosts file" "1 1 $H1," "$(present)"
+expect "  ... nothing forwarded to FlowMesh's resolver but the suffix" "1" \
+	"$(uci -q -X show "$d.server" | tr ' ' '\n' | grep -c '/100\.100\.100\.100')"
 uci set flowmesh.main.lan_dns=0
 NOW=5003; watch_tick
-expect "  ... lan_dns=0: not before the next name check (10 s)" "1" "$(count server /app.owt-extra.test/100.100.100.100)"
+expect "  ... lan_dns=0: not before the next name check (10 s)" "1 1 $H1," "$(present)"
 NOW=5010; watch_tick
-expect "  ... lan_dns=0: removed at the next name check" "0 0" "$(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain owt.test)"
+expect "  ... lan_dns=0: removed at the next name check" "0 0 " "$(present)"
 uci set flowmesh.main.lan_dns=1
 NOW=5020; watch_tick
 printf '{"BackendState":"Starting"}\n' > "$work/status"
 NOW=5030; watch_tick
-expect "  ... starting: left as it was" "1" "$(count server /app.owt-extra.test/100.100.100.100)"
+expect "  ... starting: left as it was" "1 1 $H1," "$(present)"
 printf '{"BackendState":"NeedsLogin"}\n' > "$work/status"
 NOW=5040; watch_tick
-expect "  ... logged out: removed" "0 0" "$(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain owt.test)"
+expect "  ... logged out: removed" "0 0 " "$(present)"
 uci commit flowmesh
 
-# The real process: SIGTERM removes its entries and the state file.
+# The real process: SIGTERM removes its entries, the hosts file and the state file.
 peer_status true
 uci set flowmesh.main.use_exit_node=$EXIT; uci commit flowmesh
 i=0; while [ "$i" -lt 50 ]; do echo ok; i=$((i + 1)); done > "$work/ping"
 FLOWMESH_WATCH_LIB= sh "$src" &
 wpid=$!
 i=0
-while [ "$i" -lt 10 ] && [ "$(count server /app.owt-extra.test/100.100.100.100)" != 1 ]; do sleep 1; i=$((i + 1)); done
-expect "process: entries added, state file written" "1 active" \
-	"$(count server /app.owt-extra.test/100.100.100.100) $(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
+while [ "$i" -lt 10 ] && [ "$(present)" != "1 1 $H1," ]; do sleep 1; i=$((i + 1)); done
+sleep 1
+expect "process: entries and hosts file added, state file written" "1 1 $H1, active" \
+	"$(present) $(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
 t0=$(date +%s)
 kill -TERM "$wpid"
 wait "$wpid"
-expect "  ... SIGTERM: exits within 5 s, entries removed, state file deleted" "yes 0 0 no" \
-	"$([ $(($(date +%s) - t0)) -le 5 ] && echo yes || echo no) $(count server /app.owt-extra.test/100.100.100.100) $(count rebind_domain owt.test) $([ -e "$work/exit-state.json" ] && echo yes || echo no)"
+expect "  ... SIGTERM: exits within 5 s, entries and hosts file removed, state file deleted" "yes 0 0  no" \
+	"$([ $(($(date +%s) - t0)) -le 5 ] && echo yes || echo no) $(present) $([ -e "$work/exit-state.json" ] && echo yes || echo no)"
 wpid=
-dns_reconcile "again.test"
+dns_reconcile "rebind_domain again.test" "$H1"
 FLOWMESH_WATCH_LIB= sh "$src" cleanup
-expect "cleanup command: removes them too (watcher not running)" "0" "$(count rebind_domain again.test)"
+expect "cleanup command: removes them too (watcher not running)" "0 no" \
+	"$(count rebind_domain again.test) $([ -e "$work/hosts/flowmesh" ] && echo yes || echo no)"
 
 echo "watch_test: $fails failed"
 exit "$fails"

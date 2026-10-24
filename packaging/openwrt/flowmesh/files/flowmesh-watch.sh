@@ -23,15 +23,22 @@
 #    {"want":"<use_exit_node>","state":"none|active|offline_blocked|offline_fallback|missing","since":N}
 #    ("want" exactly as in UCI).
 # 2. Mesh names for the LAN (lan_dns, on when unset). While the node is logged in, every 10 s it reads
-#    `flowmesh dns status --json` and has dnsmasq forward the mesh's domains to FlowMesh's resolver
-#    (100.100.100.100): the mesh suffix, the names of the console's extra records and the split-DNS
-#    domains. UCI dhcp, in every dnsmasq section: list server '/<domain>/100.100.100.100' and list
-#    rebind_domain '<domain>' (newer dnsmasq releases discard 100.64.0.0/10 answers as a rebind).
-#    Only the entries it added are ever changed or removed: they are listed in
-#    /etc/flowmesh/lan-dns.owned ("<section> <option> <value>" lines; on flash like /etc/config/dhcp,
-#    and both survive a sysupgrade). An entry the user already has stays the user's. dnsmasq is
-#    reloaded only when an entry was added or removed. lan_dns=0, logging out, stopping the service
-#    and removing the package remove them all.
+#    `flowmesh dns status --json`. The router runs the client with --accept-dns=false, so FlowMesh's
+#    resolver (100.100.100.100) answers only the mesh's own names and fails everything else; so
+#    only the mesh suffix goes there:
+#    - the suffix: UCI dhcp list server '/<suffix>/100.100.100.100' and list rebind_domain
+#      '<suffix>' (dnsmasq 2.90 and later discard mesh addresses as a rebind otherwise);
+#    - the console's extra records (A and AAAA): a hosts file, /tmp/hosts/flowmesh (dnsmasq's
+#      additional hosts directory), so a record's own name resolves and its subdomains still go to
+#      the normal DNS;
+#    - split-DNS domains: list server '/<domain>/<resolver>' straight to the resolvers the mesh
+#      names for them (IPv4/IPv6 addresses, optionally with a port; other kinds are skipped and
+#      logged), without a rebind exception.
+#    In every dnsmasq section. Only the UCI entries it added are ever changed or removed: they are
+#    listed in /etc/flowmesh/lan-dns.owned ("<section> <option> <value>" lines; on flash like
+#    /etc/config/dhcp, and both survive a sysupgrade). An entry the user already has stays the
+#    user's. dnsmasq is reloaded only when something changed. lan_dns=0, logging out, stopping the
+#    service and removing the package remove the entries and the hosts file.
 
 RESOLVER=100.100.100.100
 PERIOD=3          # seconds between exit node probes
@@ -41,6 +48,7 @@ FIX_INTERVAL=30   # minimum seconds between consistency re-applies
 EXIT_STATE=${FLOWMESH_EXIT_STATE:-/var/run/flowmesh/exit-state.json}
 DNS_OWNED=${FLOWMESH_DNS_OWNED:-/etc/flowmesh/lan-dns.owned}
 DNS_LOCK=${FLOWMESH_DNS_LOCK:-/var/lock/flowmesh-dns.lock}
+HOSTS_FILE=${FLOWMESH_HOSTS_FILE:-/tmp/hosts/flowmesh}
 # (Overridable for the tests.)
 RELOAD_CMD=${FLOWMESH_WATCH_RELOAD:-/etc/init.d/flowmesh reload}
 DNSMASQ_RELOAD_CMD=${FLOWMESH_WATCH_DNSMASQ_RELOAD:-/etc/init.d/dnsmasq reload}
@@ -247,9 +255,9 @@ exit_consistency() {
 
 # --- mesh names for the LAN -----------------------------------------------------------------------
 
-# The keys of a JSON object of arrays (jsonfilter's rendering of `routes`) whose array is not empty.
-# (jsonfilter cannot list keys, and jshn mangles them.)
-nonempty_keys() {
+# Every string in a JSON object of arrays (jsonfilter's rendering of `routes`), as "<key> <string>"
+# lines (keys of empty arrays do not appear). (jsonfilter cannot list keys, and jshn mangles them.)
+route_pairs() {
 	awk '
 		{ s = s $0 "\n" }
 		END {
@@ -257,57 +265,95 @@ nonempty_keys() {
 			for (i = 1; i <= n; i++) {
 				c = substr(s, i, 1)
 				if (instr) {
-					if (c == "\\") { tok = tok substr(s, i, 2); i++; continue }
-					if (c == "\"") { instr = 0; if (depth == 1) key = tok; else if (depth == 2) cnt++; continue }
+					# (jsonfilter writes "/" as "\/"; other escapes are kept, and make the value invalid.)
+					if (c == "\\") { e = substr(s, i + 1, 1); if (e == "/") tok = tok "/"; else tok = tok "\\" e; i++; continue }
+					if (c == "\"") { instr = 0; if (depth == 1) key = tok; else if (depth == 2) print key " " tok; continue }
 					tok = tok c
 					continue
 				}
 				if (c == "\"") { instr = 1; tok = ""; continue }
-				if (c == "{" || c == "[") { depth++; if (depth == 2) cnt = 0; continue }
-				if (c == "}" || c == "]") { if (depth == 2 && cnt > 0) print key; depth--; continue }
+				if (c == "{" || c == "[") { depth++; continue }
+				if (c == "}" || c == "]") { depth--; continue }
 			}
 		}'
 }
 
-# dns_domains <`dns status --json`>: the domains to forward, one per line, sorted: the suffix, the
-# extra records' names and the split-DNS domains, lower-cased, without trailing dots or a leading
-# "*.", invalid names dropped, and none that is under another one in the list (that one covers it).
-dns_domains() {
-	{
-		jsonfilter -s "$1" -e '@.suffix'
-		jsonfilter -s "$1" -e '@.extraRecords[*].name'
-		jsonfilter -s "$1" -e '@.routes' | nonempty_keys
-	} 2> /dev/null | awk '
+# (awk) name(d): d lower-cased without trailing dots, or "" when it is not a valid DNS name.
+NAME_AWK='function name(d) {
+	d = tolower(d); sub(/\.+$/, "", d)
+	if (d == "" || length(d) > 253 || d !~ /^[a-z0-9_][a-z0-9_-]*(\.[a-z0-9_][a-z0-9_-]*)*$/) return ""
+	return d
+}'
+
+# dns_suffix <`dns status --json`>: the mesh suffix; nothing when there is none (a node name without
+# a dot).
+dns_suffix() {
+	jsonfilter -s "$1" -e '@.suffix' 2> /dev/null | awk "$NAME_AWK"' { d = name($0); if (d != "") print d; exit }'
+}
+
+# dns_hosts <`dns status --json`>: "<address> <name>" lines, sorted and unique, for the extra records
+# of type A (IPv4 value) and AAAA (IPv6 value); other types, wildcards and invalid names or
+# addresses are skipped.
+dns_hosts() {
+	local i=0 n t v
+	while [ "$i" -lt 1000 ]; do
+		n=$(jsonfilter -s "$1" -e "@.extraRecords[$i].name" 2> /dev/null) || break
+		t=$(jsonfilter -s "$1" -e "@.extraRecords[$i].type" 2> /dev/null)
+		v=$(jsonfilter -s "$1" -e "@.extraRecords[$i].value" 2> /dev/null)
+		printf '%s\t%s\t%s\n' "$t" "$v" "$n"
+		i=$((i + 1))
+	done | awk -F '\t' "$NAME_AWK"'
 		{
-			d = tolower($0)
-			sub(/\.+$/, "", d)
-			sub(/^\*\./, "", d)
-			if (d == "" || length(d) > 253 || d !~ /^[a-z0-9_][a-z0-9_-]*(\.[a-z0-9_][a-z0-9_-]*)*$/) next
-			if (!(d in seen)) { seen[d] = 1; print split(d, x, ".") " " d }
-		}' | sort -n | awk '
+			d = name($3); t = toupper($1); v = $2
+			if (d == "") next
+			if (t == "A" && v ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) print v " " d
+			else if (t == "AAAA" && v ~ /^[0-9a-fA-F:.]+$/ && v ~ /:/) print tolower(v) " " d
+		}' | sort -u
+}
+
+# dns_splits <`dns status --json`>: the split-DNS domains and their resolvers as dnsmasq takes them,
+# "<domain> <address>[#<port>]" lines (sorted, unique), from "<IPv4>", "<IPv4>:<port>", "<IPv6>" or
+# "[<IPv6>]:<port>"; a resolver given any other way (e.g. a DNS-over-HTTPS URL) is listed as
+# "- <domain> <resolver>" (skipped). Reverse zones (empty arrays) do not appear.
+dns_splits() {
+	jsonfilter -s "$1" -e '@.routes' 2> /dev/null | route_pairs | awk "$NAME_AWK"'
 		{
-			d = $2
-			for (i = 1; i <= k; i++) {
-				p = kept[i]
-				if (d == p || (length(d) > length(p) && substr(d, length(d) - length(p)) == "." p)) next
-			}
-			kept[++k] = d
-		}
-		END { for (i = 1; i <= k; i++) print kept[i] }' | sort
+			d = name($1); r = $2
+			if (d == "") next
+			v4 = "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+"
+			if (r ~ (v4 "$")) out = r
+			else if (r ~ (v4 ":[0-9]+$")) { out = r; sub(/:/, "#", out) }
+			else if (r ~ /^\[[0-9a-fA-F:.]+\]:[0-9]+$/) { out = r; sub(/^\[/, "", out); sub(/\]:/, "#", out) }
+			else if (r ~ /^[0-9a-fA-F:.]+$/ && r ~ /:/) out = r
+			else { print "- " d " " r; next }
+			print d " " out
+		}' | sort -u
+}
+
+# dns_wanted <suffix> <splits ("<domain> <resolver>" lines)>: the UCI entries, "<option> <value>"
+# lines: the suffix to FlowMesh's resolver with a rebind exception (the answers are mesh addresses),
+# each split domain to its own resolvers (no exception: the operator's resolvers, normal rules).
+dns_wanted() {
+	local d r
+	if [ -n "$1" ]; then
+		echo "server /$1/$RESOLVER"
+		echo "rebind_domain $1"
+	fi
+	printf '%s\n' "$2" | while read -r d r; do
+		[ -n "$r" ] && echo "server /$d/$r"
+	done
 }
 
 dnsmasq_sections() {
 	uci -q -X show dhcp | sed -n 's/^dhcp\.\([^.=]*\)=dnsmasq$/\1/p'
 }
 
-# The "<section> <option> <value>" entries for domains $1 (newline-separated) in every dnsmasq section.
+# The "<section> <option> <value>" lines for entries $1 ("<option> <value>" lines), in every dnsmasq
+# section.
 dns_entries() {
-	local sec d
+	local sec
 	for sec in $(dnsmasq_sections); do
-		for d in $1; do
-			echo "$sec server /$d/$RESOLVER"
-			echo "$sec rebind_domain $d"
-		done
+		printf '%s\n' "$1" | sed -n "s/^./$sec &/p"
 	done
 }
 
@@ -329,19 +375,48 @@ remove_one() {
 	return 0
 }
 
-# dns_reconcile <domains>: make the entries we own exactly those for <domains> (newline-separated;
-# empty: none), leaving the user's alone. Serialized with the cleanup run by another process.
+# dns_reconcile <entries> <hosts>: make the UCI entries we own exactly <entries> ("<option> <value>"
+# lines; empty: none), leaving the user's alone, and the hosts file exactly <hosts> ("<address>
+# <name>" lines; empty: no file); dnsmasq is reloaded once if anything changed. Serialized with a
+# cleanup run by another process.
 dns_reconcile() {
 	mkdir -p "$(dirname "$DNS_LOCK")"
 	(
 		flock 8 || exit 1
+		DNS_CHANGED=
 		dns_reconcile_locked "$1"
+		hosts_sync "$2"
+		if [ -n "$DNS_CHANGED" ]; then
+			log "LAN names updated:$DNS_CHANGED"
+			$DNSMASQ_RELOAD_CMD > /dev/null 2>&1
+		fi
+		true
 	) 8<> "$DNS_LOCK"
 }
 
+# The extra records, for dnsmasq's additional hosts directory (/tmp/hosts, read by OpenWrt's dnsmasq
+# at start and on SIGHUP, which `/etc/init.d/dnsmasq reload` sends). The file is entirely ours.
+hosts_sync() {
+	local new tmp
+	if [ -z "$1" ]; then
+		[ -e "$HOSTS_FILE" ] || return 0
+		rm -f "$HOSTS_FILE"
+		DNS_CHANGED="$DNS_CHANGED hosts file removed"
+		return 0
+	fi
+	new="# FlowMesh: the mesh's extra DNS records (written by flowmesh-watch)
+$1"
+	[ "$(cat "$HOSTS_FILE" 2> /dev/null)" = "$new" ] && return 0
+	mkdir -p "$(dirname "$HOSTS_FILE")"
+	# (Written beside it on the same file system, then renamed: dnsmasq never reads half a file.)
+	tmp=$(dirname "$HOSTS_FILE")/.flowmesh-hosts.$$
+	printf '%s\n' "$new" > "$tmp" && mv -f "$tmp" "$HOSTS_FILE"
+	DNS_CHANGED="$DNS_CHANGED hosts file ($(printf '%s\n' "$1" | wc -l | tr -d ' ') records)"
+}
+
 dns_reconcile_locked() {
-	local domains=$1 want owned keep="" add="" drop="" fix="" line changed=0 staged=/tmp/.uci/dhcp aside
-	want=$(dns_entries "$domains")
+	local entries=$1 want owned keep="" add="" drop="" fix="" line changed=0 staged=/tmp/.uci/dhcp aside
+	want=$(dns_entries "$entries")
 	owned=$(cat "$DNS_OWNED" 2> /dev/null)
 	[ -z "$want" ] && [ -z "$owned" ] && return 0
 	# Ours and still wanted (keep; put back if removed by hand: fix), ours and not wanted (drop).
@@ -401,27 +476,32 @@ EOF
 	[ -s "$DNS_OWNED" ] || rm -f "$DNS_OWNED"
 	[ -f "$aside/dhcp" ] && mv -f "$aside/dhcp" "$staged"
 	rm -rf "$aside"
-	if [ "$changed" = 1 ]; then
-		# shellcheck disable=SC2086 # one line
-		log "LAN names: forwarding to $RESOLVER: $(echo ${domains:-none})"
-		$DNSMASQ_RELOAD_CMD > /dev/null 2>&1
-	fi
+	[ "$changed" = 1 ] && DNS_CHANGED="$DNS_CHANGED dhcp:$(printf '%s\n' "$entries" | sed 's/^./ &/' | tr '\n' ';')"
 	return 0
 }
 
 dns_tick() {
-	local js domains=
+	local js suffix splits skipped entries='' hosts=''
 	case "$STATUS_BACKEND" in
 	Running)
 		if [ "$(opt_bool lan_dns 1)" = 1 ]; then
 			js=$(bounded 5 flowmesh dns status --json 2> /dev/null) || return 0
-			domains=$(dns_domains "$js")
+			suffix=$(dns_suffix "$js")
+			splits=$(dns_splits "$js")
+			skipped=$(printf '%s\n' "$splits" | sed -n 's/^- //p')
+			if [ "$skipped" != "$DNS_SKIPPED" ]; then
+				DNS_SKIPPED=$skipped
+				# shellcheck disable=SC2086 # one line
+				[ -n "$skipped" ] && log "split DNS: resolvers dnsmasq cannot use, skipped: $(echo $skipped)"
+			fi
+			entries=$(dns_wanted "$suffix" "$(printf '%s\n' "$splits" | grep -v '^- ')")
+			hosts=$(dns_hosts "$js")
 		fi
 		;;
 	NeedsLogin | NeedsMachineAuth | Stopped) ;;
 	*) return 0 ;;   # starting: leave things as they are
 	esac
-	dns_reconcile "$domains"
+	dns_reconcile "$entries" "$hosts"
 }
 
 # --- the loop -------------------------------------------------------------------------------------
@@ -444,7 +524,7 @@ watch_tick() {
 }
 
 cleanup() {
-	dns_reconcile ""
+	dns_reconcile "" ""
 	rm -f "$EXIT_STATE"
 }
 

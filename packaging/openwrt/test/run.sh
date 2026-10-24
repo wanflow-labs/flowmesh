@@ -155,9 +155,11 @@ dns_list() { r "uci -q -d '
 ' get dhcp.@dnsmasq[0].$1"; }
 dns_has() { dns_list "$1" | grep -qxF "$2"; }
 dns_count() { dns_list "$1" | grep -cxF "$2"; }
-# Our entries: everything forwarded to FlowMesh's resolver, and the owned list.
+# Ours: the suffix forwarded to FlowMesh's resolver, the split domain to its resolver, the owned
+# list and the hosts file with the extra records.
 ours_absent() {
-  ! dns_list server | grep -q '/100\.100\.100\.100$' && r '! test -e /etc/flowmesh/lan-dns.owned'
+  ! dns_list server | grep -qE "/100\.100\.100\.100\$|^/$OWT_SPLIT_DOMAIN/" &&
+    r '! test -e /etc/flowmesh/lan-dns.owned && ! test -e /tmp/hosts/flowmesh'
 }
 # The user's own entries (set below): there, once each.
 user_dns_kept() {
@@ -165,6 +167,8 @@ user_dns_kept() {
 }
 # A LAN host asks the router (dnsmasq) for name $1 and gets address $2.
 lan_resolves() { sudo ip netns exec owt-lan dig +short +time=2 +tries=1 @"$OWT_ROUTER_LAN_IP" "$1" A 2>/dev/null | grep -qxF "$2"; }
+# The DNS status code the LAN host gets for name $1 (NOERROR, NXDOMAIN, SERVFAIL...).
+lan_rcode() { sudo ip netns exec owt-lan dig +time=3 +tries=1 @"$OWT_ROUTER_LAN_IP" "$1" A 2>/dev/null | sed -n 's/.*status: \([A-Z]*\).*/\1/p'; }
 
 before=$(fw_inventory)
 
@@ -423,10 +427,11 @@ if [ -n "$feed" ]; then
 elif pkg_name=$(basename "$pkg") && [ -f "$pkg" ] && r "cat > /tmp/$pkg_name" < "$pkg"; then
   # (Dependencies come from the official feeds: wait until the WAN is up after boot.)
   eventually 60 r 'wget -q -O /dev/null https://downloads.openwrt.org/' 2>/dev/null
+  # (The feed index download now and then fails right after boot: retried.)
   if [ $pm = opkg ]; then
-    r "opkg update >/dev/null && opkg install /tmp/$pkg_name" > "$vm/install.log" 2>&1
+    r "for i in 1 2 3; do opkg update >/dev/null 2>&1 && break; sleep 5; done; opkg install /tmp/$pkg_name" > "$vm/install.log" 2>&1
   else
-    r "apk update >/dev/null && apk add --allow-untrusted /tmp/$pkg_name" > "$vm/install.log" 2>&1
+    r "for i in 1 2 3; do apk update >/dev/null 2>&1 && break; sleep 5; done; apk add --allow-untrusted /tmp/$pkg_name" > "$vm/install.log" 2>&1
   fi
   install_status=$?
   sed 's/^/   | /' "$vm/install.log" | tail -15
@@ -552,10 +557,12 @@ check "the daemon's own forwarding rules are installed (subnet router)" eventual
 check "LAN host reaches another mesh node through the router ($fw)" eventually 45 lan_ping
 
 # --- mesh names for the LAN (the watcher) -------------------------------------------------------
-# lan_dns is on when unset. The watcher has dnsmasq forward the mesh's domains to FlowMesh's
-# resolver: the suffix, the console's extra record (outside the suffix, lab.sh) and the split-DNS
-# domain; with rebind_domain exceptions. The user's own entries (one forwarding and one exception,
-# set here) must be left alone through all of it, and survive removal.
+# lan_dns is on when unset. The router's client runs with --accept-dns=false, so FlowMesh's resolver
+# answers only the mesh's own names: only the suffix is forwarded there (with a rebind_domain
+# exception); the console's extra record (outside the suffix, lab.sh) goes into dnsmasq's hosts
+# directory (/tmp/hosts/flowmesh); the split-DNS domain is forwarded to its own resolver (in
+# owt-peer, lab.sh). The user's own entries (one forwarding and one exception, set here) must be left
+# alone through all of it, and survive removal.
 r "uci add_list dhcp.@dnsmasq[0].server=/corp.example/10.0.0.53; uci add_list dhcp.@dnsmasq[0].rebind_domain=corp.example
    uci commit dhcp; /etc/init.d/dnsmasq reload" >/dev/null 2>&1
 suffix=$(r 'flowmesh dns status --json | jsonfilter -e @.suffix')
@@ -563,29 +570,37 @@ peer_name="owt-peer.$suffix"
 check "watcher: a second instance of the service, with respawn" watcher_running
 ours_present() {
   dns_has server "/$suffix/100.100.100.100" && dns_has rebind_domain "$suffix" &&
-    dns_has server "/$OWT_EXTRA_NAME/100.100.100.100" && dns_has rebind_domain "$OWT_EXTRA_NAME" &&
-    dns_has server "/$OWT_SPLIT_DOMAIN/100.100.100.100" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN"
+    dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_PEER_IP" &&
+    r "grep -qxF '$OWT_EXTRA_IP $OWT_EXTRA_NAME' /tmp/hosts/flowmesh"
 }
-check "LAN names: dnsmasq forwards $suffix, $OWT_EXTRA_NAME and $OWT_SPLIT_DOMAIN to 100.100.100.100, with rebind exceptions" \
+check "dnsmasq reads the hosts directory /tmp/hosts (OpenWrt's default addn-hosts)" \
+  r 'grep -qx "addn-hosts=/tmp/hosts" /var/etc/dnsmasq.conf*'
+check "LAN names: $suffix to 100.100.100.100 with a rebind exception, $OWT_SPLIT_DOMAIN to its resolver $OWT_PEER_IP, $OWT_EXTRA_NAME in /tmp/hosts/flowmesh" \
   eventually 30 ours_present
 dns_list server | sed 's/^/   | server: /'
 dns_list rebind_domain | sed 's/^/   | rebind_domain: /'
-check "LAN names: only those (no mesh reverse zones), the user's entries untouched" eval '
-  [ "$(dns_list server | grep -c "/100\.100\.100\.100$")" = 3 ] && user_dns_kept'
+r 'cat /tmp/hosts/flowmesh' | sed 's/^/   | \/tmp\/hosts\/flowmesh: /'
+check "LAN names: nothing else forwarded to 100.100.100.100, no exception for the split domain or the extra record, the user's entries untouched" eval '
+  [ "$(dns_list server | grep -c "/100\.100\.100\.100$")" = 1 ] && ! dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
+  ! dns_has rebind_domain "$OWT_EXTRA_NAME" && ! dns_list server | grep -q "^/$OWT_EXTRA_NAME/" && user_dns_kept'
 check "LAN host resolves $peer_name through the router: $OWT_PEER_MESH_IP" eventually 20 lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"
 check "LAN host resolves the console's extra record $OWT_EXTRA_NAME: $OWT_EXTRA_IP" eventually 20 lan_resolves "$OWT_EXTRA_NAME" "$OWT_EXTRA_IP"
+rc=$(lan_rcode "sub.$OWT_EXTRA_NAME")
+check "  ... a name under it is not failed by FlowMesh's resolver: it goes to the normal DNS ($rc)" eval '[ -n "$rc" ] && [ "$rc" != SERVFAIL ]'
+check "LAN host resolves host.$OWT_SPLIT_DOMAIN through the split domain's resolver: $OWT_SPLIT_ANSWER" \
+  eventually 20 lan_resolves "host.$OWT_SPLIT_DOMAIN" "$OWT_SPLIT_ANSWER"
 # (dnsmasq 2.90 and later, OpenWrt 24.10 on, discard mesh addresses as a rebind without the
 # rebind_domain exceptions, and log it.)
 check "dnsmasq did not discard a mesh answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\)"'
 # Nothing changes: neither dnsmasq nor the settings are reloaded again.
 logs_count() { r "logread | grep -c '$1'"; }
-n_dns=$(logs_count 'LAN names: forwarding'); n_apply=$(logs_count 're-applying the settings')
+n_dns=$(logs_count 'LAN names updated'); n_apply=$(logs_count 're-applying the settings')
 sleep 25
 check "watcher, nothing changing for 25 s: no dnsmasq reload, nothing re-applied" eval '
-  [ "$(logs_count "LAN names: forwarding")" = "$n_dns" ] && [ "$(logs_count "re-applying the settings")" = "$n_apply" ]'
+  [ "$(logs_count "LAN names updated")" = "$n_dns" ] && [ "$(logs_count "re-applying the settings")" = "$n_apply" ]'
 r 'uci set flowmesh.main.lan_dns=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
-check "lan_dns=0: our entries removed, the user's kept, the LAN no longer resolves $peer_name" eventually 20 eval '
-  ours_absent && user_dns_kept && ! lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"'
+check "lan_dns=0: our entries and hosts file removed, the user's kept, the LAN no longer resolves $peer_name or $OWT_EXTRA_NAME" eventually 20 eval '
+  ours_absent && user_dns_kept && ! lan_resolves "$peer_name" "$OWT_PEER_MESH_IP" && ! lan_resolves "$OWT_EXTRA_NAME" "$OWT_EXTRA_IP"'
 r 'uci delete flowmesh.main.lan_dns; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 check "lan_dns unset again (on): entries back, resolves" eventually 30 eval 'ours_present && lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"'
 r 'flowmesh logout' >/dev/null 2>&1
@@ -908,6 +923,32 @@ check "  ... exit node back: the LAN through it again after $dt s from the peer'
   [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ] && v6_blocked'
 r 'uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 check "  ... kill switch back on (unset): still through the exit node" eventually 20 eval 'via_exit && [ "$(exit_state)" = active ]'
+
+# Applies running while the watcher switches over (LuCI's apply is the service's reload): one apply
+# at a time (/var/lock/flowmesh-apply.lock), so the end state agrees everywhere.
+r 'uci set flowmesh.main.kill_switch=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+eventually 20 via_exit
+r 'cat > /tmp/owt-reloads.sh' <<'EOF'
+i=0; while [ $i -lt 20 ]; do /etc/init.d/flowmesh reload >/dev/null 2>&1; sleep 1; i=$((i + 1)); done
+EOF
+start_reloads() { r 'start-stop-daemon -S -b -m -p /tmp/owt-reloads.pid -x /bin/sh -- /tmp/owt-reloads.sh'; }
+reloads_done() { ! r 'kill -0 $(cat /tmp/owt-reloads.pid) 2>/dev/null'; }
+# agree <state> <daemon exit node> <v6: blocked|open>: exit-state.json, the daemon, the IPv6 block,
+# and no kill switch rule (it is off).
+agree() { [ "$(exit_state)" = "$1" ] && [ "$(pref exit_node)" = "$2" ] && kill_off && "v6_$3"; }
+start_reloads
+"$LAB" peer-stop "$OWT_WORK" >/dev/null
+eventually 90 reloads_done
+check "reloads every second while the watcher falls back: offline_fallback, no exit node in the daemon, IPv6 open, no kill rule, LAN on the uplink" \
+  eventually 20 eval 'agree offline_fallback "" open && lan4_direct'
+start_reloads
+"$LAB" peer-start "$OWT_WORK" >/dev/null
+eventually 90 reloads_done
+check "  ... and while it comes back: active, exit node $P in the daemon, IPv6 blocked, no kill rule, LAN through it" \
+  eventually 20 eval 'agree active "$P" blocked && via_exit'
+r 'logread | grep -c "another apply has held"' | sed 's/^/   | lock waits given up: /'
+r 'rm -f /tmp/owt-reloads.sh /tmp/owt-reloads.pid; uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+eventually 20 via_exit
 
 # --- persistence -----------------------------------------------------------------------------
 sysupgrade_list=$(r 'sysupgrade -l')

@@ -13,7 +13,7 @@
 #
 # Error codes: invalid_arg, daemon_down, key_invalid (used, expired or unknown key), site_limit (the
 # control server refuses more nodes), unreachable (the control server cannot be connected to),
-# timeout, unknown.
+# timeout (also: another apply, the service's or its watcher's, still running), unknown.
 
 # Older rpcd (21.02) lets the caller set the environment of `file exec`: depend on none of it.
 PATH=/usr/sbin:/usr/bin:/sbin:/bin
@@ -23,6 +23,7 @@ PREFS=/usr/share/flowmesh/prefs.sh
 UP_TIMEOUT=20      # seconds `flowmesh up` waits for the node to come up (under rpcd's exec timeout)
 UP_DEADLINE=25     # hard stop for the whole CLI call, in case the daemon does not answer at all
 LOG_LINES=200
+APPLY_LOCK_WAIT=4  # seconds to wait for another apply (the init's, the watcher's) to finish
 
 . /usr/share/libubox/jshn.sh
 
@@ -54,6 +55,7 @@ classify() {
 	*"did not accept this node"*) echo key_invalid ;;
 	*"control connect:"*) echo unreachable ;;
 	*"timed out waiting"*) echo timeout ;;
+	*"another apply has held"*) echo timeout ;;   # (flowmesh_apply_lock, through the init's reload)
 	*) echo unknown ;;
 	esac
 }
@@ -90,10 +92,13 @@ up_cli() {
 	TMPFILES="$TMPFILES $outfile $flag"
 	# `up` must repeat every setting the service applied, or the CLI refuses: the full flag set
 	# from UCI, the same one the init's reload sends.
-	flowmesh_cli exec up "$@" --timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 &
+	# (Without the apply lock, descriptor 7: this process holds it; a CLI killed at the deadline must
+	# not leave it held by anything it started.)
+	flowmesh_cli exec up "$@" --timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 7>&- &
 	pid=$!
-	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep.)
-	( sleep "$UP_DEADLINE" && touch "$flag" && kill "$pid" ) < /dev/null > /dev/null 2>&1 &
+	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep; and
+	# the sleep must not hold the apply lock, descriptor 7, after we exit.)
+	( sleep "$UP_DEADLINE" && touch "$flag" && kill "$pid" ) < /dev/null > /dev/null 2>&1 7>&- &
 	watchdog=$!
 	wait "$pid" 2> /dev/null   # (the shell reports a killed job on stderr)
 	RC=$?
@@ -127,6 +132,7 @@ cmd_up() {
 
 	. /lib/functions.sh
 	. "$PREFS"
+	apply_lock
 	flowmesh_load_prefs
 	FM_HOSTNAME=$host
 
@@ -155,6 +161,7 @@ cmd_reconnect() {
 	valid "$url" "$URL_RE" || fail invalid_arg "no control server to reconnect to"
 	. /lib/functions.sh
 	. "$PREFS"
+	apply_lock
 	flowmesh_load_prefs
 	up_cli --login-server="$url"
 	flowmesh_apply_fw > /dev/null 2>&1
@@ -163,8 +170,15 @@ cmd_reconnect() {
 
 cmd_apply() {
 	local out
-	out=$("$INIT" reload 2>&1) || fail "$(classify "$out")" "$out"
+	out=$(FLOWMESH_APPLY_LOCK_WAIT=$APPLY_LOCK_WAIT "$INIT" reload 2>&1) || fail "$(classify "$out")" "$out"
 	ok
+}
+
+# The apply lock (flowmesh_apply_lock), held by this process until it exits (so not taken in a
+# subshell); another apply holding it for longer than APPLY_LOCK_WAIT is a timeout.
+apply_lock() {
+	flowmesh_apply_lock "$APPLY_LOCK_WAIT" ||
+		fail timeout "another apply (the service's or its watcher's) is still running"
 }
 
 cmd_logs() {
