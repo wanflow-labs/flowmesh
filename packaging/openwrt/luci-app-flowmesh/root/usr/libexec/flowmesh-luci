@@ -10,6 +10,10 @@
 #   down | logout                       {"ok":true} or an error
 #   apply                               push /etc/config/flowmesh to the daemon (the init's reload)
 #   logs                                {"ok":true,"lines":[...]}: the last 200 flowmesh log lines
+#   exitstate                           the watcher's exit-node state file, {"state":"none"} without one
+#   netcheck                            `flowmesh netcheck --format=json`, unchanged
+#   ping <mesh_ip>                      {"ok":true,"lines":[...],"path":"direct|relay|peer-relay|unknown","ms":N|null}
+#   bugreport                           {"ok":true,"text":"..."}: the CLI's local report (nothing is sent)
 #
 # Error codes: invalid_arg, daemon_down, key_invalid (used, expired or unknown key), site_limit (the
 # control server refuses more nodes), unreachable (the control server cannot be connected to),
@@ -23,6 +27,9 @@ PREFS=/usr/share/flowmesh/prefs.sh
 UP_TIMEOUT=20      # seconds `flowmesh up` waits for the node to come up (under rpcd's exec timeout)
 UP_DEADLINE=25     # hard stop for the whole CLI call, in case the daemon does not answer at all
 LOG_LINES=200
+EXIT_STATE=/var/run/flowmesh/exit-state.json   # written by flowmesh-watch
+PING_COUNT=3
+PING_TIMEOUT=3     # seconds per ping attempt: PING_COUNT * PING_TIMEOUT stays under UP_DEADLINE
 APPLY_LOCK_WAIT=4  # seconds to wait for another apply (the init's, the watcher's) to finish
 
 . /usr/share/libubox/jshn.sh
@@ -83,18 +90,17 @@ valid() {
 # Stricter than a URL needs to be: no shell metacharacters, quotes or spaces anywhere.
 URL_RE='^https?://[][A-Za-z0-9.:-]+(/[A-Za-z0-9._~/?#@%+=,:-]*)?$'
 
-# up_cli <flowmesh up args...>: run `flowmesh up` with the UCI flag set and the given arguments,
-# under the hard deadline; fail unless it succeeds. Needs flowmesh_load_prefs done.
-up_cli() {
-	local flag outfile pid watchdog
-	outfile=$(mktemp /tmp/flowmesh-up.XXXXXX) || fail unknown "mktemp failed"
+# limited <outfile> <command...>: run the command with stdout and stderr to <outfile> under the hard
+# deadline; sets OUT, RC and TIMED_OUT (non-empty when the deadline killed it).
+limited() {
+	local outfile="$1" flag pid watchdog
+	shift
 	flag=$outfile.timeout
 	TMPFILES="$TMPFILES $outfile $flag"
-	# `up` must repeat every setting the service applied, or the CLI refuses: the full flag set
-	# from UCI, the same one the init's reload sends.
-	# (Without the apply lock, descriptor 7: this process holds it; a CLI killed at the deadline must
-	# not leave it held by anything it started.)
-	flowmesh_cli exec up "$@" --timeout="${UP_TIMEOUT}s" > "$outfile" 2>&1 7>&- &
+	TIMED_OUT=
+	# (Without the apply lock, descriptor 7: a process of ours may hold it; a command killed at the
+	# deadline must not leave it held by anything it started.)
+	"$@" > "$outfile" 2>&1 7>&- &
 	pid=$!
 	# (No descriptors of ours: rpcd waits for its pipes to close, and would wait for the sleep; and
 	# the sleep must not hold the apply lock, descriptor 7, after we exit.)
@@ -104,12 +110,24 @@ up_cli() {
 	RC=$?
 	kill "$watchdog" 2>/dev/null
 	OUT=$(cat "$outfile")
-	[ -e "$flag" ] && fail timeout "$OUT"
+	[ -e "$flag" ] && TIMED_OUT=1
+	return 0
+}
+
+# up_cli <flowmesh up args...>: run `flowmesh up` with the UCI flag set and the given arguments,
+# under the hard deadline; fail unless it succeeds. Needs flowmesh_load_prefs done.
+up_cli() {
+	local outfile
+	outfile=$(mktemp /tmp/flowmesh-up.XXXXXX) || fail unknown "mktemp failed"
+	# `up` must repeat every setting the service applied, or the CLI refuses: the full flag set
+	# from UCI, the same one the init's reload sends.
+	limited "$outfile" flowmesh_cli exec up "$@" --timeout="${UP_TIMEOUT}s"
+	[ -n "$TIMED_OUT" ] && fail timeout "$OUT"
 	check_cli
 }
 
 TMPFILES=
-trap 'rm -f $TMPFILES' EXIT
+trap 'rm -rf $TMPFILES' EXIT
 trap 'exit 1' INT TERM HUP
 
 cmd_status() {
@@ -198,11 +216,129 @@ cmd_logs() {
 	exit 0
 }
 
+# The state file of the exit-node watcher, as one line; a missing or unreadable file is "none".
+cmd_exitstate() {
+	local out= text
+	# (json_load reports success for text that is not JSON: jsonfilter is the validity check.)
+	text=$(cat "$EXIT_STATE" 2>/dev/null)
+	if [ -n "$(jsonfilter -s "$text" -e '@.state' 2>/dev/null)" ]; then
+		json_load "$text" && out=$(json_dump)
+	fi
+	case "$out" in
+	"{"*) printf '%s\n' "$out" ;;
+	*) printf '%s\n' '{"state":"none"}' ;;
+	esac
+	exit 0
+}
+
+netcheck_cli() { flowmesh netcheck --format=json 2> "$1"; }
+
+cmd_netcheck() {
+	local outfile
+	outfile=$(mktemp /tmp/flowmesh-netcheck.XXXXXX) || fail unknown "mktemp failed"
+	TMPFILES="$TMPFILES $outfile.err"
+	# (The CLI warns on stderr that the JSON format is unstable: keep it out of the JSON.)
+	limited "$outfile" netcheck_cli "$outfile.err"
+	[ "$RC" = 0 ] || OUT=$(cat "$outfile.err" 2>/dev/null; printf '%s' "$OUT")
+	[ -n "$TIMED_OUT" ] && fail timeout "$OUT"
+	check_cli
+	printf '%s' "$OUT" | jsonfilter -e '@' > /dev/null 2>&1 || fail unknown "$OUT"
+	printf '%s\n' "$OUT"
+	exit 0
+}
+
+# A mesh address: IPv4 in 100.64.0.0/10 (strict dotted quad, no leading zeros) or IPv6 in
+# fd7a:115c:a1e0::/48 (at most one "::", groups of 1-4 hex digits, at most 8 groups).
+mesh_ip() {
+	valid "$1" '^[0-9A-Fa-f.:]{3,45}$' || return 1
+	case "$1" in
+	*:*)
+		printf '%s' "$1" | tr 'A-F' 'a-f' | awk '
+			{ if (index($0, ":::") || $0 !~ /^fd7a:115c:a1e0:/) exit 1
+			  n = gsub(/::/, "::"); if (n > 1) exit 1
+			  k = split($0, g, ":"); full = 0
+			  for (i = 1; i <= k; i++) {
+				if (g[i] == "") continue
+				if (g[i] !~ /^[0-9a-f]+$/ || length(g[i]) > 4) exit 1
+				full++
+			  }
+			  if (n == 0 && full != 8) exit 1
+			  if (n == 1 && full > 7) exit 1 }' ;;
+	*)
+		valid "$1" '^(0|[1-9][0-9]{0,2})(\.(0|[1-9][0-9]{0,2})){3}$' || return 1
+		printf '%s' "$1" | awk -F. '
+			{ for (i = 1; i <= 4; i++) if ($i > 255) exit 1
+			  exit !($1 == 100 && $2 >= 64 && $2 <= 127) }' ;;
+	esac
+}
+
+cmd_ping() {
+	[ $# -eq 1 ] || fail invalid_arg "usage: ping <mesh_ip>"
+	mesh_ip "$1" || fail invalid_arg "not an address in the mesh range"
+	local outfile line last= path=unknown ms= v
+	outfile=$(mktemp /tmp/flowmesh-ping.XXXXXX) || fail unknown "mktemp failed"
+	limited "$outfile" flowmesh ping -c "$PING_COUNT" --until-direct=false --timeout="${PING_TIMEOUT}s" "$1"
+	[ -n "$TIMED_OUT" ] && fail timeout "$OUT"
+	# The last answer decides (the first ones often still go through the relay). Lines look like
+	# "pong from <name> (<ip>) via <ip:port|DERP(<code>)|peer-relay(<ip:port>)> in <2ms|1.5s|0s>".
+	while IFS= read -r line; do
+		case "$line" in "pong from "*" via "*" in "*) last=$line ;; esac
+	done < "$outfile"
+	if [ -n "$last" ]; then
+		case "$last" in
+		*" via peer-relay("*) path=peer-relay ;;
+		*" via DERP("*) path=relay ;;
+		*) path=direct ;;
+		esac
+		v=${last##* in }
+		if valid "$v" '^[0-9]+(\.[0-9]+)?(ms|s)$'; then
+			case "$v" in
+			*ms) ms=${v%ms} ;;
+			*) ms=$(awk -v s="${v%s}" 'BEGIN { printf "%d", s * 1000 + 0.5 }') ;;
+			esac
+			ms=${ms%%.*}
+		fi
+	else
+		# Nothing answered is a result, not a fault of the helper: a CLI error is.
+		case "$OUT" in *"no reply"* | *"timed out"*) ;; *) check_cli ;; esac
+	fi
+	json_init
+	json_add_boolean ok 1
+	json_add_array lines
+	while IFS= read -r line; do
+		json_add_string "" "$line"
+	done < "$outfile"
+	json_close_array
+	json_add_string path "$path"
+	if [ -n "$ms" ]; then json_add_int ms "$ms"; else json_add_null ms; fi
+	json_dump
+	exit 0
+}
+
+# The CLI refuses to overwrite a file, so it gets a name inside a fresh private directory.
+cmd_bugreport() {
+	local dir outfile text
+	dir=$(mktemp -d /tmp/flowmesh-bugreport.XXXXXX) || fail unknown "mktemp failed"
+	TMPFILES="$TMPFILES $dir"
+	outfile=$(mktemp /tmp/flowmesh-bugreport-out.XXXXXX) || fail unknown "mktemp failed"
+	limited "$outfile" flowmesh bugreport --output "$dir/report.json"
+	[ -n "$TIMED_OUT" ] && fail timeout "$OUT"
+	check_cli
+	[ -r "$dir/report.json" ] || fail unknown "the CLI wrote no report: $OUT"
+	text=$(cat "$dir/report.json")
+	rm -rf "$dir"
+	json_init
+	json_add_boolean ok 1
+	json_add_string text "$text"
+	json_dump
+	exit 0
+}
+
 [ $# -ge 1 ] || fail invalid_arg "no command"
 cmd=$1
 shift
 case "$cmd" in
-status | reconnect | down | logout | apply | logs)
+status | reconnect | down | logout | apply | logs | exitstate | netcheck | bugreport)
 	[ $# -eq 0 ] || fail invalid_arg "$cmd takes no arguments"
 	;;
 esac
@@ -217,5 +353,9 @@ down | logout)
 	;;
 apply) cmd_apply ;;
 logs) cmd_logs ;;
+exitstate) cmd_exitstate ;;
+netcheck) cmd_netcheck ;;
+ping) cmd_ping "$@" ;;
+bugreport) cmd_bugreport ;;
 *) fail invalid_arg "unknown command" ;;
 esac

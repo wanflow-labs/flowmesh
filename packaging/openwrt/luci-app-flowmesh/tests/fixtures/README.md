@@ -19,3 +19,10 @@ it is reported as `timeout`, not `unreachable`.
 Not recorded: a refusal because the mesh has no free node slots. headscale has no such limit, so its
 text could not be observed; `flowmesh-luci` reports `site_limit` for any refusal whose reason mentions
 a limit or quota, and the test feeds it a made-up line of that form.
+
+## `ping-*.txt`
+
+Lines in the exact format `flowmesh ping` prints (crates/flowmesh-cli/src/ping.rs: the pong line is
+`pong from <name> (<ip>) via <endpoint | DERP(<code>) | peer-relay(<addr>)> in <latency>`, a timeout is
+`ping "<ip>" timed out`, the verdict `no reply` goes to stderr). The sample lines are the ones that
+file's own unit tests assert; they were not captured from a running mesh.

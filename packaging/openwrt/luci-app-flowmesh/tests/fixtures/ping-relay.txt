@@ -1,0 +1,3 @@
+pong from fm-a (100.64.0.9) via DERP(wanflow-relay-1000) in 6ms
+pong from fm-a (100.64.0.9) via DERP(wanflow-relay-1000) in 1.5s
+pong from fm-a (100.64.0.9) via DERP(wanflow-relay-1000) in 0s

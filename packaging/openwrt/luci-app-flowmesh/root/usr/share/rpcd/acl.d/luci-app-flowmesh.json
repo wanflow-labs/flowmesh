@@ -4,7 +4,11 @@
 		"read": {
 			"file": {
 				"/usr/libexec/flowmesh-luci status": [ "exec" ],
-				"/usr/libexec/flowmesh-luci logs": [ "exec" ]
+				"/usr/libexec/flowmesh-luci logs": [ "exec" ],
+				"/usr/libexec/flowmesh-luci exitstate": [ "exec" ],
+				"/usr/libexec/flowmesh-luci netcheck": [ "exec" ],
+				"/usr/libexec/flowmesh-luci ping *": [ "exec" ],
+				"/usr/libexec/flowmesh-luci bugreport": [ "exec" ]
 			},
 			"ubus": {
 				"file": [ "exec" ]
