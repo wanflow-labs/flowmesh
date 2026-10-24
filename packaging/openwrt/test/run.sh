@@ -87,7 +87,7 @@ cleanup() {
   for c in INPUT FORWARD; do
     while sudo ip netns exec owt-peer iptables -D "$c" -i owtpeer0 -j DROP 2>/dev/null; do :; done
   done
-  [ -n "$rip" ] && while sudo ip netns exec owt-peer iptables -D INPUT -i owtpeer0 -p icmp -s "$rip" -j DROP 2>/dev/null; do :; done
+  [ -n "${rip:-}" ] && while sudo ip netns exec owt-peer iptables -D INPUT -i owtpeer0 -p icmp -s "$rip" -j DROP 2>/dev/null; do :; done
   # (the LAN address change below, should this run stop in the middle of it)
   if [ -n "${lan_moved:-}" ]; then
     sudo ip addr del "$lan_moved_host/24" dev owtbr0 2>/dev/null
@@ -254,6 +254,16 @@ kill_off() { ! kill_uci && ! kill_runtime; }
 # OWT_UPGRADE_V1=<feed tarball of the first version>: the other upgrade test (v1 -> this build): see below.
 if [ -n "${OWT_UPGRADE_FROM:-}${OWT_UPGRADE_V1:-}" ]; then
   [ -n "$feed" ] || { echo "OWT_UPGRADE_FROM / OWT_UPGRADE_V1 needs a feed as the package argument" >&2; exit 100; }
+  if [ -n "${OWT_UPGRADE_V1:-}" ]; then
+    # The released artifact must be the genuine one: OWT_UPGRADE_V1_SHA256, or the release's
+    # SHA256SUMS beside the tarball. No value, no run; a mismatch stops it.
+    want_sum=${OWT_UPGRADE_V1_SHA256:-}
+    [ -n "$want_sum" ] || want_sum=$(awk -v f="$(basename "$OWT_UPGRADE_V1")" '$2 == f || $2 == "*" f { print $1 }' "$(dirname "$OWT_UPGRADE_V1")/SHA256SUMS" 2>/dev/null)
+    [ -n "$want_sum" ] || { echo "OWT_UPGRADE_V1: no checksum (set OWT_UPGRADE_V1_SHA256 or put the release's SHA256SUMS beside the tarball)" >&2; exit 100; }
+    got_sum=$(sha256sum "$OWT_UPGRADE_V1" | cut -d' ' -f1)
+    [ "$got_sum" = "$want_sum" ] || { echo "OWT_UPGRADE_V1: checksum mismatch (want $want_sum, got $got_sum)" >&2; exit 100; }
+    echo "   v1 feed checksum verified: $got_sum"
+  fi
   [ -z "${OWT_UPGRADE_V1:-}" ] || [ -z "${OWT_UPGRADE_FROM:-}" ] || { echo "OWT_UPGRADE_FROM and OWT_UPGRADE_V1 exclude each other" >&2; exit 100; }
   if [ $pm = opkg ]; then fmt=ipk; else fmt=apk; fi
   www=$vm/www
@@ -1047,9 +1057,10 @@ check "LAN address changed to $lan_new_router with the exit node in use: the LAN
 dt=$(wait_ms 15 throws_follow)
 check "  ... the throw routes in table 52 follow after $dt ms from ifup lan (at most 15000): the new network in, the old one out" [ "${dt%+}" = "$dt" ]
 throws_now | sed 's/^/   | table 52: /'
-# The daemon announces the addresses it had at start (a mesh peer without a relay, as here, then
-# does not find the router at its new address): a restart, as after any change of the router's
-# addresses, brings the path back. The new LAN network is advertised then and approved here.
+# In this lab the router and the peer reach each other over the LAN (the underlay is routed over
+# it, see the lab routes above), so a change of the LAN address cuts that path until the daemon
+# announces the new one; real deployments reach the router over the WAN or a relay. The lab
+# restarts the service for that reason. The new LAN network is advertised then and approved here.
 # (lan_routes lists the shared networks by hand here, so the new network replaces the old one in it.)
 r 'uci del_list flowmesh.main.lan_routes=192.168.1.0/24; uci add_list flowmesh.main.lan_routes=192.168.5.0/24; uci commit flowmesh
    /etc/init.d/flowmesh restart' >/dev/null 2>&1

@@ -169,7 +169,7 @@ This mode replaces the usual checks.
 ### From the first version
 
 `OWT_UPGRADE_V1` names the released feed of the first version instead (the GitHub Release attachment
-`flowmesh-openwrt-feed-0.1.8.tar.gz`; check it against that release's `SHA256SUMS`), and the feed
+`flowmesh-openwrt-feed-0.1.8.tar.gz`; run.sh verifies it against `SHA256SUMS` beside it or `OWT_UPGRADE_V1_SHA256` and stops on a mismatch or when neither is given), and the feed
 argument is this build's. The released feed carries the real signing keys, and its own `add-feed.sh`
 imports them, so it installs the way users do, with no `--allow-untrusted`. This build's version
 must sort higher than the released one: the scratch build here is `0.1.9` (the `version` in
@@ -195,9 +195,9 @@ In the normal modes, while the exit node is in use, the router's LAN moves from 
 192.168.5.1/24 (`uci set network.lan.ipaddr`, `ifup lan`) and back. The lab follows (a second address
 on the bridge, a route in the peer, the lab routes' gateway; the LAN host takes an address in the new
 subnet). The LAN host must reach the router, and table 52's throw routes must have followed, within
-15 s of `ifup lan`. The daemon announces the addresses it had at start, so without a relay (as in
-this lab) a mesh peer does not find the router at its new address until the service is restarted:
-the checks after that run after a restart.
+15 s of `ifup lan`. The lab routes the router-to-peer underlay over the LAN, so a LAN address change cuts it until the
+daemon announces the new address; real deployments reach the router over the WAN or a relay. The
+lab therefore restarts the service, and the checks after that run after the restart.
 
 ## luci-app-flowmesh
 
