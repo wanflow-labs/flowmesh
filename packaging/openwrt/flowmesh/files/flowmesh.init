@@ -81,7 +81,12 @@ apply_prefs_locked() {
 }
 
 start_service() {
-	flowmesh_enabled || return 0
+	if ! flowmesh_enabled; then
+		# Disabled (enabled=0), e.g. set while the service ran and then the router restarted: no
+		# rule of ours may keep the LAN off the uplink, nor dnsmasq entries point at the mesh.
+		service_stopped
+		return 0
+	fi
 	mkdir -p "$STATE_DIR"
 	chmod 0700 "$STATE_DIR"
 
