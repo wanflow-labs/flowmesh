@@ -56,7 +56,12 @@
 #      the normal DNS;
 #    - split-DNS domains: list server '/<domain>/<resolver>' straight to the resolvers the mesh
 #      names for them (IPv4/IPv6 addresses, optionally with a port; other kinds are skipped and
-#      logged), and list rebind_domain '<domain>' (intranet answers are usually private).
+#      logged), and list rebind_domain '<domain>' (intranet answers are usually private). Only
+#      resolvers the router reaches through the mesh right now: a mesh address, or (with
+#      accept_routes on) an address inside a peer's primary subnet route. Any other is skipped and
+#      logged, and a domain left without one stays with the normal DNS (dnsmasq would otherwise send
+#      its queries out of the uplink to an intranet address and lose the domain). Re-checked at
+#      every name check, so turning accept_routes on, or a route appearing, adds it.
 #    In every dnsmasq section. Only the UCI entries it added are ever changed or removed: they are
 #    listed in /etc/flowmesh/lan-dns.owned ("<section> <option> <value>" lines; on flash like
 #    /etc/config/dhcp, and both survive a sysupgrade). An entry the user already has stays the
@@ -481,6 +486,70 @@ $ADDR_AWK"'
 		}' | sort -u
 }
 
+# (awk) Address ranges: in_net(a, net) is 1 when address a (IPv4 or IPv6, as ADDR_AWK accepts it)
+# is inside net ("<address>/<length>"; a network of the other family, or not understood: 0).
+NET_AWK='function hexval(h,   i, v) {
+	h = tolower(h); v = 0
+	for (i = 1; i <= length(h); i++) v = v * 16 + index("0123456789abcdef", substr(h, i, 1)) - 1
+	return v
+}
+# v6 groups of a into g[1..8] (as numbers); 0 when it is not an IPv6 address of that form.
+function groups6(a, g,   n, p, i, j, k, head, tail, nh, nt) {
+	if (a !~ /:/ || a !~ /^[0-9a-fA-F:]+$/) return 0
+	if (index(a, "::")) {
+		head = substr(a, 1, index(a, "::") - 1); tail = substr(a, index(a, "::") + 2)
+		nh = head == "" ? 0 : split(head, p, ":")
+		for (i = 1; i <= nh; i++) g[i] = hexval(p[i])
+		nt = tail == "" ? 0 : split(tail, p, ":")
+		if (nh + nt > 7) return 0
+		for (i = nh + 1; i <= 8 - nt; i++) g[i] = 0
+		for (j = 1; j <= nt; j++) g[8 - nt + j] = hexval(p[j])
+		return 1
+	}
+	if (split(a, p, ":") != 8) return 0
+	for (i = 1; i <= 8; i++) g[i] = hexval(p[i])
+	return 1
+}
+function num4(a,   p) {
+	if (split(a, p, ".") != 4) return -1
+	return ((p[1] * 256 + p[2]) * 256 + p[3]) * 256 + p[4]
+}
+function in_net(a, net,   n, len, x, y, ga, gn, i, r) {
+	n = index(net, "/"); if (!n) return 0
+	len = substr(net, n + 1) + 0; net = substr(net, 1, n - 1)
+	if (a ~ /^[0-9.]+$/) {
+		if (net !~ /^[0-9.]+$/ || len < 0 || len > 32) return 0
+		x = num4(a); y = num4(net)
+		if (x < 0 || y < 0) return 0
+		r = 2 ^ (32 - len)
+		return int(x / r) == int(y / r)
+	}
+	if (len < 0 || len > 128 || !groups6(a, ga) || !groups6(net, gn)) return 0
+	for (i = 1; i <= 8 && len > 0; i++) {
+		if (len >= 16) { if (ga[i] != gn[i]) return 0 }
+		else { r = 2 ^ (16 - len); if (int(ga[i] / r) != int(gn[i] / r)) return 0 }
+		len -= 16
+	}
+	return 1
+}'
+
+# dns_reachable <routes> <splits ("<domain> <resolver>" lines)>: the splits whose resolver the router
+# reaches through the mesh: a mesh address (100.64.0.0/10, fd7a:115c:a1e0::/48), or one inside
+# <routes> (space-separated networks: the peers' primary subnet routes when accept_routes is on,
+# else empty; default routes do not count). The others are listed as "~ <domain> <resolver>".
+dns_reachable() {
+	printf '%s\n' "$2" | awk -v routes="$1" "$NET_AWK"'
+		BEGIN { nr = split(routes, rt, " ") }
+		NF < 2 { next }
+		{
+			a = $2; sub(/#.*/, "", a); ok = 0
+			if (in_net(a, "100.64.0.0/10") || in_net(a, "fd7a:115c:a1e0::/48")) ok = 1
+			for (i = 1; !ok && i <= nr; i++)
+				if (rt[i] !~ /\/0$/ && in_net(a, rt[i])) ok = 1
+			print (ok ? "" : "~ ") $1 " " $2
+		}'
+}
+
 # dns_wanted <suffix> <splits ("<domain> <resolver>" lines)>: the UCI entries, "<option> <value>"
 # lines: the suffix to FlowMesh's resolver with a rebind exception (the answers are mesh addresses);
 # each split domain to its own resolvers, also with a rebind exception (configured by the operator in
@@ -636,8 +705,9 @@ EOF
 	return 0
 }
 
+# dns_tick <status json>
 dns_tick() {
-	local js suffix splits skipped entries='' hosts=''
+	local js suffix splits skipped unreach routes='' entries='' hosts=''
 	case "$STATUS_BACKEND" in
 	Running)
 		if [ "$(opt_bool lan_dns 1)" = 1 ]; then
@@ -650,7 +720,18 @@ dns_tick() {
 				# shellcheck disable=SC2086 # one line
 				[ -n "$skipped" ] && log "split DNS: resolvers dnsmasq cannot use, skipped: $(echo $skipped)"
 			fi
-			entries=$(dns_wanted "$suffix" "$(printf '%s\n' "$splits" | grep -v '^- ')")
+			if [ "$(opt_bool accept_routes 0)" = 1 ]; then
+				# shellcheck disable=SC2046 # one network per word
+				routes=$(echo $(jsonfilter -s "$1" -e '@.Peer[*].PrimaryRoutes[*]' 2> /dev/null))
+			fi
+			splits=$(dns_reachable "$routes" "$(printf '%s\n' "$splits" | grep -v '^- ')")
+			unreach=$(printf '%s\n' "$splits" | sed -n 's/^~ //p')
+			if [ "$unreach" != "$DNS_UNREACH" ]; then
+				DNS_UNREACH=$unreach
+				# shellcheck disable=SC2086 # one line
+				[ -n "$unreach" ] && log "split DNS: resolvers not reachable through the mesh (a peer's subnet route needs accept_routes), left to the normal DNS: $(echo $unreach)"
+			fi
+			entries=$(dns_wanted "$suffix" "$(printf '%s\n' "$splits" | grep -v '^~ ')")
 			hosts=$(dns_hosts "$js")
 		fi
 		;;

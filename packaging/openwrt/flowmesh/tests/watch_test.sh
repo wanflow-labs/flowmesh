@@ -460,6 +460,23 @@ expect "entries: the suffix to FlowMesh's resolver, split domains to their own r
 corp.example 10.0.0.54#5353
 lab.example 10.0.0.9" | tr '\n' ',')"
 expect "entries: no suffix, no splits: none" "" "$(dns_wanted "" "")"
+# Which resolvers the router reaches through the mesh: mesh addresses, or inside a peer's primary
+# subnet route (passed only with accept_routes on); default routes do not count.
+expect "reachable: mesh addresses (v4, v6, with a port) always; others only inside a route given; /0 never" \
+	"a.example 10.0.0.53,~ a.example 10.0.1.53,b.example 100.100.100.100#53,c.example fd7a:115c:a1e0::35,d.example fd00:1::53#53,~ d.example fd00:2::53,~ e.example 8.8.8.8,f.example 192.168.7.200,~ f.example 192.168.7.100,~ g.example 100.128.0.1," \
+	"$(dns_reachable "10.0.0.0/24 fd00:1::/64 0.0.0.0/0 ::/0 192.168.7.128/25" "a.example 10.0.0.53
+a.example 10.0.1.53
+b.example 100.100.100.100#53
+c.example fd7a:115c:a1e0::35
+d.example fd00:1::53#53
+d.example fd00:2::53
+e.example 8.8.8.8
+f.example 192.168.7.200
+f.example 192.168.7.100
+g.example 100.128.0.1" | tr '\n' ',')"
+expect "reachable: no routes (accept_routes off): only mesh addresses" "~ a.example 10.0.0.53,b.example 100.64.0.53," \
+	"$(dns_reachable "" "a.example 10.0.0.53
+b.example 100.64.0.53" | tr '\n' ',')"
 expect "not JSON: nothing" "||" "$(dns_suffix 'not json {')|$(dns_hosts 'not json {')|$(dns_splits 'not json {')"
 
 # --- dnsmasq entries and the hosts file ---
@@ -522,8 +539,9 @@ uci add_list $d.rebind_domain=dup.test; uci commit dhcp
 dns_reconcile "" ""
 expect "the user added the same entry as ours later: one is left (theirs)" "1" "$(count rebind_domain dup.test)"
 
-# --- the whole loop: lan_dns, logout, SIGTERM ---
+# --- the whole loop: lan_dns, accept_routes, logout, SIGTERM ---
 uci set flowmesh.main.lan_dns=1
+uci set flowmesh.main.accept_routes=1   # (the split domain's resolver is in the peer's subnet route)
 uci -q delete flowmesh.main.use_exit_node
 uci commit flowmesh
 peer_status true
@@ -541,11 +559,28 @@ NOW=5010; watch_tick
 expect "  ... lan_dns=0: removed at the next name check" "0 00 " "$(present)"
 uci set flowmesh.main.lan_dns=1
 NOW=5020; watch_tick
-printf '{"BackendState":"Starting"}\n' > "$work/status"
+expect "  ... lan_dns on again: back" "1 11 $H1," "$(present)"
+: > "$work/log"
+uci set flowmesh.main.accept_routes=0
 NOW=5030; watch_tick
+expect "  ... accept_routes=0: the split domain's resolver (in a peer's subnet route) is not reachable: its server and exception removed, the rest kept" \
+	"1 00 $H1," "$(present)"
+expect "  ... logged, once" "1" "$(grep -c 'not reachable through the mesh.*corp.owt-split.test 10.0.0.53' "$work/log")"
+NOW=5040; watch_tick
+expect "  ... (not logged again)" "1" "$(grep -c 'not reachable through the mesh' "$work/log")"
+uci set flowmesh.main.accept_routes=1
+NOW=5050; watch_tick
+expect "  ... accept_routes=1: forwarded again" "1 11 $H1," "$(present)"
+no_peer_status
+NOW=5060; watch_tick
+expect "  ... no peer routes it any more: removed" "1 00 $H1," "$(present)"
+peer_status true
+NOW=5070; watch_tick
+printf '{"BackendState":"Starting"}\n' > "$work/status"
+NOW=5080; watch_tick
 expect "  ... starting: left as it was" "1 11 $H1," "$(present)"
 printf '{"BackendState":"NeedsLogin"}\n' > "$work/status"
-NOW=5040; watch_tick
+NOW=5090; watch_tick
 expect "  ... logged out: removed" "0 00 " "$(present)"
 uci commit flowmesh
 
