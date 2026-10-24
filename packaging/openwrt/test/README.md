@@ -30,7 +30,7 @@ and `ip-full` from the official package feeds through QEMU user networking).
 | "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer`; blackholed on the host, so the router's uplink cannot reach it |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
-| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.231.0.2:53 in `owt-peer` (10.77.0.53 for every name in it: a private answer, which only gets through dnsmasq's rebind protection because the split domain has a rebind exception) |
+| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.231.0.2:53 in `owt-peer` (10.77.0.53 for every name in it: a private answer, which only gets through dnsmasq's rebind protection because the split domain has a rebind exception); and `bad.owt-split.test` with invalid resolvers (`999.1.1.1`, `fe80::1::2`), which the watcher must skip |
 
 It writes `<work_dir>/lab.env` (control server URL, a reusable pre-auth key, the peer's mesh address).
 The addresses can be changed with the `OWT_*` variables at the top of `lab.sh`.

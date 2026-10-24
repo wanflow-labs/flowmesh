@@ -311,21 +311,53 @@ dns_hosts() {
 		}' | sort -u
 }
 
+# (awk) Strict address checks for resolvers (dnsmasq may refuse to start on a server= it cannot
+# parse, which would take all LAN DNS down): v4(a) four decimal octets 0-255 without leading zeros;
+# v6(a) hex groups of 1-4 digits, at most one "::", 8 groups without it and at most 7 with it, not
+# "::" alone (embedded IPv4 forms are not accepted); port(p) 1-65535.
+ADDR_AWK='function v4(a,   p, i) {
+	if (split(a, p, ".") != 4) return 0
+	for (i = 1; i <= 4; i++)
+		if (p[i] !~ /^(0|[1-9][0-9]?[0-9]?)$/ || p[i] + 0 > 255) return 0
+	return 1
+}
+function v6(a,   t, n, g, i, c, dc) {
+	if (a !~ /^[0-9a-fA-F:]+$/ || a ~ /:::/) return 0
+	t = a; dc = gsub(/::/, "", t)
+	if (dc > 1) return 0
+	# A single ":" may not start or end the address (only "::" may).
+	if (a ~ /^:[^:]/ || a ~ /[^:]:$/) return 0
+	n = split(a, g, ":"); c = 0
+	for (i = 1; i <= n; i++) {
+		if (g[i] == "") continue
+		if (length(g[i]) > 4) return 0
+		c++
+	}
+	if (dc == 0) return c == 8
+	return c >= 1 && c <= 7
+}
+function port(p) { return p ~ /^[1-9][0-9]?[0-9]?[0-9]?[0-9]?$/ && p + 0 <= 65535 }'
+
 # dns_splits <`dns status --json`>: the split-DNS domains and their resolvers as dnsmasq takes them,
 # "<domain> <address>[#<port>]" lines (sorted, unique), from "<IPv4>", "<IPv4>:<port>", "<IPv6>" or
-# "[<IPv6>]:<port>"; a resolver given any other way (e.g. a DNS-over-HTTPS URL) is listed as
-# "- <domain> <resolver>" (skipped). Reverse zones (empty arrays) do not appear.
+# "[<IPv6>]:<port>" (strictly checked: ADDR_AWK); a resolver given any other way (a DNS-over-HTTPS
+# URL, an invalid address or port) is listed as "- <domain> <resolver>" (skipped, and logged).
+# Reverse zones (empty arrays) do not appear.
 dns_splits() {
-	jsonfilter -s "$1" -e '@.routes' 2> /dev/null | route_pairs | awk "$NAME_AWK"'
+	jsonfilter -s "$1" -e '@.routes' 2> /dev/null | route_pairs | awk "$NAME_AWK
+$ADDR_AWK"'
 		{
-			d = name($1); r = $2
+			d = name($1); r = $2; out = ""
 			if (d == "") next
-			v4 = "^[0-9]+\\.[0-9]+\\.[0-9]+\\.[0-9]+"
-			if (r ~ (v4 "$")) out = r
-			else if (r ~ (v4 ":[0-9]+$")) { out = r; sub(/:/, "#", out) }
-			else if (r ~ /^\[[0-9a-fA-F:.]+\]:[0-9]+$/) { out = r; sub(/^\[/, "", out); sub(/\]:/, "#", out) }
-			else if (r ~ /^[0-9a-fA-F:.]+$/ && r ~ /:/) out = r
-			else { print "- " d " " r; next }
+			if (v4(r)) out = r
+			else if (r ~ /^[0-9.]+:[0-9]+$/) {
+				i = index(r, ":"); a = substr(r, 1, i - 1); p = substr(r, i + 1)
+				if (v4(a) && port(p)) out = a "#" p
+			} else if (r ~ /^\[[0-9a-fA-F:]+\]:[0-9]+$/) {
+				i = index(r, "]"); a = substr(r, 2, i - 2); p = substr(r, i + 2)
+				if (v6(a) && port(p)) out = tolower(a) "#" p
+			} else if (v6(r)) out = tolower(r)
+			if (out == "") { print "- " d " " r; next }
 			print d " " out
 		}' | sort -u
 }

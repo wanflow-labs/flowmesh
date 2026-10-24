@@ -591,6 +591,11 @@ check "LAN host resolves host.$OWT_SPLIT_DOMAIN through the split domain's resol
   eventually 20 lan_resolves "host.$OWT_SPLIT_DOMAIN" "$OWT_SPLIT_ANSWER"
 # (dnsmasq 2.90 and later, OpenWrt 24.10 on, discard mesh addresses as a rebind without the
 # rebind_domain exceptions, and log it.)
+# The split domain with only invalid resolvers: nothing of it reaches dnsmasq, which keeps running,
+# and the watcher logs what it skipped.
+check "split domain $OWT_SPLIT_BAD with invalid resolvers (999.1.1.1, fe80::1::2): no entry for it, skipped and logged, dnsmasq running" eval '
+  ! dns_list server | grep -q "^/$OWT_SPLIT_BAD/" && ! dns_has rebind_domain "$OWT_SPLIT_BAD" &&
+  r "logread | grep \"resolvers dnsmasq cannot use, skipped\" | grep -q 999.1.1.1" && r "pidof dnsmasq >/dev/null"'
 check "dnsmasq did not discard a mesh or split-domain answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\|$OWT_SPLIT_DOMAIN\)"'
 # Nothing changes: neither dnsmasq nor the settings are reloaded again.
 logs_count() { r "logread | grep -c '$1'"; }

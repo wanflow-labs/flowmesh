@@ -33,6 +33,8 @@ OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}   # split DNS: answere
 # Its answer for every name in that domain: a private address, as intranet split DNS gives, which
 # dnsmasq's rebind protection discards unless the domain has a rebind_domain exception.
 OWT_SPLIT_ANSWER=${OWT_SPLIT_ANSWER:-10.77.0.53}
+# A split domain whose resolvers are typos dnsmasq could not use (headscale passes these two on).
+OWT_SPLIT_BAD=${OWT_SPLIT_BAD:-bad.owt-split.test}
 
 die() { echo "lab: $*" >&2; exit 1; }
 
@@ -135,6 +137,9 @@ dns:
     split:
       $OWT_SPLIT_DOMAIN:
         - $OWT_PEER_IP
+      $OWT_SPLIT_BAD:
+        - 999.1.1.1
+        - "fe80::1::2"
   # A record outside the mesh suffix, as the console's DNS settings make one.
   extra_records:
     - name: $OWT_EXTRA_NAME
@@ -230,6 +235,7 @@ OWT_EXTRA_NAME=$OWT_EXTRA_NAME
 OWT_EXTRA_IP=$OWT_EXTRA_IP
 OWT_SPLIT_DOMAIN=$OWT_SPLIT_DOMAIN
 OWT_SPLIT_ANSWER=$OWT_SPLIT_ANSWER
+OWT_SPLIT_BAD=$OWT_SPLIT_BAD
 OWT_PEER_IP=$OWT_PEER_IP
 EOF
   chmod 0600 "$w/lab.env"

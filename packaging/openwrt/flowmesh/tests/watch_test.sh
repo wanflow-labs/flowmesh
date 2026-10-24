@@ -251,6 +251,15 @@ expect "hosts: A and AAAA records only, valid names and addresses, case and trai
 expect "splits: each resolver as dnsmasq takes it (port as #port), reverse zones and invalid names left out, URLs and garbage skipped and listed" \
 	"- corp.example 1.2.3.4;,- corp.example https://dns.example/dns-query,corp.example 10.0.0.53,corp.example 10.0.0.54#5353,corp.example fd00::53#53,corp.example fd00::54," \
 	"$(dns_splits "$js" | tr '\n' ',')"
+# Resolver addresses are checked strictly: a server= dnsmasq cannot parse must never reach it.
+js2='{"suffix":"","extraRecords":[],"routes":{"a.example":["999.1.1.1","1.2.3.4:99999",":::","fe80::1::2","01.2.3.4","1.2.3","1.2.3.4:0","::","1:2:3:4:5:6:7:8:9","12345::1","[fe80::1::2]:53","[fd00::1]:65536","1.2.3.4:65535","10.0.0.53","10.0.0.54:5353","255.255.255.255","fd00::53","FD00:0:0:0:0:0:0:54","::1","fd00::","[fd00::1]:53","1:2:3:4:5:6:7::"]}}'
+got=$(dns_splits "$js2")
+expect "splits: invalid resolvers skipped and listed (999.1.1.1, port 99999, :::, two ::, leading zero, 3 octets, port 0, :: alone, 9 groups, 5-digit group, bracketed bad v6, port 65536)" \
+	"- a.example 01.2.3.4,- a.example 1.2.3,- a.example 1.2.3.4:0,- a.example 1.2.3.4:99999,- a.example 12345::1,- a.example 1:2:3:4:5:6:7:8:9,- a.example 999.1.1.1,- a.example ::,- a.example :::,- a.example [fd00::1]:65536,- a.example [fe80::1::2]:53,- a.example fe80::1::2," \
+	"$(printf '%s\n' "$got" | grep '^- ' | tr '\n' ',')"
+expect "splits: valid v4, v4:port (max port), v6 (compressed, full, lower-cased, ::1, trailing ::, 7 groups + ::), [v6]:port kept" \
+	"a.example 1.2.3.4#65535,a.example 10.0.0.53,a.example 10.0.0.54#5353,a.example 1:2:3:4:5:6:7::,a.example 255.255.255.255,a.example ::1,a.example fd00:0:0:0:0:0:0:54,a.example fd00::,a.example fd00::1#53,a.example fd00::53," \
+	"$(printf '%s\n' "$got" | grep -v '^- ' | tr '\n' ',')"
 expect "entries: the suffix to FlowMesh's resolver, split domains to their own resolvers; one rebind exception per domain" \
 	"server /owt.test/100.100.100.100,rebind_domain owt.test,server /corp.example/10.0.0.53,rebind_domain corp.example,server /corp.example/10.0.0.54#5353,server /lab.example/10.0.0.9,rebind_domain lab.example," \
 	"$(dns_wanted owt.test "corp.example 10.0.0.53
