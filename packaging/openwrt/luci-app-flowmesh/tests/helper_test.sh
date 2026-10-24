@@ -41,6 +41,7 @@ chmod 0755 "$helper"
 cat > "$fakebin/flowmesh" <<FAKE
 #!/bin/sh
 [ "\$1 \$2" = "debug prefs" ] && [ -f $work/prefs ] && { cat $work/prefs; exit 0; }
+echo \$\$ > $work/pid
 [ "\$1" = netcheck ] && echo "# Warning: this JSON format is not yet considered a stable interface" >&2
 if [ "\$1" = bugreport ]; then
 	# Like the real CLI: the output file must not exist yet; its path is recorded.
@@ -80,7 +81,7 @@ chmod 0755 "$fakebin/logread"
 
 # fake <rc> [output file]
 fake() {
-	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs" "$work/report" "$work/reportpath"
+	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs" "$work/report" "$work/reportpath" "$work/pid"
 	echo "$1" > "$work/rc"
 	[ -n "$2" ] && cp "$2" "$work/out"
 }
@@ -318,6 +319,9 @@ fake 0 "$work/other.txt"; run netcheck; expect_code unknown "netcheck, output is
 fake 0 "$work/nc.json"; echo 15 > "$work/sleep"
 start=$(date +%s); run netcheck; took=$(( $(date +%s) - start ))
 expect_code timeout "netcheck past the hard deadline"
+sleep 1
+pid=$(cat "$work/pid" 2>/dev/null)
+[ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null && pass "netcheck deadline: the CLI process is gone (pid $pid)" || fail "netcheck deadline: CLI pid '$pid' still alive"
 [ "$took" -le 6 ] && pass "netcheck deadline returns in ${took}s" || fail "netcheck deadline took ${took}s"
 fake 0; run netcheck now; expect_code invalid_arg "netcheck with an argument"
 

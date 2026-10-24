@@ -231,7 +231,9 @@ cmd_exitstate() {
 	exit 0
 }
 
-netcheck_cli() { flowmesh netcheck --format=json 2> "$1"; }
+# (exec: the backgrounded job must be the CLI itself, or the deadline's kill would only hit the
+# subshell and leave the CLI running.)
+netcheck_cli() { exec flowmesh netcheck --format=json 2> "$1"; }
 
 cmd_netcheck() {
 	local outfile
