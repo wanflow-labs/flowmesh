@@ -30,14 +30,16 @@ and `ip-full` from the official package feeds through QEMU user networking).
 | "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer`; blackholed on the host, so the router's uplink cannot reach it |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
-| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.231.0.2:53 in `owt-peer` (10.77.0.53 for every name in it: a private answer, which only gets through dnsmasq's rebind protection because the split domain has a rebind exception); and `bad.owt-split.test` with invalid resolvers (`999.1.1.1`, `fe80::1::2`), which the watcher must skip |
+| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.77.53.53:53 in `owt-peer`, inside 10.77.53.0/24, a subnet route the peer shares (approved), so the router reaches it through the mesh only with `accept_routes` on (10.77.0.53 for every name in it: a private answer, which only gets through dnsmasq's rebind protection because the split domain has a rebind exception); and `bad.owt-split.test` with invalid resolvers (`999.1.1.1`, `fe80::1::2`), which the watcher must skip |
 
 It writes `<work_dir>/lab.env` (control server URL, a reusable pre-auth key, the peer's mesh address).
 The addresses can be changed with the `OWT_*` variables at the top of `lab.sh`.
 `lab.sh down <work_dir>` stops both processes (by their recorded PIDs) and removes the namespaces,
 the bridge and the lab's files. `lab.sh peer-stop <work_dir>` stops the peer's daemon (by its PID),
 `lab.sh peer-start <work_dir>` starts it again with its state and waits until it is Running: run.sh
-uses them to take the exit node offline.
+uses them to take the exit node offline. `lab.sh hs-stop|hs-start <work_dir>` stop and start the
+control server (same database): run.sh uses them to restart the router's daemon while the control
+server cannot be reached.
 
 The relay is not reachable over plain HTTP, so the nodes talk directly (they share the host); that is
 enough for these tests. The router reaches the control server and the peer over the lab LAN (run.sh
@@ -89,7 +91,23 @@ again once the drop is lifted. ICMP from the router to the exit node filtered fr
 it is chosen (as a mesh ACL may do): the exit node stays `active` on discovery answers (noted once
 in the log) and the LAN keeps using it. Also: a chosen exit node that is not in the mesh
 is reported `missing`, and a restart in that state with the kill switch off leaves the LAN on the
-uplink without a reload by hand.
+uplink without a reload by hand; while the exit node is refused with the kill switch on, a LAN host
+trying the uplink every 0.2 s never gets through (the kill switch rule goes in before the daemon
+drops the exit node). Split DNS: with `accept_routes=0` the split domain (its resolver is in the
+peer's subnet route) gets no dnsmasq entry and the watcher logs why; with `accept_routes=1` it is
+forwarded and resolves.
+
+FlowMesh itself not running: the control server is stopped (`lab.sh hs-stop`) and the router's
+daemon ended with SIGTERM (procd starts it again; with no control server it stays Starting, with no
+map and no exit routing). Kill switch on: within 15 s the rule `flowmesh_exit_kill_switch` keeps
+the LAN off the uplink, state `down_blocked`, IPv6 block kept, also after a reload; the control
+server back: `active`, the rule lifted, the LAN through the exit node. The user's own Disconnect,
+Reconnect, Log out and join through the LuCI helper (`flowmesh-luci down|reconnect|logout|up`; run
+from a copy when only the `flowmesh` package is installed): after Disconnect and Log out the LAN uses
+the uplink with neither rule, state `stopped`, also 12 s and a reload later; after Reconnect and the
+join it goes through the exit node again. After the reboot check: `enabled=0` with the IPv6 block and
+a kill switch rule in place, then `reboot -f` (no shutdown scripts): the router comes up with no
+daemon, neither rule and the LAN on the uplink.
 
 ## Running
 

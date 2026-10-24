@@ -5,8 +5,9 @@
 #   - a second mesh node ("peer", the linux-x86_64 release binary) in network namespace owt-peer,
 #     also an approved exit node; behind it an "Internet" address ($OWT_INET_IP, on a dummy device
 #     in owt-peer) where an HTTP server answers every request with the client's address
-#   - split DNS: $OWT_SPLIT_DOMAIN is resolved by a tiny DNS server on $OWT_PEER_IP:53 (in owt-peer;
-#     the router reaches it from its uplink), answering $OWT_SPLIT_ANSWER for every name in it
+#   - split DNS: $OWT_SPLIT_DOMAIN is resolved by a tiny DNS server on $OWT_SPLIT_RESOLVER:53 (in
+#     owt-peer, inside $OWT_SPLIT_NET, a subnet route the peer shares: the router reaches it through
+#     the mesh only with accept_routes on), answering $OWT_SPLIT_ANSWER for every name in it
 #   - the router's LAN: bridge owtbr0 ($OWT_LAN_HOST_IP, used to reach the VM over SSH) and a LAN
 #     client in network namespace owt-lan ($OWT_LAN_CLIENT_IP, default route via the router)
 # The router VM itself (run.sh) gets a tap on owtbr0 as LAN and QEMU user networking as WAN.
@@ -15,6 +16,8 @@
 #   lab.sh down <work_dir>
 #   lab.sh peer-stop <work_dir>    stop the peer's daemon (by its PID): the exit node goes offline
 #   lab.sh peer-start <work_dir>   start it again (same state: no login), wait until it is Running
+#   lab.sh hs-stop <work_dir>      stop the control server (by its PID)
+#   lab.sh hs-start <work_dir>     start it again (same database), wait until it answers
 # `up` writes <work_dir>/lab.env, which run.sh reads. Needs passwordless sudo (namespaces, bridge).
 set -euo pipefail
 
@@ -30,6 +33,8 @@ OWT_INET_PORT=${OWT_INET_PORT:-18492}
 OWT_EXTRA_NAME=${OWT_EXTRA_NAME:-app.owt-extra.test}   # extra DNS record (not under the mesh suffix)
 OWT_EXTRA_IP=${OWT_EXTRA_IP:-100.64.0.200}
 OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}   # split DNS: answered by a resolver in owt-peer
+OWT_SPLIT_NET=${OWT_SPLIT_NET:-10.77.53.0/24}              # ... inside this subnet route of the peer
+OWT_SPLIT_RESOLVER=${OWT_SPLIT_RESOLVER:-10.77.53.53}
 # Its answer for every name in that domain: a private address, as intranet split DNS gives, which
 # dnsmasq's rebind protection discards unless the domain has a rebind_domain exception.
 OWT_SPLIT_ANSWER=${OWT_SPLIT_ANSWER:-10.77.0.53}
@@ -49,6 +54,17 @@ stop_pidfile() {
     if sudo kill -0 "$pid" 2>/dev/null; then sudo kill -9 "$pid" || true; fi
   fi
   sudo rm -f "$f"
+}
+
+# The control server, its PID in $1/hs/headscale.pid; waits for its socket.
+start_hs() {
+  local w=$1 hs
+  hs=$(cat "$w/hs/binary")
+  rm -f "$w/hs/headscale.sock"
+  nohup setsid "$hs" -c "$w/hs/config.yaml" serve >> "$w/hs/headscale.log" 2>&1 < /dev/null &
+  echo $! > "$w/hs/headscale.pid"
+  for _ in $(seq 1 30); do [ -S "$w/hs/headscale.sock" ] && break; sleep 0.5; done
+  [ -S "$w/hs/headscale.sock" ] || die "control server did not start: $(tail -5 "$w/hs/headscale.log")"
 }
 
 # The peer's daemon in owt-peer, its PID in $1/peer/flowmeshd.pid; waits for its socket.
@@ -80,6 +96,9 @@ up() {
   sudo ip -n owt-peer link add owtinet0 type dummy
   sudo ip -n owt-peer addr add "$OWT_INET_IP/32" dev owtinet0
   sudo ip -n owt-peer link set owtinet0 up
+  sudo ip -n owt-peer link add owtdns0 type dummy
+  sudo ip -n owt-peer addr add "$OWT_SPLIT_RESOLVER/32" dev owtdns0
+  sudo ip -n owt-peer link set owtdns0 up
   # The router's WAN is QEMU user networking, which connects from this host: here that address must
   # lead nowhere, so that only the peer (as exit node) reaches it.
   sudo ip route replace blackhole "$OWT_INET_IP/32"
@@ -139,7 +158,7 @@ dns:
     # A split-DNS domain, with its own resolver.
     split:
       $OWT_SPLIT_DOMAIN:
-        - $OWT_PEER_IP
+        - $OWT_SPLIT_RESOLVER
       $OWT_SPLIT_BAD:
         - 999.1.1.1
         - "fe80::1::2"
@@ -157,11 +176,9 @@ log:
   level: info
 disable_check_updates: true
 EOF
-  nohup setsid "$hs" -c "$w/hs/config.yaml" serve > "$w/hs/headscale.log" 2>&1 < /dev/null &
-  echo $! > "$w/hs/headscale.pid"
+  echo "$hs" > "$w/hs/binary"
+  start_hs "$w"
   local hsc="$hs -c $w/hs/config.yaml"
-  for _ in $(seq 1 30); do [ -S "$w/hs/headscale.sock" ] && break; sleep 0.5; done
-  [ -S "$w/hs/headscale.sock" ] || die "control server did not start: $(tail -5 "$w/hs/headscale.log")"
   $hsc users create lab >/dev/null
   local uid key
   uid=$($hsc users list -o json | jq -r '.[] | select(.name=="lab") | .id')
@@ -209,19 +226,21 @@ while True:
     except Exception:
         pass
 EOF2
-  sudo sh -c "ip netns exec owt-peer python3 '$w/peer/dns.py' '$OWT_PEER_IP' 53 '$OWT_SPLIT_DOMAIN' '$OWT_SPLIT_ANSWER' > '$w/peer/dns.log' 2>&1 & echo \$! > '$w/peer/dns.pid'"
+  sudo sh -c "ip netns exec owt-peer python3 '$w/peer/dns.py' '$OWT_SPLIT_RESOLVER' 53 '$OWT_SPLIT_DOMAIN' '$OWT_SPLIT_ANSWER' > '$w/peer/dns.log' 2>&1 & echo \$! > '$w/peer/dns.pid'"
 
   # The peer node accepts subnet routes, so its replies to the router's LAN go back over the mesh.
-  # It is also an exit node (approved below), for the router's LAN.
+  # It is also an exit node (approved below), for the router's LAN, and shares the split-DNS
+  # resolver's subnet.
   start_peer "$w"
   sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" up --login-server "http://$OWT_HOST_IP:$OWT_HS_PORT" \
-      --auth-key "$key" --hostname owt-peer --accept-routes --advertise-exit-node --accept-dns=false --timeout 30s
+      --auth-key "$key" --hostname owt-peer --accept-routes --advertise-exit-node --advertise-routes "$OWT_SPLIT_NET" \
+      --accept-dns=false --timeout 30s
   local peer_ip
   peer_ip=$(sudo "$w/peer/flowmesh" --socket "$w/peer/flowmeshd.sock" status --json | jq -r '.Self.TailscaleIPs[0]')
   [ -n "$peer_ip" ] && [ "$peer_ip" != null ] || die "peer did not get a mesh address"
   local peer_id
   peer_id=$($hsc nodes list -o json | jq -r '.[] | select(.given_name == "owt-peer" or .name == "owt-peer") | .id' | head -1)
-  $hsc nodes approve-routes -i "$peer_id" -r 0.0.0.0/0,::/0 >/dev/null || die "could not approve the peer's exit routes"
+  $hsc nodes approve-routes -i "$peer_id" -r "0.0.0.0/0,::/0,$OWT_SPLIT_NET" >/dev/null || die "could not approve the peer's routes"
 
   cat > "$w/lab.env" <<EOF
 OWT_LOGIN_SERVER=http://$OWT_HOST_IP:$OWT_HS_PORT
@@ -239,6 +258,8 @@ OWT_EXTRA_IP=$OWT_EXTRA_IP
 OWT_SPLIT_DOMAIN=$OWT_SPLIT_DOMAIN
 OWT_SPLIT_ANSWER=$OWT_SPLIT_ANSWER
 OWT_SPLIT_BAD=$OWT_SPLIT_BAD
+OWT_SPLIT_NET=$OWT_SPLIT_NET
+OWT_SPLIT_RESOLVER=$OWT_SPLIT_RESOLVER
 OWT_PEER_IP=$OWT_PEER_IP
 OWT_HOST_IP=$OWT_HOST_IP
 EOF
@@ -284,10 +305,31 @@ peer_start() {
   die "the peer did not get back to Running (state: $state)"
 }
 
+hs_stop() {
+  local w
+  w=$(realpath -m "$1")
+  # (Not stop_pidfile: the control server runs as this user, not root.)
+  local pid
+  pid=$(cat "$w/hs/headscale.pid" 2>/dev/null) || return 0
+  kill "$pid" 2>/dev/null || return 0
+  for _ in $(seq 1 30); do kill -0 "$pid" 2>/dev/null || break; sleep 0.5; done
+  kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+  return 0
+}
+
+hs_start() {
+  local w
+  w=$(realpath -m "$1")
+  kill -0 "$(cat "$w/hs/headscale.pid" 2>/dev/null)" 2>/dev/null && die "the control server is running"
+  start_hs "$w"
+}
+
 case "${1:-}" in
   up) [ $# -eq 4 ] || die "usage: lab.sh up <work_dir> <headscale_binary> <flowmesh-linux-x86_64.tar.gz>"; up "$2" "$3" "$4" ;;
   down) [ $# -eq 2 ] || die "usage: lab.sh down <work_dir>"; down "$2" ;;
   peer-stop) [ $# -eq 2 ] || die "usage: lab.sh peer-stop <work_dir>"; peer_stop "$2" ;;
   peer-start) [ $# -eq 2 ] || die "usage: lab.sh peer-start <work_dir>"; peer_start "$2" ;;
-  *) die "usage: lab.sh up|down|peer-stop|peer-start ..." ;;
+  hs-stop) [ $# -eq 2 ] || die "usage: lab.sh hs-stop <work_dir>"; hs_stop "$2" ;;
+  hs-start) [ $# -eq 2 ] || die "usage: lab.sh hs-start <work_dir>"; hs_start "$2" ;;
+  *) die "usage: lab.sh up|down|peer-stop|peer-start|hs-stop|hs-start ..." ;;
 esac

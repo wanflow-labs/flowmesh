@@ -88,6 +88,8 @@ cleanup() {
     while sudo ip netns exec owt-peer iptables -D "$c" -i owtpeer0 -j DROP 2>/dev/null; do :; done
   done
   [ -n "${rip:-}" ] && while sudo ip netns exec owt-peer iptables -D INPUT -i owtpeer0 -p icmp -s "$rip" -j DROP 2>/dev/null; do :; done
+  # (the control server, should this run stop while it is stopped)
+  [ -n "${hs_stopped:-}" ] && "$LAB" hs-start "$OWT_WORK" >/dev/null 2>&1
   # (the LAN address change below, should this run stop in the middle of it)
   if [ -n "${lan_moved:-}" ]; then
     sudo ip addr del "$lan_moved_host/24" dev owtbr0 2>/dev/null
@@ -715,8 +717,8 @@ check "LAN host reaches another mesh node through the router ($fw)" eventually 4
 # lan_dns is on when unset. The router's client runs with --accept-dns=false, so FlowMesh's resolver
 # answers only the mesh's own names: only the suffix is forwarded there (with a rebind_domain
 # exception); the console's extra record (outside the suffix, lab.sh) goes into dnsmasq's hosts
-# directory (/tmp/hosts/flowmesh); the split-DNS domain is forwarded to its own resolver (in
-# owt-peer, lab.sh). The user's own entries (one forwarding and one exception, set here) must be left
+# directory (/tmp/hosts/flowmesh); the split-DNS domain is forwarded to its own resolver (in a
+# subnet route of the peer, lab.sh: reachable through the mesh with accept_routes on, as it is here). The user's own entries (one forwarding and one exception, set here) must be left
 # alone through all of it, and survive removal.
 r "uci add_list dhcp.@dnsmasq[0].server=/corp.example/10.0.0.53; uci add_list dhcp.@dnsmasq[0].rebind_domain=corp.example
    uci commit dhcp; /etc/init.d/dnsmasq reload" >/dev/null 2>&1
@@ -725,12 +727,12 @@ peer_name="owt-peer.$suffix"
 check "watcher: a second instance of the service, with respawn" watcher_running
 ours_present() {
   dns_has server "/$suffix/100.100.100.100" && dns_has rebind_domain "$suffix" &&
-    dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_PEER_IP" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
+    dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_SPLIT_RESOLVER" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
     r "grep -qxF '$OWT_EXTRA_IP $OWT_EXTRA_NAME' /tmp/hosts/flowmesh"
 }
 check "dnsmasq reads the hosts directory /tmp/hosts (OpenWrt's default addn-hosts)" \
   r 'grep -qx "addn-hosts=/tmp/hosts" /var/etc/dnsmasq.conf*'
-check "LAN names: $suffix to 100.100.100.100, $OWT_SPLIT_DOMAIN to its resolver $OWT_PEER_IP, both with rebind exceptions; $OWT_EXTRA_NAME in /tmp/hosts/flowmesh" \
+check "LAN names: $suffix to 100.100.100.100, $OWT_SPLIT_DOMAIN to its resolver $OWT_SPLIT_RESOLVER, both with rebind exceptions; $OWT_EXTRA_NAME in /tmp/hosts/flowmesh" \
   eventually 30 ours_present
 dns_list server | sed 's/^/   | server: /'
 dns_list rebind_domain | sed 's/^/   | rebind_domain: /'
@@ -752,6 +754,21 @@ check "split domain $OWT_SPLIT_BAD with invalid resolvers (999.1.1.1, fe80::1::2
   ! dns_list server | grep -q "^/$OWT_SPLIT_BAD/" && ! dns_has rebind_domain "$OWT_SPLIT_BAD" &&
   r "logread | grep \"resolvers dnsmasq cannot use, skipped\" | grep -q 999.1.1.1" && r "pidof dnsmasq >/dev/null"'
 check "dnsmasq did not discard a mesh or split-domain answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\|$OWT_SPLIT_DOMAIN\)"'
+# The split domain's resolver is inside the peer's subnet route ($OWT_SPLIT_NET): without
+# accept_routes the router cannot reach it through the mesh (dnsmasq would send the queries out of
+# the uplink and lose the domain), so the domain is left to the normal DNS; turned on, forwarded.
+split_fwd() { dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_SPLIT_RESOLVER" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN"; }
+split_none() { ! dns_list server | grep -q "^/$OWT_SPLIT_DOMAIN/" && ! dns_has rebind_domain "$OWT_SPLIT_DOMAIN"; }
+check "lab: the router sees $OWT_SPLIT_NET as the peer's primary route" eval '
+  r "flowmesh status --json" | jq -e --arg n "$OWT_SPLIT_NET" "[(.Peer // {})[] | (.PrimaryRoutes // [])[]] | index(\$n)" >/dev/null'
+r 'uci set flowmesh.main.accept_routes=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "accept_routes=0: no server or rebind exception for $OWT_SPLIT_DOMAIN (its resolver is not reachable), the suffix still forwarded, logged" eventually 30 eval '
+  split_none && dns_has server "/$suffix/100.100.100.100" && r "logread | grep \"not reachable through the mesh\" | grep -q $OWT_SPLIT_DOMAIN"'
+rc=$(lan_rcode "host.$OWT_SPLIT_DOMAIN")
+echo "   | host.$OWT_SPLIT_DOMAIN with accept_routes=0, through the normal DNS: $rc"
+r 'uci set flowmesh.main.accept_routes=1; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "accept_routes=1: $OWT_SPLIT_DOMAIN forwarded to $OWT_SPLIT_RESOLVER again, and resolves" eventually 30 eval '
+  split_fwd && lan_resolves "host.$OWT_SPLIT_DOMAIN" "$OWT_SPLIT_ANSWER"'
 # Nothing changes: neither dnsmasq nor the settings are reloaded again.
 logs_count() { r "logread | grep -c '$1'"; }
 n_dns=$(logs_count 'LAN names updated'); n_apply=$(logs_count 're-applying the settings')
@@ -855,6 +872,8 @@ check "no exit node: the LAN host does not reach the Internet behind the peer, I
 r "uci set flowmesh.main.use_exit_node=$OWT_PEER_MESH_IP; uci commit flowmesh" >/dev/null 2>&1
 out=$(r "PEER=$OWT_PEER_MESH_IP sh -s" 2>&1 <<'EOF'
 FLOWMESH_EXIT_STATE=/tmp/owt-exit-state.json
+FLOWMESH_USER_STOPPED=/tmp/owt-user-stopped
+rm -f "$FLOWMESH_USER_STOPPED"
 . /lib/functions.sh
 . /usr/share/flowmesh/prefs.sh
 flowmesh() { echo "$*"; }
@@ -862,7 +881,7 @@ try() {
   rm -f "$FM_EXIT_STATE_FILE"
   [ "$2" = - ] || printf '%s' "$2" > "$FM_EXIT_STATE_FILE"
   flowmesh_load_prefs
-  echo "$1=$FM_EXIT_IP"
+  echo "$1=$FM_EXIT_IP${FM_EXIT_BLOCK:+/block}"
 }
 try missing -
 try garbage 'not json {'
@@ -870,6 +889,12 @@ try fallback "{\"want\":\"$PEER\",\"state\":\"offline_fallback\",\"since\":1}"
 try blocked "{\"want\":\"$PEER\",\"state\":\"offline_blocked\",\"since\":1}"
 try active "{\"want\":\"$PEER\",\"state\":\"active\",\"since\":1}"
 try other "{\"want\":\"100.64.0.250\",\"state\":\"offline_fallback\",\"since\":1}"
+try downblocked "{\"want\":\"$PEER\",\"state\":\"down_blocked\",\"since\":1}"
+try downfallback "{\"want\":\"$PEER\",\"state\":\"down_fallback\",\"since\":1}"
+try stopped "{\"want\":\"$PEER\",\"state\":\"stopped\",\"since\":1}"
+date +%s > "$FLOWMESH_USER_STOPPED"
+try userstop "{\"want\":\"$PEER\",\"state\":\"active\",\"since\":1}"
+rm -f "$FLOWMESH_USER_STOPPED"
 rm -f "$FM_EXIT_STATE_FILE"
 flowmesh_load_prefs
 echo "use: $(flowmesh_cli set)"
@@ -886,8 +911,8 @@ EOF
 )
 sed 's/^/   | /' <<< "$out"
 P=$OWT_PEER_MESH_IP
-check "exit-state.json: only offline_fallback for this exit node keeps it off (missing, unparsable, other states, another exit node: applied)" \
-  eval '[ "$(grep -E "^[a-z]+=" <<< "$out" | tr "\n" " ")" = "missing=$P garbage=$P fallback= blocked=$P active=$P other=$P " ]'
+check "exit-state.json: offline_fallback and down_fallback for this exit node keep it off, down_blocked keeps the kill switch rule, the user's stop keeps it off (missing, unparsable, other states, another exit node: applied)" \
+  eval '[ "$(grep -E "^[a-z]+=" <<< "$out" | tr "\n" " ")" = "missing=$P garbage=$P fallback= blocked=$P active=$P other=$P downblocked=$P/block downfallback= stopped=$P userstop= " ]'
 check "flowmesh_cli: an exit node in use is sent with LAN access and router mode, no stateful filtering" eval '
   grep -q -- "^use: set .*--exit-node-allow-lan-access=true --exit-node-forwarded-only=true --exit-node=$P$" <<< "$out" &&
   ! grep -q stateful <<< "$out"'
@@ -950,10 +975,19 @@ r "uci set flowmesh.main.exit_node=0; uci commit flowmesh; /etc/init.d/flowmesh 
 # used (not the previous one either). Kill switch on: the LAN gets no Internet at all (rule
 # flowmesh_exit_kill_switch, both families) until an apply succeeds; off: the LAN uses the uplink.
 check "with the exit node $P in use, the LAN's IPv4 is not sent out of the uplink" eval 'via_exit && ! lan4_direct'
-# (b) after a working exit node.
+# (b) after a working exit node. Meanwhile the LAN host tries the uplink every 0.2 s: with the kill
+# switch on not one attempt may get through, also not while the daemon drops the refused exit node
+# (the kill switch rule must be in place before that).
+sudo ip netns exec owt-lan timeout 25 bash -c "while :; do timeout 1 bash -c 'echo > /dev/tcp/$uplink_ip/22' 2>/dev/null && echo hit; sleep 0.2; done" > "$vm/leak.log" 2>&1 &
+leak_pid=$!
+sleep 1
 r "uci set flowmesh.main.use_exit_node=100.64.0.250; uci set flowmesh.main.hostname=$host-x; uci commit flowmesh
    /etc/init.d/flowmesh reload" > "$vm/reload.log" 2>&1
 st=$?
+wait "$leak_pid"
+check "  ... while the exit node is refused (kill switch on): no LAN connection reaches the uplink ($(grep -c hit "$vm/leak.log") of them did)" \
+  eval '! grep -q hit "$vm/leak.log"'
+
 sed 's/^/   | /' "$vm/reload.log"
 check "exit node not in the mesh (after $P), kill switch on: reload succeeds, the rest applied, $P dropped" eval '
   [ $st = 0 ] && [ "$(pref hostname)" = "$host-x" ] && [ "$(pref exit_node)" = "" ] && eventually 10 no_exit_rules'
@@ -1200,6 +1234,62 @@ r 'logread | grep -c "another apply has held"' | sed 's/^/   | lock waits given 
 r 'rm -f /tmp/owt-reloads.sh /tmp/owt-reloads.pid; uci delete flowmesh.main.kill_switch; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 eventually 20 via_exit
 
+# --- FlowMesh itself not running (the watcher) ---------------------------------------------------
+# (a) The control server cannot be reached while the daemon starts (here: it is stopped, then the
+# daemon is ended with SIGTERM and procd starts it again): the daemon has no map, so no exit
+# routing, and would let the LAN out of the uplink. Kill switch on (unset): the watcher puts the
+# kill switch rule in place within 15 s and keeps it until FlowMesh runs again.
+check "before: the exit node in use, kill switch on, no kill switch rule" eventually 20 eval 'back_now && kill_off'
+"$LAB" hs-stop "$OWT_WORK" >/dev/null
+hs_stopped=1
+r 'kill -TERM $(pidof flowmeshd)' >/dev/null 2>&1
+dt=$(time_until 30 eval 'kill_on && ! LAN4_T=1 lan4_direct')
+check "control server unreachable, the daemon restarted: the LAN off the uplink (kill switch rule) after $dt s (at most 15)" eval '
+  [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ]'
+check "  ... the daemon not Running, state down_blocked, IPv6 still blocked" eval '
+  [ "$(backend_state)" != Running ] && state_is down_blocked && v6_blocked'
+r '/etc/init.d/flowmesh reload' >/dev/null 2>&1
+sleep 10
+check "  ... still so 10 s and a reload later" eval 'kill_on && ! lan4_direct && state_is down_blocked && not_via_exit'
+"$LAB" hs-start "$OWT_WORK" >/dev/null
+hs_stopped=
+dt=$(time_until 120 eval 'back_now && kill_off')
+check "  ... control server back: active, the kill switch rule lifted, the LAN through the exit node again (after $dt s)" \
+  [ "${dt%+}" = "$dt" ]
+
+# (b) The user's own Disconnect and Log out (the LuCI helper) are not failures: the LAN uses the
+# uplink, without the kill switch rule or the IPv6 block, until the user reconnects. (Without the
+# LuCI package, the helper is run from a copy.)
+helper=/usr/libexec/flowmesh-luci
+if ! r "test -x $helper"; then
+  helper=/tmp/owt-flowmesh-luci
+  r "cat > $helper; chmod 0755 $helper" < "$(dirname "$0")/../luci-app-flowmesh/root/usr/libexec/flowmesh-luci"
+fi
+user_stop_on() { r 'test -s /etc/flowmesh/user-stopped'; }
+open_direct() { kill_off && v6_open && lan4_direct; }
+out=$(r "$helper down" 2>&1)
+check "Disconnect (helper down): the stop recorded; no kill switch rule, no IPv6 block, the LAN on the uplink; state stopped" eval '
+  grep -q "\"ok\": true" <<< "$out" && user_stop_on && eventually 15 eval "open_direct && state_is stopped"'
+sleep 12
+r '/etc/init.d/flowmesh reload' >/dev/null 2>&1
+check "  ... so 12 s and a reload later (no exit node sent to the daemon)" eval '
+  open_direct && state_is stopped && [ "$(pref exit_node)" = "" ] && [ "$(backend_state)" = Stopped ]'
+out=$(r "$helper reconnect" 2>&1)
+check "Reconnect: the stop removed, the LAN through the exit node again, IPv6 blocked, no kill switch rule" eval '
+  grep -q "\"ok\": true" <<< "$out" && ! user_stop_on && eventually 45 eval "back_now && v6_blocked && kill_off"'
+out=$(r "$helper logout" 2>&1)
+check "Log out (helper logout): no kill switch rule, no IPv6 block, the LAN on the uplink, state stopped" eval '
+  grep -q "\"ok\": true" <<< "$out" && eventually 15 eval "open_direct && state_is stopped"'
+sleep 12
+check "  ... still so 12 s later (logged out is NeedsLogin, as an expired key would be)" eval '
+  open_direct && [ "$(backend_state)" = NeedsLogin ]'
+out=$(r "$helper up $OWT_LOGIN_SERVER $OWT_AUTH_KEY $host" 2>&1)
+node_id=$($OWT_HS nodes list -o json 2>/dev/null | jq -r --arg h "$host" '[.[] | select(.given_name == $h or .name == $h)] | max_by(.id | tonumber) | .id')
+[ -n "$node_id" ] && $OWT_HS nodes approve-routes -i "$node_id" -r "192.168.1.0/24,$ula" >/dev/null 2>&1
+check "joined again (helper up): the stop removed, the LAN through the exit node, IPv6 blocked" eval '
+  grep -q "\"ok\": true" <<< "$out" && ! user_stop_on && eventually 60 eval "back_now && v6_blocked && kill_off"'
+r "rm -f /tmp/owt-flowmesh-luci" >/dev/null 2>&1
+
 # --- persistence -----------------------------------------------------------------------------
 sysupgrade_list=$(r 'sysupgrade -l')
 check "sysupgrade -l keeps /etc/config/flowmesh" grep -qx /etc/config/flowmesh <<< "$sysupgrade_list"
@@ -1212,6 +1302,19 @@ check "after reboot: back up" eventually 120 eval 'r true 2>/dev/null'
 check "after reboot: Running again without the key" eventually 60 backend_running
 check "after reboot: LAN host still reaches the mesh" eventually 45 lan_ping
 check "after reboot: LAN host through the exit node again, IPv6 blocked" eventually 60 eval 'via_exit && v6_blocked'
+
+# Disabled in the settings (enabled=0, without a reload) while the IPv6 block and a kill switch rule
+# are in place, then the power goes (reboot -f: no shutdown scripts, so the service's stop never
+# lifts them): the router comes up without FlowMesh and none of its rules.
+r '/usr/libexec/flowmesh-fw exit-kill-on; uci set flowmesh.main.enabled=0; uci commit flowmesh' >/dev/null 2>&1
+check "enabled=0 set, the IPv6 block and the kill switch rule in place" eval 'kill_on && v6_blocked'
+r 'sync; reboot -f' >/dev/null 2>&1
+eventually 60 eval '! r true 2>/dev/null'
+check "disabled, power lost: back up" eventually 120 eval 'r true 2>/dev/null'
+check "  ... no daemon, no IPv6 block or kill switch rule (UCI and $fw), the LAN on the uplink" eventually 60 eval '
+  no_daemon && kill_off && v6_open && lan4_direct'
+r 'uci delete flowmesh.main.enabled; uci commit flowmesh; /etc/init.d/flowmesh start' >/dev/null 2>&1
+check "  ... enabled again and started: through the exit node, IPv6 blocked" eventually 60 eval 'via_exit && v6_blocked'
 
 # --- the Linux installer ---------------------------------------------------------------------
 # The console's Linux install command run on the router must refuse and point to the feed, leaving
