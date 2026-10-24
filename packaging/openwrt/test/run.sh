@@ -1117,6 +1117,11 @@ check "  ... after a restart of the service: through the exit node again, exit n
 check "  ... and the LAN host reaches a mesh node through the router" eventually 45 lan_ping
 
 # --- the exit node going offline (the watcher) ------------------------------------------------
+# (accept_routes off for the timed switch-overs below: with it on, the peer's subnet route (the
+# split-DNS resolver's, lab.sh) comes and goes with the peer, and the router's daemon takes about
+# 5 s longer to reach the returning peer, which the 15 s limits are not about. On again before
+# persistence.)
+r 'uci set flowmesh.main.accept_routes=0; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 # The peer's daemon is stopped (lab.sh peer-stop, by PID) and started again. Kill switch on: the LAN
 # has no Internet while it is away and nothing is re-applied; the router itself keeps resolving
 # names and its control connection. Kill switch off: the LAN moves to the uplink and back, each
@@ -1289,6 +1294,7 @@ node_id=$($OWT_HS nodes list -o json 2>/dev/null | jq -r --arg h "$host" '[.[] |
 check "joined again (helper up): the stop removed, the LAN through the exit node, IPv6 blocked" eval '
   grep -q "\"ok\": true" <<< "$out" && ! user_stop_on && eventually 60 eval "back_now && v6_blocked && kill_off"'
 r "rm -f /tmp/owt-flowmesh-luci" >/dev/null 2>&1
+r 'uci set flowmesh.main.accept_routes=1; uci commit flowmesh; /etc/init.d/flowmesh reload' >/dev/null 2>&1
 
 # --- persistence -----------------------------------------------------------------------------
 sysupgrade_list=$(r 'sysupgrade -l')
