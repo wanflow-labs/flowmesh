@@ -8,7 +8,8 @@
 				"/usr/libexec/flowmesh-luci exitstate": [ "exec" ],
 				"/usr/libexec/flowmesh-luci netcheck": [ "exec" ],
 				"/usr/libexec/flowmesh-luci ping *": [ "exec" ],
-				"/usr/libexec/flowmesh-luci bugreport": [ "exec" ]
+				"/usr/libexec/flowmesh-luci bugreport": [ "exec" ],
+				"/usr/libexec/flowmesh-luci regions": [ "exec" ]
 			},
 			"ubus": {
 				"file": [ "exec" ]

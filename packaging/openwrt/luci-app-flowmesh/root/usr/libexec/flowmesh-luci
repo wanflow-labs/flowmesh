@@ -14,6 +14,8 @@
 #   netcheck                            `flowmesh netcheck --format=json`, unchanged
 #   ping <mesh_ip>                      {"ok":true,"lines":[...],"path":"direct|relay|peer-relay|unknown","ms":N|null}
 #   bugreport                           {"ok":true,"text":"..."}: the CLI's local report (nothing is sent)
+#   regions                             {"ok":true,"regions":[{"id":N,"code":"...","name":"..."}]}: the
+#                                       relay regions of the mesh map (netcheck names them by ID only)
 #
 # Error codes: invalid_arg, daemon_down, key_invalid (used, expired or unknown key), site_limit (the
 # control server refuses more nodes), unreachable (the control server cannot be connected to),
@@ -336,11 +338,34 @@ cmd_bugreport() {
 	exit 0
 }
 
+# The relay regions from the engine's map (`debug netmap`, its derpMap), by ID.
+cmd_regions() {
+	local id code name
+	run_cli debug netmap
+	check_cli
+	json_init
+	json_add_boolean ok 1
+	json_add_array regions
+	for id in $(printf '%s' "$OUT" | jsonfilter -e '@.derpMap.Regions[*].RegionID' 2>/dev/null); do
+		valid "$id" '^[1-9][0-9]{0,9}$' || continue
+		code=$(printf '%s' "$OUT" | jsonfilter -e "@.derpMap.Regions['$id'].RegionCode" 2>/dev/null)
+		name=$(printf '%s' "$OUT" | jsonfilter -e "@.derpMap.Regions['$id'].RegionName" 2>/dev/null)
+		json_add_object ""
+		json_add_int id "$id"
+		json_add_string code "$code"
+		json_add_string name "$name"
+		json_close_object
+	done
+	json_close_array
+	json_dump
+	exit 0
+}
+
 [ $# -ge 1 ] || fail invalid_arg "no command"
 cmd=$1
 shift
 case "$cmd" in
-status | reconnect | down | logout | apply | logs | exitstate | netcheck | bugreport)
+status | reconnect | down | logout | apply | logs | exitstate | netcheck | bugreport | regions)
 	[ $# -eq 0 ] || fail invalid_arg "$cmd takes no arguments"
 	;;
 esac
@@ -359,5 +384,6 @@ exitstate) cmd_exitstate ;;
 netcheck) cmd_netcheck ;;
 ping) cmd_ping "$@" ;;
 bugreport) cmd_bugreport ;;
+regions) cmd_regions ;;
 *) fail invalid_arg "unknown command" ;;
 esac

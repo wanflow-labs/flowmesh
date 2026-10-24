@@ -389,6 +389,32 @@ printf '%s\n' 'no matching peer' > "$work/np.txt"
 fake 1 "$work/np.txt"; run ping 100.64.0.9; expect_code unknown "ping, no matching peer"
 fake 0; echo 15 > "$work/sleep"; run ping 100.64.0.9; expect_code timeout "ping past the hard deadline"
 
+echo "== regions"
+cat > "$work/nm.json" <<'NM'
+{
+	"self": {"Name": "gw"},
+	"derpMap": {
+		"Regions": {
+			"1000": {"RegionID": 1000, "RegionCode": "r1000", "RegionName": "Seoul \"North\"", "Nodes": []},
+			"1001": {"RegionID": 1001, "RegionCode": "r1001", "RegionName": "", "Nodes": []},
+			"9": {"RegionID": "9;reboot", "RegionCode": "x", "RegionName": "bad id"}
+		},
+		"OmitDefaultRegions": true
+	}
+}
+NM
+fake 0 "$work/nm.json"; run regions
+expect_ok "regions"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[*].id' | tr '\n' ' ')" = "1000 1001 " ] && pass "regions: ids, a bad one skipped" || fail "regions ids (got: $res)"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[0].name')" = 'Seoul "North"' ] && pass "regions: name" || fail "regions name (got: $res)"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[1].code')" = r1001 ] && [ -z "$(printf '%s' "$res" | jsonfilter -e '@.regions[1].name')" ] && pass "regions: code, empty name" || fail "regions code (got: $res)"
+grep -qxF netmap "$work/calls" && pass "regions reads debug netmap" || fail "regions reads debug netmap"
+printf '%s\n' '{"derpMap":{"Regions":{}}}' > "$work/nm0.json"
+fake 0 "$work/nm0.json"; run regions
+[ "$(printf '%s' "$res" | jsonfilter -e '@.ok')" = true ] && [ "$(printf '%s' "$res" | jsonfilter -e '@.regions[*]' | wc -l)" = 0 ] && pass "regions: none" || fail "regions none (got: $res)"
+fake 1 "$fx/daemon-down.txt"; run regions; expect_code daemon_down "regions, daemon down"
+fake 0; run regions now; expect_code invalid_arg "regions with an argument"
+
 echo "== bugreport"
 printf '%s\n' '{' '  "version": "0.1.7",' '  "note": "quote \" back\\slash"' '}' > "$work/report.src"
 fake 0
