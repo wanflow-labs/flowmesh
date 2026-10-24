@@ -79,7 +79,7 @@ test('summarize: peers and their connection path', () => {
 	assert.deepEqual(by.gone.ips, ['100.64.0.9']);
 	assert.deepEqual(by.gone.primaryRoutes, ['10.9.0.0/24']);
 	assert.deepEqual(by.relayed.primaryRoutes, []); // PrimaryRoutes: null
-	assert.deepEqual(Object.keys(by[s.peers[0].name]).sort(), ['exitNode', 'exitNodeOption', 'ips', 'name', 'online', 'path', 'primaryRoutes', 'rxBytes', 'txBytes']);
+	assert.deepEqual(Object.keys(by[s.peers[0].name]).sort(), ['dnsLabel', 'exitNode', 'exitNodeOption', 'ips', 'name', 'online', 'path', 'primaryRoutes', 'rxBytes', 'txBytes']);
 	// sorted by name
 	assert.deepEqual(s.peers.map((p) => p.name), ['direct-one', 'fast', 'gone', 'quiet', 'relayed']);
 });
@@ -324,4 +324,42 @@ test('regionNames: the relay regions of `flowmesh-luci regions`', () => {
 	assert.deepEqual(st.regionNames({ ok: false, code: 'daemon_down' }), {});
 	assert.deepEqual(st.regionNames(null), {});
 	assert.deepEqual(st.regionNames({ ok: true, regions: [{ id: 'x', name: 'bad' }, null] }), {});
+});
+
+test('dnsLabel: the first label of a DNS name, the name the mesh answers for', () => {
+	assert.equal(st.dnsLabel('sungs-iphone.mesh.example.'), 'sungs-iphone');
+	assert.equal(st.dnsLabel('sungs-iphone.mesh.example'), 'sungs-iphone');
+	assert.equal(st.dnsLabel('gw.'), 'gw');
+	assert.equal(st.dnsLabel('GW-Home.Mesh.Example.'), 'GW-Home');
+	for (const bad of ['', '.', '..', null, undefined, 7, {}, ' '])
+		assert.equal(st.dnsLabel(bad), '', String(bad));
+});
+
+test('summarize: peers and self carry the DNS label (not the free-form HostName)', () => {
+	const s = st.summarize(status({
+		Self: node({ HostName: 'gw-home', DNSName: 'gw-home.mesh.example.' }),
+		Peer: {
+			k1: node({ HostName: "Sung's iPhone", DNSName: 'sungs-iphone.mesh.example.' }),
+			k2: node({ HostName: 'nodns', DNSName: undefined }),
+		},
+	}));
+	const by = Object.fromEntries(s.peers.map((p) => [p.name, p]));
+	assert.equal(by["Sung's iPhone"].dnsLabel, 'sungs-iphone');
+	assert.equal(by.nodns.dnsLabel, '');
+	assert.equal(s.dnsLabel, 'gw-home');
+	assert.equal(st.summarize(null).dnsLabel, '');
+});
+
+test('nameExample: a peer name the mesh resolves, or nothing', () => {
+	const peers = [
+		{ name: "Sung's iPhone", dnsLabel: 'sungs-iphone', online: false },
+		{ name: 'nas', dnsLabel: 'nas', online: true },
+	];
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, 'mesh.example'), 'nas.mesh.example');
+	assert.equal(st.nameExample({ peers: [peers[0]], dnsLabel: 'gw' }, 'mesh.example.'), 'sungs-iphone.mesh.example');
+	assert.equal(st.nameExample({ peers: [{ name: 'x', dnsLabel: '', online: true }], dnsLabel: 'gw' }, 'mesh.example'), 'gw.mesh.example');
+	assert.equal(st.nameExample({ peers: [{ name: 'x', dnsLabel: '', online: true }], dnsLabel: '' }, 'mesh.example'), '');
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, ''), '');
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, null), '');
+	assert.equal(st.nameExample(null, 'mesh.example'), '');
 });

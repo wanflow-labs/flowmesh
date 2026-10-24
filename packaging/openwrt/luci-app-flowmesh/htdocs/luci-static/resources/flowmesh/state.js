@@ -208,6 +208,15 @@ function network(cidr) {
 	return format(bytes, p.len);
 }
 
+// The first label of a DNS name ("sungs-iphone.mesh.example." -> "sungs-iphone"): the name the
+// mesh's resolver answers for, unlike HostName (free text such as "Sung's iPhone"). '' without one.
+function dnsLabel(name) {
+	if (typeof name != 'string')
+		return '';
+
+	return name.trim().replace(/\.+$/, '').split('.')[0];
+}
+
 function peerName(p) {
 	if (p.HostName)
 		return String(p.HostName);
@@ -239,7 +248,8 @@ return baseclass.extend({
 					rxBytes: count(p.RxBytes),
 					txBytes: count(p.TxBytes),
 					exitNodeOption: p.ExitNodeOption === true,
-					exitNode: p.ExitNode === true
+					exitNode: p.ExitNode === true,
+					dnsLabel: dnsLabel(p.DNSName)
 				});
 			}
 		}
@@ -253,7 +263,8 @@ return baseclass.extend({
 			peers: peers,
 			primaryRoutes: list(self.PrimaryRoutes).slice(),
 			exitNodeOption: self.ExitNodeOption === true,
-			haveNodeKey: s.HaveNodeKey === true
+			haveNodeKey: s.HaveNodeKey === true,
+			dnsLabel: state == 'down' ? '' : dnsLabel(self.DNSName)
 		};
 	},
 
@@ -432,6 +443,22 @@ return baseclass.extend({
 			ipv4: String(r.GlobalV4 || ''),
 			ipv6: String(r.GlobalV6 || '')
 		};
+	},
+
+	dnsLabel: dnsLabel,
+
+	// A mesh name to try from the LAN ("nas.mesh.example"): an online peer's DNS label (else any
+	// peer's, else this router's) with the mesh suffix; '' when there is no such name or no suffix.
+	nameExample: function(sum, suffix) {
+		suffix = (typeof suffix == 'string') ? suffix.trim().replace(/^\.+|\.+$/g, '') : '';
+
+		if (!sum || !suffix)
+			return '';
+
+		var peers = list(sum.peers).filter(function(p) { return p && p.dnsLabel; });
+		var label = (peers.filter(function(p) { return p.online; })[0] || peers[0] || {}).dnsLabel || sum.dnsLabel || '';
+
+		return label ? label + '.' + suffix : '';
 	},
 
 	// The network an interface address belongs to: "192.168.1.1/24" -> "192.168.1.0/24"; null when

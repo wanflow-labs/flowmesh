@@ -335,13 +335,12 @@ return view.extend({
 
 		setContent(this.exitStateBox, el('span', { 'class': fm.exitStateClass(state) }, fm.exitStateText(state, fm.exitName(this.status, want))));
 
-		/* a name to try */
+		/* a name to try: a DNS label the mesh answers for (HostName is free text) */
 		var suffix = (this.status && typeof this.status.MagicDNSSuffix == 'string') ? this.status.MagicDNSSuffix : '';
-		var peer = sum.peers.filter(function(p) { return p.online; })[0] || sum.peers[0];
-		var host = peer ? peer.name : sum.name;
+		var example = fmstate.nameExample(sum, suffix);
 
-		setContent(this.dnsBox, suffix && host
-			? el('span', {}, [ el('code', {}, 'ping ' + host + '.' + suffix), el('div', { 'class': 'flowmesh-hint' }, _('Run this on a LAN device.')) ])
+		setContent(this.dnsBox, example
+			? el('span', {}, [ el('code', {}, 'ping ' + example), el('div', { 'class': 'flowmesh-hint' }, _('Run this on a LAN device.')) ])
 			: el('span', { 'class': 'flowmesh-muted' }, _('No mesh names yet.')));
 	},
 
