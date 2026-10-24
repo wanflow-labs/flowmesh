@@ -33,7 +33,7 @@
 #      the normal DNS;
 #    - split-DNS domains: list server '/<domain>/<resolver>' straight to the resolvers the mesh
 #      names for them (IPv4/IPv6 addresses, optionally with a port; other kinds are skipped and
-#      logged), without a rebind exception.
+#      logged), and list rebind_domain '<domain>' (intranet answers are usually private).
 #    In every dnsmasq section. Only the UCI entries it added are ever changed or removed: they are
 #    listed in /etc/flowmesh/lan-dns.owned ("<section> <option> <value>" lines; on flash like
 #    /etc/config/dhcp, and both survive a sysupgrade). An entry the user already has stays the
@@ -331,16 +331,21 @@ dns_splits() {
 }
 
 # dns_wanted <suffix> <splits ("<domain> <resolver>" lines)>: the UCI entries, "<option> <value>"
-# lines: the suffix to FlowMesh's resolver with a rebind exception (the answers are mesh addresses),
-# each split domain to its own resolvers (no exception: the operator's resolvers, normal rules).
+# lines: the suffix to FlowMesh's resolver with a rebind exception (the answers are mesh addresses);
+# each split domain to its own resolvers, also with a rebind exception (configured by the operator in
+# the console; intranet split DNS typically answers private addresses, which dnsmasq would drop).
 dns_wanted() {
-	local d r
+	local d r last=
 	if [ -n "$1" ]; then
 		echo "server /$1/$RESOLVER"
 		echo "rebind_domain $1"
 	fi
+	# (Sorted by domain: one exception per domain.)
 	printf '%s\n' "$2" | while read -r d r; do
-		[ -n "$r" ] && echo "server /$d/$r"
+		[ -n "$r" ] || continue
+		echo "server /$d/$r"
+		[ "$d" = "$last" ] || echo "rebind_domain $d"
+		last=$d
 	done
 }
 

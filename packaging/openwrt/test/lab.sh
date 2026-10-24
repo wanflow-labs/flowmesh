@@ -30,9 +30,9 @@ OWT_INET_PORT=${OWT_INET_PORT:-18492}
 OWT_EXTRA_NAME=${OWT_EXTRA_NAME:-app.owt-extra.test}   # extra DNS record (not under the mesh suffix)
 OWT_EXTRA_IP=${OWT_EXTRA_IP:-100.64.0.200}
 OWT_SPLIT_DOMAIN=${OWT_SPLIT_DOMAIN:-corp.owt-split.test}   # split DNS: answered by a resolver in owt-peer
-# Its answer for every name in that domain: an ordinary public address. (Split domains get no
-# rebind exception, and dnsmasq 2.89 and later also discard special-use ranges such as TEST-NET.)
-OWT_SPLIT_ANSWER=${OWT_SPLIT_ANSWER:-9.9.9.53}
+# Its answer for every name in that domain: a private address, as intranet split DNS gives, which
+# dnsmasq's rebind protection discards unless the domain has a rebind_domain exception.
+OWT_SPLIT_ANSWER=${OWT_SPLIT_ANSWER:-10.77.0.53}
 
 die() { echo "lab: $*" >&2; exit 1; }
 

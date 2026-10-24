@@ -158,7 +158,7 @@ dns_count() { dns_list "$1" | grep -cxF "$2"; }
 # Ours: the suffix forwarded to FlowMesh's resolver, the split domain to its resolver, the owned
 # list and the hosts file with the extra records.
 ours_absent() {
-  ! dns_list server | grep -qE "/100\.100\.100\.100\$|^/$OWT_SPLIT_DOMAIN/" &&
+  ! dns_list server | grep -qE "/100\.100\.100\.100\$|^/$OWT_SPLIT_DOMAIN/" && ! dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
     r '! test -e /etc/flowmesh/lan-dns.owned && ! test -e /tmp/hosts/flowmesh'
 }
 # The user's own entries (set below): there, once each.
@@ -570,28 +570,28 @@ peer_name="owt-peer.$suffix"
 check "watcher: a second instance of the service, with respawn" watcher_running
 ours_present() {
   dns_has server "/$suffix/100.100.100.100" && dns_has rebind_domain "$suffix" &&
-    dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_PEER_IP" &&
+    dns_has server "/$OWT_SPLIT_DOMAIN/$OWT_PEER_IP" && dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
     r "grep -qxF '$OWT_EXTRA_IP $OWT_EXTRA_NAME' /tmp/hosts/flowmesh"
 }
 check "dnsmasq reads the hosts directory /tmp/hosts (OpenWrt's default addn-hosts)" \
   r 'grep -qx "addn-hosts=/tmp/hosts" /var/etc/dnsmasq.conf*'
-check "LAN names: $suffix to 100.100.100.100 with a rebind exception, $OWT_SPLIT_DOMAIN to its resolver $OWT_PEER_IP, $OWT_EXTRA_NAME in /tmp/hosts/flowmesh" \
+check "LAN names: $suffix to 100.100.100.100, $OWT_SPLIT_DOMAIN to its resolver $OWT_PEER_IP, both with rebind exceptions; $OWT_EXTRA_NAME in /tmp/hosts/flowmesh" \
   eventually 30 ours_present
 dns_list server | sed 's/^/   | server: /'
 dns_list rebind_domain | sed 's/^/   | rebind_domain: /'
 r 'cat /tmp/hosts/flowmesh' | sed 's/^/   | \/tmp\/hosts\/flowmesh: /'
-check "LAN names: nothing else forwarded to 100.100.100.100, no exception for the split domain or the extra record, the user's entries untouched" eval '
-  [ "$(dns_list server | grep -c "/100\.100\.100\.100$")" = 1 ] && ! dns_has rebind_domain "$OWT_SPLIT_DOMAIN" &&
+check "LAN names: nothing else forwarded to 100.100.100.100, no entry for the extra record (hosts file only), the user's entries untouched" eval '
+  [ "$(dns_list server | grep -c "/100\.100\.100\.100$")" = 1 ] &&
   ! dns_has rebind_domain "$OWT_EXTRA_NAME" && ! dns_list server | grep -q "^/$OWT_EXTRA_NAME/" && user_dns_kept'
 check "LAN host resolves $peer_name through the router: $OWT_PEER_MESH_IP" eventually 20 lan_resolves "$peer_name" "$OWT_PEER_MESH_IP"
 check "LAN host resolves the console's extra record $OWT_EXTRA_NAME: $OWT_EXTRA_IP" eventually 20 lan_resolves "$OWT_EXTRA_NAME" "$OWT_EXTRA_IP"
 rc=$(lan_rcode "sub.$OWT_EXTRA_NAME")
 check "  ... a name under it is not failed by FlowMesh's resolver: it goes to the normal DNS ($rc)" eval '[ -n "$rc" ] && [ "$rc" != SERVFAIL ]'
-check "LAN host resolves host.$OWT_SPLIT_DOMAIN through the split domain's resolver: $OWT_SPLIT_ANSWER" \
+check "LAN host resolves host.$OWT_SPLIT_DOMAIN through the split domain's resolver: $OWT_SPLIT_ANSWER (private: the exception works)" \
   eventually 20 lan_resolves "host.$OWT_SPLIT_DOMAIN" "$OWT_SPLIT_ANSWER"
 # (dnsmasq 2.90 and later, OpenWrt 24.10 on, discard mesh addresses as a rebind without the
 # rebind_domain exceptions, and log it.)
-check "dnsmasq did not discard a mesh answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\)"'
+check "dnsmasq did not discard a mesh or split-domain answer as a DNS rebind" eval '! r "logread" | grep -q "DNS-rebind attack detected: .*\($suffix\|$OWT_EXTRA_NAME\|$OWT_SPLIT_DOMAIN\)"'
 # Nothing changes: neither dnsmasq nor the settings are reloaded again.
 logs_count() { r "logread | grep -c '$1'"; }
 n_dns=$(logs_count 'LAN names updated'); n_apply=$(logs_count 're-applying the settings')

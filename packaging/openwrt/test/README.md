@@ -30,7 +30,7 @@ and `ip-full` from the official package feeds through QEMU user networking).
 | "The Internet" behind that exit node: an HTTP server answering with the client's address | 198.51.100.1:18492, a dummy device in `owt-peer`; blackholed on the host, so the router's uplink cannot reach it |
 | The router's LAN: bridge `owtbr0` (the host reaches the VM over SSH here) | 192.168.1.2/24 |
 | A LAN client, default route via the router | namespace `owt-lan`, 192.168.1.50 |
-| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.231.0.2:53 in `owt-peer` (9.9.9.53 for every name in it: split domains get no rebind exception, so the answer must not be a private or special-use address) |
+| DNS on the control server: an extra record outside the mesh suffix and a split-DNS domain | `app.owt-extra.test` -> 100.64.0.200; `corp.owt-split.test`, resolved by a small DNS server on 10.231.0.2:53 in `owt-peer` (10.77.0.53 for every name in it: a private answer, which only gets through dnsmasq's rebind protection because the split domain has a rebind exception) |
 
 It writes `<work_dir>/lab.env` (control server URL, a reusable pre-auth key, the peer's mesh address).
 The addresses can be changed with the `OWT_*` variables at the top of `lab.sh`.
@@ -68,7 +68,8 @@ consistency re-apply, the domain set, dnsmasq entries next to the user's, SIGTER
 for real. Mesh names: with a user's own `server='/corp.example/10.0.0.53'` and `rebind_domain`
 in place, dnsmasq forwards only the mesh suffix to 100.100.100.100 (with a rebind exception: the
 client runs with `--accept-dns=false`, so its resolver fails every name that is not the mesh's),
-the extra record is in `/tmp/hosts/flowmesh`, and the split-DNS domain goes to its own resolver; the
+the extra record is in `/tmp/hosts/flowmesh`, and the split-DNS domain goes to its own resolver (with
+a rebind exception: its private answer must get through); the
 LAN host resolves the peer's mesh name, the extra record (a name under it is not failed) and a name
 in the split domain through the router (`dig`); nothing is reloaded while nothing changes;
 `lan_dns=0`, logging out, `stop` and package removal remove the watcher's entries and hosts file

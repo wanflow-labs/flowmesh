@@ -251,10 +251,11 @@ expect "hosts: A and AAAA records only, valid names and addresses, case and trai
 expect "splits: each resolver as dnsmasq takes it (port as #port), reverse zones and invalid names left out, URLs and garbage skipped and listed" \
 	"- corp.example 1.2.3.4;,- corp.example https://dns.example/dns-query,corp.example 10.0.0.53,corp.example 10.0.0.54#5353,corp.example fd00::53#53,corp.example fd00::54," \
 	"$(dns_splits "$js" | tr '\n' ',')"
-expect "entries: the suffix to FlowMesh's resolver with a rebind exception, split domains to their own resolvers without one" \
-	"server /owt.test/100.100.100.100,rebind_domain owt.test,server /corp.example/10.0.0.53,server /corp.example/10.0.0.54#5353," \
+expect "entries: the suffix to FlowMesh's resolver, split domains to their own resolvers; one rebind exception per domain" \
+	"server /owt.test/100.100.100.100,rebind_domain owt.test,server /corp.example/10.0.0.53,rebind_domain corp.example,server /corp.example/10.0.0.54#5353,server /lab.example/10.0.0.9,rebind_domain lab.example," \
 	"$(dns_wanted owt.test "corp.example 10.0.0.53
-corp.example 10.0.0.54#5353" | tr '\n' ',')"
+corp.example 10.0.0.54#5353
+lab.example 10.0.0.9" | tr '\n' ',')"
 expect "entries: no suffix, no splits: none" "" "$(dns_wanted "" "")"
 expect "not JSON: nothing" "||" "$(dns_suffix 'not json {')|$(dns_hosts 'not json {')|$(dns_splits 'not json {')"
 
@@ -266,7 +267,8 @@ dnsmasq_reloads() { cat "$work/dnsmasq-reloads" 2> /dev/null | wc -l | tr -d ' '
 hosts() { cat "$work/hosts/flowmesh" 2> /dev/null | grep -v '^#' | tr '\n' ','; }
 E_SUF='server /owt.test/100.100.100.100
 rebind_domain owt.test'
-E_SPLIT='server /corp.owt-split.test/10.0.0.53'
+E_SPLIT='server /corp.owt-split.test/10.0.0.53
+rebind_domain corp.owt-split.test'
 H1='100.64.0.200 app.owt-extra.test'
 # The user's own entries, one of them the same as one of ours.
 uci add_list $d.server=/corp.example/10.0.0.53
@@ -276,11 +278,11 @@ uci commit dhcp
 uci set $d.owt_staged=1   # a user change staged, not applied
 dns_reconcile "$E_SUF
 $E_SPLIT" "$H1"
-expect "added: the suffix's server and rebind_domain, the split's server (the user's same server entry not doubled)" "1 1 1" \
-	"$(count server /owt.test/100.100.100.100) $(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53)"
+expect "added: the suffix's and the split domain's server and rebind_domain (the user's same server entry not doubled)" "1 1 1 1" \
+	"$(count server /owt.test/100.100.100.100) $(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53) $(count rebind_domain corp.owt-split.test)"
 expect "  ... in /etc/config/dhcp (committed)" "1" "$(grep -c "list server '/corp.owt-split.test/10.0.0.53'" /etc/config/dhcp)"
-expect "  ... recorded as ours: two entries (not the user's server /owt.test/)" \
-	"$sec rebind_domain owt.test,$sec server /corp.owt-split.test/10.0.0.53," \
+expect "  ... recorded as ours: three entries (not the user's server /owt.test/)" \
+	"$sec rebind_domain corp.owt-split.test,$sec rebind_domain owt.test,$sec server /corp.owt-split.test/10.0.0.53," \
 	"$(sort "$work/lan-dns.owned" | tr '\n' ',')"
 expect "  ... the hosts file has the extra record" "$H1," "$(hosts)"
 expect "  ... dnsmasq reloaded once (for both)" "1" "$(dnsmasq_reloads)"
@@ -290,8 +292,8 @@ dns_reconcile "$E_SPLIT
 $E_SUF" "$H1"
 expect "same again: nothing changed, no reload" "1" "$(dnsmasq_reloads)"
 dns_reconcile "$E_SUF" "$H1"
-expect "a split domain gone: its entry removed, the rest kept, reloaded" "0 1 1 2" \
-	"$(count server /corp.owt-split.test/10.0.0.53) $(count rebind_domain owt.test) $(count server /owt.test/100.100.100.100) $(dnsmasq_reloads)"
+expect "a split domain gone: its server and exception removed, the rest kept, reloaded" "0 0 1 1 2" \
+	"$(count server /corp.owt-split.test/10.0.0.53) $(count rebind_domain corp.owt-split.test) $(count rebind_domain owt.test) $(count server /owt.test/100.100.100.100) $(dnsmasq_reloads)"
 dns_reconcile "$E_SUF" "$H1
 fd7a:115c:a1e0::c8 app.owt-extra.test"
 expect "hosts content changed (UCI not): file replaced, reloaded" "$H1,fd7a:115c:a1e0::c8 app.owt-extra.test, 3" "$(hosts) $(dnsmasq_reloads)"
@@ -323,25 +325,25 @@ uci -q delete flowmesh.main.use_exit_node
 uci commit flowmesh
 peer_status true
 printf '%s\n' '{"suffix":"owt.test","extraRecords":[{"name":"app.owt-extra.test","type":"A","value":"100.64.0.200"}],"routes":{"corp.owt-split.test":["10.0.0.53"],"64.100.in-addr.arpa":[]}}' > "$work/dns"
-present() { echo "$(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53) $(hosts)"; }
+present() { echo "$(count rebind_domain owt.test) $(count server /corp.owt-split.test/10.0.0.53)$(count rebind_domain corp.owt-split.test) $(hosts)"; }
 DNS_AT=0 NOW=5000
 watch_tick
-expect "loop, logged in, lan_dns on: the suffix, the split domain, the hosts file" "1 1 $H1," "$(present)"
+expect "loop, logged in, lan_dns on: the suffix, the split domain, the hosts file" "1 11 $H1," "$(present)"
 expect "  ... nothing forwarded to FlowMesh's resolver but the suffix" "1" \
 	"$(uci -q -X show "$d.server" | tr ' ' '\n' | grep -c '/100\.100\.100\.100')"
 uci set flowmesh.main.lan_dns=0
 NOW=5003; watch_tick
-expect "  ... lan_dns=0: not before the next name check (10 s)" "1 1 $H1," "$(present)"
+expect "  ... lan_dns=0: not before the next name check (10 s)" "1 11 $H1," "$(present)"
 NOW=5010; watch_tick
-expect "  ... lan_dns=0: removed at the next name check" "0 0 " "$(present)"
+expect "  ... lan_dns=0: removed at the next name check" "0 00 " "$(present)"
 uci set flowmesh.main.lan_dns=1
 NOW=5020; watch_tick
 printf '{"BackendState":"Starting"}\n' > "$work/status"
 NOW=5030; watch_tick
-expect "  ... starting: left as it was" "1 1 $H1," "$(present)"
+expect "  ... starting: left as it was" "1 11 $H1," "$(present)"
 printf '{"BackendState":"NeedsLogin"}\n' > "$work/status"
 NOW=5040; watch_tick
-expect "  ... logged out: removed" "0 0 " "$(present)"
+expect "  ... logged out: removed" "0 00 " "$(present)"
 uci commit flowmesh
 
 # The real process: SIGTERM removes its entries, the hosts file and the state file.
@@ -351,14 +353,14 @@ i=0; while [ "$i" -lt 50 ]; do echo ok; i=$((i + 1)); done > "$work/ping"
 FLOWMESH_WATCH_LIB= sh "$src" &
 wpid=$!
 i=0
-while [ "$i" -lt 10 ] && [ "$(present)" != "1 1 $H1," ]; do sleep 1; i=$((i + 1)); done
+while [ "$i" -lt 10 ] && [ "$(present)" != "1 11 $H1," ]; do sleep 1; i=$((i + 1)); done
 sleep 1
-expect "process: entries and hosts file added, state file written" "1 1 $H1, active" \
+expect "process: entries and hosts file added, state file written" "1 11 $H1, active" \
 	"$(present) $(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
 t0=$(date +%s)
 kill -TERM "$wpid"
 wait "$wpid"
-expect "  ... SIGTERM: exits within 5 s, entries and hosts file removed, state file deleted" "yes 0 0  no" \
+expect "  ... SIGTERM: exits within 5 s, entries and hosts file removed, state file deleted" "yes 0 00  no" \
 	"$([ $(($(date +%s) - t0)) -le 5 ] && echo yes || echo no) $(present) $([ -e "$work/exit-state.json" ] && echo yes || echo no)"
 wpid=
 dns_reconcile "rebind_domain again.test" "$H1"
