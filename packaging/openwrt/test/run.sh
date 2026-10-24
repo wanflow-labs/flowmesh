@@ -86,6 +86,7 @@ cleanup() {
   for c in INPUT FORWARD; do
     while sudo ip netns exec owt-peer iptables -D "$c" -i owtpeer0 -j DROP 2>/dev/null; do :; done
   done
+  [ -n "$rip" ] && while sudo ip netns exec owt-peer iptables -D INPUT -i owtpeer0 -p icmp -s "$rip" -j DROP 2>/dev/null; do :; done
   rm -rf "$vm"
 }
 trap cleanup EXIT
@@ -965,6 +966,22 @@ peer_tun_drop D
 dt=$(time_until 30 back_now)
 check "  ... data plane back: active, the LAN through it again after $dt s (at most 15)" eval '
   [ "${dt%+}" = "$dt" ] && [ "$dt" -le 15 ]'
+
+# ICMP from the router to the exit node filtered (as a mesh ACL may do) from the moment it is
+# chosen: no echo has ever been answered for it, so a discovery answer alone keeps it active (it
+# must not stay "offline" for good and, with the kill switch on, keep the LAN off the Internet).
+peer_icmp_drop() { peer_ipt -"$1" INPUT -i owtpeer0 -p icmp -s "$rip" -j DROP; }
+peer_icmp_drop I
+n_note=$(logs_count 'not ICMP through the tunnel')
+r "uci delete flowmesh.main.use_exit_node; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+eventually 20 state_is none
+r "uci set flowmesh.main.use_exit_node=$P; uci commit flowmesh; /etc/init.d/flowmesh reload" >/dev/null 2>&1
+check "ICMP to the exit node filtered from the start: the router's echo gets no answer" eval '! r "ping -c 2 -W 2 $P" >/dev/null 2>&1'
+sleep 18
+check "  ... the exit node stays active (discovery answers), the LAN goes through it" eval '
+  state_is active && via_exit'
+check "  ... noted once in the log, not on every probe" eval '[ "$(logs_count "not ICMP through the tunnel")" = $((n_note + 1)) ]'
+peer_icmp_drop D
 
 # Applies running while the watcher switches over (LuCI's apply is the service's reload): one apply
 # at a time (/var/lock/flowmesh-apply.lock), so the end state agrees everywhere.

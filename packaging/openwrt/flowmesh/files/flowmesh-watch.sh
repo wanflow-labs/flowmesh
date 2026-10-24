@@ -17,8 +17,10 @@
 #    has lost its exit node. The IP ping is sent only once discovery answers: IP packets sent to an
 #    exit node that is away make the tunnel back off its handshakes, and it then comes back about
 #    10 s late. (The IP ping goes from the router itself, so through the mesh route of the main
-#    table, not the exit node's table. An ACL that refuses the router ICMP to the exit node would
-#    make it look offline.)
+#    table, not the exit node's table.) A mesh ACL may refuse the router ICMP to the exit node: until
+#    an echo has been answered once for the chosen exit node (since it was chosen, or since the
+#    watcher started), a discovery answer alone counts, and that is logged once. Otherwise a filter
+#    would keep the exit node "offline" for good (with the kill switch on: the LAN without Internet).
 #    With the kill switch on, offline only changes the state (the daemon itself drops the LAN's
 #    Internet traffic while its exit node is away). With it off, it falls back to the local uplink:
 #    it writes the state "offline_fallback" first and then re-applies the settings
@@ -134,10 +136,21 @@ reapply() {
 }
 
 # One probe of the exit node: true when it answers discovery and then an ICMP echo through the
-# tunnel (see 1. above).
+# tunnel; discovery alone while no echo has been answered yet for this exit node (see 1. above).
+# E_ICMP: an echo was answered; E_ICMP_NOTED: the "filtered" note was logged.
 probe() {
-	bounded $((PERIOD + 2)) flowmesh ping -c 1 --until-direct=false --timeout=2s "$E_WANT" > /dev/null 2>&1 &&
-		bounded $((PERIOD + 2)) ping -c 1 -W 2 "$E_WANT" > /dev/null 2>&1
+	bounded $((PERIOD + 2)) flowmesh ping -c 1 --until-direct=false --timeout=2s "$E_WANT" > /dev/null 2>&1 ||
+		return 1
+	if bounded $((PERIOD + 2)) ping -c 1 -W 2 "$E_WANT" > /dev/null 2>&1; then
+		E_ICMP=1
+		return 0
+	fi
+	[ -n "$E_ICMP" ] && return 1
+	if [ -z "$E_ICMP_NOTED" ]; then
+		E_ICMP_NOTED=1
+		log "exit node $E_WANT answers, but not ICMP through the tunnel (filtered?): checking it without the data-plane probe until it does"
+	fi
+	return 0
 }
 
 # adopt_recorded <want>: take over the state an earlier run of the watcher recorded for <want> (it
@@ -161,6 +174,7 @@ exit_tick() {
 	if [ "$want" != "$E_WANT" ] || [ -z "$E_STATE" ]; then
 		E_WANT=$want
 		E_OK=0 E_FAIL=0 E_ABSENT=0
+		E_ICMP= E_ICMP_NOTED=
 		E_STATE=
 		if [ -z "$want" ]; then
 			set_state none

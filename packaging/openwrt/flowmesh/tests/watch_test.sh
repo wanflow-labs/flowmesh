@@ -89,7 +89,7 @@ export FLOWMESH_EXIT_STATE=$work/exit-state.json FLOWMESH_DNS_OWNED=$work/lan-dn
 . "$src"
 NOW=1000
 now() { echo "$NOW"; }
-logger() { :; }
+logger() { echo "$*" >> "$work/log"; }   # (the watcher's log, for the notes it must write once)
 
 EXIT=100.64.0.1
 peer_status() {   # peer_status <exit node option true|false>
@@ -100,20 +100,26 @@ no_peer_status() {
 }
 # fresh <kill_switch>: a watcher that has seen nothing yet, exit node $EXIT chosen.
 fresh() {
-	E_WANT= E_STATE= E_OK= E_FAIL= E_ABSENT= E_FIX_AT= E_SINCE=
-	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/disco" "$work/calls" "$work/icmp"
+	E_WANT= E_STATE= E_OK= E_FAIL= E_ABSENT= E_FIX_AT= E_SINCE= E_ICMP= E_ICMP_NOTED=
+	rm -f "$work/exit-state.json" "$work/reloads" "$work/ping" "$work/disco" "$work/calls" "$work/icmp" "$work/log"
 	uci set flowmesh.main.use_exit_node=$EXIT
 	uci set flowmesh.main.exit_node=0
 	if [ "$1" = - ]; then uci -q delete flowmesh.main.kill_switch; else uci set flowmesh.main.kill_switch="$1"; fi
 	peer_status true
 }
-# ticks <answers...>: one exit_tick per answer (ok/fail/-, "-" when no probe is expected), 3 s apart;
-# sets $got to the states after each. (Not in a subshell: the watcher's state carries over.)
+# ticks <answers...>: one exit_tick per answer, 3 s apart: ok (discovery and the ICMP echo
+# answer), fail (the exit node away: discovery does not answer, so no echo), nodata (discovery
+# answers, the echo does not), "-" (no probe expected); sets $got to the states after each. (Not in a
+# subshell: the watcher's state carries over.)
 ticks() {
 	local a
 	got=
 	for a in "$@"; do
-		[ "$a" = - ] || echo "$a" >> "$work/ping"
+		case "$a" in
+		ok) echo ok >> "$work/disco"; echo ok >> "$work/ping" ;;
+		fail) echo fail >> "$work/disco" ;;
+		nodata) echo ok >> "$work/disco"; echo fail >> "$work/ping" ;;
+		esac
 		STATUS_BACKEND=$(jsonfilter -i "$work/status" -e @.BackendState)
 		exit_tick "$(cat "$work/status")"
 		NOW=$((NOW + 3))
@@ -134,22 +140,46 @@ expect "  ... the state file: want exactly as in UCI, since the last change" \
 	"$EXIT active $((NOW - 3))" \
 	"$(jsonfilter -i "$work/exit-state.json" -e @.want) $(jsonfilter -i "$work/exit-state.json" -e @.state) $(jsonfilter -i "$work/exit-state.json" -e @.since)"
 expect "  ... one probe per tick: a discovery ping, then an ICMP echo through the tunnel, each 2 s, to the chosen exit node" \
-	"9 9 9" "$(pings) $(cat "$work/icmp" 2>/dev/null | grep -c "^-c 1 -W 2 $EXIT\$") $(cat "$work/calls" 2>/dev/null | grep -c "^ping -c 1 --until-direct=false --timeout=2s $EXIT\$")"
+	"6 6 9" "$(pings) $(cat "$work/icmp" 2>/dev/null | grep -c "^-c 1 -W 2 $EXIT\$") $(cat "$work/calls" 2>/dev/null | grep -c "^ping -c 1 --until-direct=false --timeout=2s $EXIT\$")"
 
-# The data plane dead while the exit node is in the map, online and answering discovery pings
-# (fake `flowmesh ping` answers): only the IP echo notices.
+# (b) The data plane dead while the exit node is in the map, online and answering discovery pings,
+# after an echo has been answered: only the echo notices.
 fresh 1
-ticks ok fail fail fail
-expect "IP through the tunnel dead, discovery still answering: offline_blocked on the 3rd failed echo" \
+ticks ok nodata nodata nodata
+expect "IP through the tunnel dead (echo answered before), discovery still answering: offline_blocked on the 3rd failed echo" \
 	"active active active offline_blocked" "$got"
+ticks ok ok ok
+expect "  ... echoes answered again: active on the 3rd" "offline_blocked offline_blocked active" "$got"
 fresh 0
+ticks ok nodata nodata nodata
+expect "  ... kill switch off: falls back" "active active active offline_fallback reload offline_fallback," "$got $(reloads)"
+
+# (c) Another exit node chosen after (b): its ICMP history starts empty.
+EXIT2=100.64.0.7
+printf '{"BackendState":"Running","Self":{"TailscaleIPs":["100.64.0.2"]},"Peer":{"k1":{"HostName":"peer","TailscaleIPs":["%s"],"ExitNodeOption":true,"Online":true},"k3":{"HostName":"peer2","TailscaleIPs":["%s"],"ExitNodeOption":true,"Online":true}}}\n' "$EXIT" "$EXIT2" > "$work/status"
+uci set flowmesh.main.use_exit_node=$EXIT2
+: > "$work/log"
+ticks nodata nodata nodata nodata
+expect "a new exit node chosen: no echo answered for it yet, discovery alone keeps it active" \
+	"active active active active" "$got"
+expect "  ... and the note is logged once for it" "1" "$(grep -c 'not ICMP through the tunnel' "$work/log")"
+uci set flowmesh.main.use_exit_node=$EXIT
+
+# (a) ICMP to the exit node filtered from the start (a mesh ACL), discovery fine: it stays active,
+# and that is logged once, not on every probe.
+fresh 1
+: > "$work/log"
+ticks nodata nodata nodata nodata nodata nodata
+expect "echo never answered, discovery fine: stays active (a filter must not keep the LAN off for good)" \
+	"active active active active active active" "$got"
+expect "  ... logged once" "1" "$(grep -c 'not ICMP through the tunnel' "$work/log")"
 ticks fail fail fail
-expect "  ... kill switch off: falls back" "active active offline_fallback reload offline_fallback," "$got $(reloads)"
+expect "  ... discovery failing still counts: offline_blocked on the 3rd" "active active offline_blocked" "$got"
+
 # The exit node away: discovery fails, and no IP packet is sent to it (they would make the tunnel
 # back off its handshakes and come back late).
 fresh 1
-printf 'fail\nfail\nfail\n' > "$work/disco"
-ticks - - -
+ticks fail fail fail
 expect "discovery not answering: a failed probe, no ICMP echo sent; offline_blocked on the 3rd" \
 	"active active offline_blocked 0" "$got $(pings)"
 ticks ok ok ok

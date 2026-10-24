@@ -85,7 +85,9 @@ on the uplink within 15 s (IPv6 open, UCI unchanged, a reload keeps it there) an
 node within 15 s of the peer being Running again. Data plane dead while the exit node stays online (the peer drops what comes out of its
 tunnel; its daemon and the discovery-level `flowmesh ping` keep working): the watcher, whose
 probe is a discovery ping followed by an ICMP echo through the tunnel, reports `offline_blocked` within 15 s and `active`
-again once the drop is lifted. Also: a chosen exit node that is not in the mesh
+again once the drop is lifted. ICMP from the router to the exit node filtered from the moment
+it is chosen (as a mesh ACL may do): the exit node stays `active` on discovery answers (noted once
+in the log) and the LAN keeps using it. Also: a chosen exit node that is not in the mesh
 is reported `missing`, and a restart in that state with the kill switch off leaves the LAN on the
 uplink without a reload by hand.
 
