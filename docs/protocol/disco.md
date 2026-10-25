@@ -94,7 +94,7 @@ Since 0.1.9 prefer is decided **per peer** (crates/flowmesh-pathsock `prefer.rs`
   An idle peer keeps its fallback state.
 - A node that only receives becomes active from the peer's direct pings, so both ends fall back
   without coordination (the second at most 15 s after the first).
-- Status: `prefer_fallback` per peer in `status --json`; one log line per transition.
+- Status: `PreferFallback` per peer in `status --json`; one log line per transition.
 
 Behavior differential before 0.1.9 (OBS-20261010-relay-modes, peer is official ts1, same LAN; the
 prefer row is the old definition: "never initiates, answers UDP pings"):

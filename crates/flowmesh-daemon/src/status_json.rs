@@ -125,7 +125,7 @@ fn node(n: &PeerStatus) -> Value {
         "CurAddr": n.cur_addr.map(|a| a.to_string()).unwrap_or_default(),
         "PeerRelay": n.peer_relay,
         // FlowMesh: prefer relay mode fell back to direct for this peer (relays silent).
-        "prefer_fallback": n.prefer_fallback,
+        "PreferFallback": n.prefer_fallback,
         "Relay": n.relay,
         "RxBytes": n.rx_bytes,
         "TxBytes": n.tx_bytes,
@@ -454,13 +454,13 @@ mod tests {
     #[test]
     fn prefer_fallback_field() {
         let mut p = peer("nodekey:a");
-        assert_eq!(node(&p)["prefer_fallback"], false);
+        assert_eq!(node(&p)["PreferFallback"], false);
         p.prefer_fallback = true;
-        assert_eq!(node(&p)["prefer_fallback"], true);
+        assert_eq!(node(&p)["PreferFallback"], true);
         let mut s = running();
         s.peers[0].prefer_fallback = true;
         let v = out(BackendState::Running, true, &s);
-        assert_eq!(v["Peer"]["nodekey:bb"]["prefer_fallback"], true);
+        assert_eq!(v["Peer"]["nodekey:bb"]["PreferFallback"], true);
     }
 
     /// The official field: the routes the control server reports a node as primary for. `Self` and
