@@ -1,0 +1,21 @@
+#!/bin/sh /etc/rc.common
+# SPDX-License-Identifier: Apache-2.0
+# Boot-time guard for the flowmesh service's firewall rules, enabled on its own (installed and
+# enabled with the package, whatever the service's state). The exit node's IPv6 block and kill
+# switch rule live in /etc/config/firewall; the service removes them when it stops or starts
+# disabled, but a service disabled under System -> Startup (`/etc/init.d/flowmesh disable`) runs
+# neither at boot, and they would keep the LAN off the uplink for good. So, before the firewall
+# and dnsmasq start (START 19): when the service will not start, remove them and the watcher's
+# dnsmasq entries; firewall and dnsmasq then start without them. When it will start, nothing is
+# done here (the service decides at its own start, S95).
+
+START=18
+
+start() {
+	if /etc/init.d/flowmesh enabled && [ "$(uci -q get flowmesh.main.enabled)" != 0 ]; then
+		return 0
+	fi
+	logger -t flowmesh-boot "the flowmesh service does not start: removing its exit node firewall rules and LAN name entries"
+	FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw exit-v6-block-off exit-kill-off
+	FLOWMESH_WATCH_DNSMASQ_RELOAD=true /usr/libexec/flowmesh-watch cleanup
+}

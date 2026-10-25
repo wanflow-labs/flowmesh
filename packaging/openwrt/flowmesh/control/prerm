@@ -9,6 +9,7 @@
 [ "$PKG_UPGRADE" = 1 ] && exit 0
 /etc/init.d/flowmesh stop
 /etc/init.d/flowmesh disable
+/etc/init.d/flowmesh-boot disable
 # The daemon removes its routes and forwarding rules on the way out; wait for it.
 i=0
 while pidof flowmeshd >/dev/null && [ "$i" -lt 20 ]; do

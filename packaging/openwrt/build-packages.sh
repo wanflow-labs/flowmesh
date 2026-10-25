@@ -84,6 +84,7 @@ stage_root() {
   install -Dm0644 "$src/NOTICE" "$root/usr/share/licenses/flowmesh/NOTICE"
   local f="$here/flowmesh/files"
   install -Dm0755 "$f/flowmesh.init" "$root/etc/init.d/flowmesh"
+  install -Dm0755 "$f/flowmesh-boot.init" "$root/etc/init.d/flowmesh-boot"
   install -Dm0644 "$f/flowmesh.config" "$root/etc/config/flowmesh"
   install -Dm0755 "$f/flowmesh.defaults" "$root/etc/uci-defaults/90-flowmesh"
   install -Dm0755 "$f/flowmesh-fw.sh" "$root/usr/libexec/flowmesh-fw"
