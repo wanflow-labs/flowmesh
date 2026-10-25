@@ -82,6 +82,26 @@ pub(crate) fn endpoints_for(
     v
 }
 
+/// While a STUN binding request stays unanswered, send another at most this often.
+pub(crate) const STUN_RETRY: Duration = Duration::from_secs(60);
+
+/// Whether to send a STUN binding request now: not in strict mode, the home relay node runs STUN
+/// (STUNPort != -1), no external address learned yet, and none sent within [`STUN_RETRY`]
+/// (`since_last_send` = None: never sent). Checked at start and on every netmap, so a node that
+/// started under an older control server (STUNPort -1) or in strict mode still learns its
+/// external address once prefer or auto allows it.
+pub(crate) fn stun_due(
+    mode: Mode,
+    stun_port: i32,
+    have_mapped: bool,
+    since_last_send: Option<Duration>,
+) -> bool {
+    mode != Mode::Strict
+        && stun_port != -1
+        && !have_mapped
+        && since_last_send.is_none_or(|d| d >= STUN_RETRY)
+}
+
 /// A peer's home relay: prefer `HomeDERP`, otherwise parse the legacy `127.3.3.40:<region>`.
 pub(crate) fn peer_home(n: &Node) -> Option<u32> {
     if n.home_derp != 0 {
@@ -1627,5 +1647,22 @@ mod tests {
             }
         }
         assert!(flag(&ps));
+    }
+
+    #[test]
+    fn stun_is_retried_until_answered_outside_strict() {
+        let never = None;
+        assert!(stun_due(Mode::Auto, 3478, false, never));
+        assert!(stun_due(Mode::Prefer, 3478, false, never));
+        assert!(stun_due(Mode::Prefer, 0, false, never), "0 = default port");
+        assert!(!stun_due(Mode::Strict, 3478, false, never));
+        assert!(
+            !stun_due(Mode::Prefer, -1, false, never),
+            "relay without STUN"
+        );
+        assert!(!stun_due(Mode::Auto, 3478, true, never), "already answered");
+        let just = Some(STUN_RETRY - Duration::from_millis(1));
+        assert!(!stun_due(Mode::Prefer, 3478, false, just), "rate limited");
+        assert!(stun_due(Mode::Prefer, 3478, false, Some(STUN_RETRY)));
     }
 }

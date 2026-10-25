@@ -62,10 +62,42 @@ What a node sees under each combination (observed via wanflow-mesh's netmap):
 | Mode | DERP STUN port | Peer endpoints this node sees |
 |---|---|---|
 | auto | 3478 | visible |
-| prefer | **-1** (wanflow-mesh relay-only triggers) | visible |
+| prefer | **-1** from older control servers (wanflow-mesh relay-only triggers); the real port from current ones | visible |
 | strict | **3478 (back on)** | **cleared** |
 
-Behavior differential (OBS-20261010-relay-modes, peer is official ts1, same LAN):
+How flowmesh picks the mode: `tag:relay-strict` on the self node → strict; otherwise `tag:relay-force`
+on the self node, **or** every DERP node with STUNPort -1 (an older control server's only signal) →
+prefer; otherwise auto.
+
+### Prefer: relays first, direct only on the LAN or when the relays go silent
+
+Since 0.1.9 prefer is decided **per peer** (crates/flowmesh-pathsock `prefer.rs` + `lib.rs`):
+
+- **Normally**: traffic goes through the peer relay if one answers, otherwise the cloud relay. Direct
+  paths are used, pinged and answered only for LAN addresses (10/8, 172.16/12, 192.168/16, 169.254/16,
+  fc00::/7, fe80::/10; not 100.64/10 or the mesh's fd7a:115c:a1e0::/48). A ping from a public address
+  is dropped unanswered. A CallMeMaybe's endpoints are recorded, but only LAN ones are pinged.
+  CallMeMaybe is sent as in auto. Endpoints reported = local + STUN (as auto), so a peer has public
+  candidates ready for a fallback.
+- **Active** = data sent to or received from the peer, or disco received from it over the direct
+  path (pings, CallMeMaybe, including ones that are dropped), within the last 15 s. Pongs never
+  count, and neither does disco that arrives over a relay: that answers our own probes and would
+  keep an idle peer active forever.
+- **Relay probe**: while active, a disco ping every 5 s over the cloud relay and through a bound peer
+  relay. Any pong that comes back over a relay counts as "the relays answer".
+- **Fallback**: an active peer that the control server does not mark offline, with no relay pong
+  for 15 s (counted from the start of the active period, from coming back online, or from the last
+  pong, whichever is latest) falls back to auto behaviour for direct paths: all candidates, public
+  ones too, are pinged and answered.
+- **Back to relay**: after at least 30 s in fallback, once relay pongs have kept coming for 30 s
+  with no gap over 10 s, decided only while active. A public direct path is dropped; a LAN one stays.
+  An idle peer keeps its fallback state.
+- A node that only receives becomes active from the peer's direct pings, so both ends fall back
+  without coordination (the second at most 15 s after the first).
+- Status: `prefer_fallback` per peer in `status --json`; one log line per transition.
+
+Behavior differential before 0.1.9 (OBS-20261010-relay-modes, peer is official ts1, same LAN; the
+prefer row is the old definition: "never initiates, answers UDP pings"):
 
 | Mode | wanflow-mesh (wm1) | flowmesh (fm1) | Note |
 |---|---|---|---|

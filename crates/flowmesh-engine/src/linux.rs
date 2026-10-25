@@ -7,7 +7,7 @@ use crate::command::{EngineCommand, PendingPing, deliver_pings, expire_pings};
 use crate::control_loop::{Backoff, BoxFut as LoopFut, ControlEvent, MessageStream};
 use crate::logic::{
     apply_netmap, dns_upstreams, dns_view, endpoints_for, local_nets, looks_like_wireguard,
-    mode_of, peer_home, relay_candidates, snapshot, subnet_routes,
+    mode_of, peer_home, relay_candidates, snapshot, stun_due, subnet_routes,
 };
 use crate::relay_plan::{RelayAction, RelayPlan};
 use crate::status::EngineStatus;
@@ -18,7 +18,7 @@ use flowmesh_dataplane::plane::{Dataplane, Output};
 use flowmesh_derp::client::{DerpClient, DerpSender, Event};
 use flowmesh_disco::message::Message;
 use flowmesh_disco::relay::{Geneve, PROTO_DISCO, PROTO_WIREGUARD, geneve_decode, geneve_encode};
-use flowmesh_pathsock::{Action, Mode, PathSock, Random, Route, Source};
+use flowmesh_pathsock::{Action, PathSock, Random, Route, Source};
 use flowmesh_proto::capver::CAPABILITY_VERSION;
 use flowmesh_proto::control::{
     Hostinfo, MapRequest, MapResponse, NetInfo, RegisterAuth, RegisterRequest,
@@ -1007,32 +1007,12 @@ pub async fn run(
     ));
 
     // STUN to learn the externally visible address (auto and prefer; skipped in strict mode or when
-    // the node has STUNPort == -1).
+    // the node has STUNPort == -1). Retried on netmap updates until answered (stun_due).
     let mut stun_tx = None;
-    if mode != Mode::Strict && home_node.stun_port != -1 {
-        let port = u16::try_from(home_node.stun_port)
-            .ok()
-            .filter(|p| *p != 0)
-            .unwrap_or(DEFAULT_STUN_PORT);
-        let host = if home_node.ipv4.is_empty() {
-            home_node.host_name.clone()
-        } else {
-            home_node.ipv4.clone()
-        };
-        let mut tx = [0u8; flowmesh_stun::TX_ID_LEN];
-        OsRandom.fill(&mut tx);
-        match tokio::net::lookup_host((host.as_str(), port))
-            .await
-            .map(|mut a| a.next())
-        {
-            Ok(Some(addr)) => {
-                if let Err(e) = udp.send_to(&flowmesh_stun::binding_request(tx), addr).await {
-                    log(format!("stun send: {e}"));
-                }
-                stun_tx = Some(tx);
-            }
-            other => log(format!("stun resolve {host}: {other:?}")),
-        }
+    let mut last_stun: Option<Instant> = None;
+    if stun_due(mode, home_node.stun_port, false, None) {
+        stun_tx = send_stun(&udp, &home_node).await;
+        last_stun = Some(Instant::now());
     }
 
     let me = nm.self_node.clone().ok_or("no self node in netmap")?;
@@ -1509,6 +1489,16 @@ pub async fn run(
                             });
                         }
                     }
+                    // No external address yet (strict at start, or an older control server's
+                    // STUNPort -1): try again now that the map may allow it.
+                    if let Some(node) = relay_node(home, &ctx.nm.derp_map)
+                        && stun_due(mode, node.stun_port, stun_mapped.is_some(), last_stun.map(|t| t.elapsed()))
+                    {
+                        last_stun = Some(Instant::now());
+                        if let Some(tx) = send_stun(&udp, &node).await {
+                            stun_tx = Some(tx);
+                        }
+                    }
                     Vec::new()
                 }
                 Some(cmd) = commands.recv() => {
@@ -1703,6 +1693,36 @@ pub async fn run(
             if let Err(e) = tun.flush().await {
                 log(format!("tun write: {e}"));
             }
+        }
+    }
+}
+
+/// Send a STUN binding request to a relay node; returns its transaction ID once sent.
+async fn send_stun(udp: &UdpSocket, node: &DerpNode) -> Option<[u8; flowmesh_stun::TX_ID_LEN]> {
+    let port = u16::try_from(node.stun_port)
+        .ok()
+        .filter(|p| *p != 0)
+        .unwrap_or(DEFAULT_STUN_PORT);
+    let host = if node.ipv4.is_empty() {
+        node.host_name.clone()
+    } else {
+        node.ipv4.clone()
+    };
+    let mut tx = [0u8; flowmesh_stun::TX_ID_LEN];
+    OsRandom.fill(&mut tx);
+    match tokio::net::lookup_host((host.as_str(), port))
+        .await
+        .map(|mut a| a.next())
+    {
+        Ok(Some(addr)) => {
+            if let Err(e) = udp.send_to(&flowmesh_stun::binding_request(tx), addr).await {
+                log(format!("stun send: {e}"));
+            }
+            Some(tx)
+        }
+        other => {
+            log(format!("stun resolve {host}: {other:?}"));
+            None
         }
     }
 }

@@ -87,7 +87,7 @@ pub enum Source {
     },
 }
 
-/// Relay mode (disco.md §5; WanFlow tag semantics).
+/// Relay mode (disco.md §6; WanFlow tag semantics).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Mode {
     /// Discover direct paths normally, sending and accepting CallMeMaybe.
@@ -319,6 +319,9 @@ impl PathSock {
 
     /// Data arrived from `peer` (any path): it counts as activity for prefer-mode fallback.
     pub fn note_received(&mut self, peer: NodePublic, now: Duration) {
+        if self.mode != Mode::Prefer {
+            return;
+        }
         if let Some(p) = self.peers.get_mut(&peer) {
             p.prefer.note_active(now);
         }
@@ -350,7 +353,9 @@ impl PathSock {
             return (Route::None, Vec::new());
         };
         p.last_active = Some(now);
-        p.prefer.note_active(now);
+        if mode == Mode::Prefer {
+            p.prefer.note_active(now);
+        }
         if let Some((addr, confirmed)) = p.best {
             if direct_allowed(mode, p, addr) && now < confirmed + TRUST {
                 return (Route::Direct(addr), Vec::new());
@@ -542,17 +547,22 @@ impl PathSock {
         let Some(p) = self.peers.get_mut(&peer) else {
             return Vec::new();
         };
-        // Anything authenticated from the peer, on any path, makes it active: a node that only
-        // receives must still probe its relays and, if they are silent, fall back.
-        p.prefer.note_active(now);
-        // prefer: disco over UDP from an address we may not go direct to (public, outside fallback)
-        // is dropped unanswered, so a peer cannot build a direct path towards us from outside.
+        let decoded = message::decode(&plain);
         if let Source::Udp(a) = from {
+            // prefer: disco from the peer over the direct path (a ping, a CallMeMaybe; even one we
+            // drop below) is activity, so a node that only receives still probes its relays and,
+            // if they are silent, falls back. Pongs never count, and nothing that comes over a
+            // relay does: those answer our own probes and would keep an idle peer active forever.
+            if mode == Mode::Prefer && !matches!(decoded, Ok(Message::Pong { .. })) {
+                p.prefer.note_active(now);
+            }
+            // prefer: disco over UDP from an address we may not go direct to (public, outside
+            // fallback) is dropped unanswered, so a peer cannot build a direct path towards us.
             if !direct_allowed(mode, p, a) {
                 return Vec::new();
             }
         }
-        match message::decode(&plain) {
+        match decoded {
             Ok(Message::CallMeMaybe { endpoints }) => {
                 if mode == Mode::Strict {
                     return Vec::new();
@@ -611,14 +621,17 @@ impl PathSock {
                         Route::Direct(a)
                     }
                     Source::Derp { region, .. } if pend.to == derp_magic(region) => {
-                        if let Some(p) = self.peers.get_mut(&peer) {
+                        if let Some(p) = self.peers.get_mut(&peer).filter(|_| mode == Mode::Prefer)
+                        {
                             p.prefer.note_relay_pong(now);
                         }
                         Route::Derp(region)
                     }
                     Source::Relay { server, vni } if pend.to == server && pend.vni == Some(vni) => {
                         if let Some(p) = self.peers.get_mut(&peer) {
-                            p.prefer.note_relay_pong(now);
+                            if mode == Mode::Prefer {
+                                p.prefer.note_relay_pong(now);
+                            }
                             if let Some(r) = p.relay.as_mut() {
                                 if r.server == server && r.vni == vni {
                                     r.confirmed = Some(now);
@@ -2291,13 +2304,14 @@ mod tests {
             w.a.explain(w.b_node, S).unwrap().from_call_me_maybe,
             vec![public, lan]
         );
-        // The CallMeMaybe made the peer active at 1 s; discovery skips the public candidate until
-        // the relays have been silent for 15 s, then pings it too.
-        for t in 2..16 {
+        // A CallMeMaybe over the relay is not activity; the flow starts at 2 s. Discovery skips the
+        // public candidate until the relays have been silent for 15 s, then pings it too.
+        assert!(w.a.tick(S, &mut w.rng).is_empty(), "not active: no probe");
+        for t in 2..17 {
             let (_, acts) = step(&mut w, t * S, false, false, false);
             assert!(!udp_targets(&w, &acts).contains(&public), "at {t}s");
         }
-        let (_, acts) = step(&mut w, 16 * S, false, false, false);
+        let (_, acts) = step(&mut w, 17 * S, false, false, false);
         assert!(w.a.in_prefer_fallback(w.b_node));
         let mut got = udp_targets(&w, &acts);
         got.sort();
@@ -2491,11 +2505,13 @@ mod tests {
         ra: Counter,
         rb: Counter,
         first_ping_to_b: Option<Duration>,
+        /// Whether DERP delivers (between nodes [1; 32] = a and [2; 32] = b).
+        derp: bool,
     }
 
     impl Net {
-        /// Deliver the UDP actions (and the replies they cause); everything over DERP or the peer
-        /// relay is lost. `from_a` names the sender of `acts`.
+        /// Deliver the UDP actions (and the replies they cause), and the DERP ones if `derp`;
+        /// everything else is lost. `from_a` names the sender of `acts`.
         fn deliver(
             &mut self,
             a: &mut PathSock,
@@ -2505,9 +2521,38 @@ mod tests {
             now: Duration,
         ) {
             let mut queue: Vec<(bool, Action)> = acts.into_iter().map(|x| (from_a, x)).collect();
+            let (a_node, b_node) = (NodePublic([1; 32]), NodePublic([2; 32]));
             while let Some((from_a, act)) = queue.pop() {
-                let Action::Udp { to, data } = act else {
-                    continue;
+                let (to, data) = match act {
+                    Action::Udp { to, data } => (to, data),
+                    Action::Derp { to, region, data } if self.derp => {
+                        let replies = if from_a && to == b_node {
+                            b.on_disco(
+                                Source::Derp {
+                                    node: a_node,
+                                    region,
+                                },
+                                &data,
+                                now,
+                                &mut self.rb,
+                            )
+                        } else if !from_a && to == a_node {
+                            a.on_disco(
+                                Source::Derp {
+                                    node: b_node,
+                                    region,
+                                },
+                                &data,
+                                now,
+                                &mut self.ra,
+                            )
+                        } else {
+                            continue;
+                        };
+                        queue.extend(replies.into_iter().map(|x| (!from_a, x)));
+                        continue;
+                    }
+                    _ => continue,
                 };
                 let replies = if from_a && to == self.b_addr {
                     self.first_ping_to_b.get_or_insert(now);
@@ -2554,6 +2599,7 @@ mod tests {
             ra: Counter(0),
             rb: Counter(100),
             first_ping_to_b: None,
+            derp: false,
         };
         let (mut a_fb, mut b_fb, mut direct) = (None, None, None);
         for t in 0..=45 {
@@ -2589,5 +2635,141 @@ mod tests {
         assert_eq!(b_fb, 30 * S);
         assert_eq!(direct, 31 * S, "direct right after B answers");
         assert_eq!(a.current_route(b_node, 45 * S), Route::Direct(b_addr));
+    }
+
+    /// Pings in `acts` (UDP, DERP or peer relay), i.e. anything that is not a pong or CallMeMaybe.
+    fn any_pings(w: &World, acts: &[Action]) -> usize {
+        acts.iter()
+            .filter(|a| {
+                let data = match a {
+                    Action::Udp { data, .. }
+                    | Action::Derp { data, .. }
+                    | Action::Relay { data, .. } => data,
+                };
+                matches!(b_reads(w, data), Message::Ping { .. })
+            })
+            .count()
+    }
+
+    /// One send at 0 s, healthy relays answering every probe, and the peer probing us over DERP:
+    /// none of that disco keeps the peer active, so the relay probes stop once the flow is 15 s
+    /// idle. (The bound peer relay keeps its own heartbeat for ACTIVE_WINDOW after the last send,
+    /// as in every mode; after that nothing at all is sent.)
+    #[test]
+    fn prefer_probes_stop_when_idle_with_healthy_relays() {
+        let mut w = prefer_world(vec![PUB.parse().unwrap()]);
+        w.a.set_relay(w.b_node, Some((R.parse().unwrap(), 4)));
+        let (_, acts) = w.a.route(w.b_node, Duration::ZERO, &mut w.rng);
+        answer(&mut w, &acts, Duration::ZERO, true, true, true);
+        let (mut late, mut later) = (Vec::new(), Vec::new());
+        for t in 0..=300u32 {
+            let now = t * S;
+            if t % 5 == 0 {
+                let ping = ping_from_b(&w, 3);
+                let back = w.a.on_disco(via_derp(&w, 1000), &ping, now, &mut w.rng);
+                assert_eq!(back.len(), 1, "a ping over DERP is answered");
+            }
+            let acts = w.a.tick(now, &mut w.rng);
+            if now >= PREFER_ACTIVE_WINDOW {
+                late.extend(acts.iter().cloned());
+            }
+            if now >= ACTIVE_WINDOW {
+                later.extend(acts.iter().cloned());
+            }
+            answer(&mut w, &acts, now, true, true, true);
+        }
+        assert!(derp_pings(&w, &late).is_empty(), "relay probes while idle");
+        assert_eq!(any_pings(&w, &later), 0, "pings after the heartbeat window");
+        assert!(!w.a.in_prefer_fallback(w.b_node));
+    }
+
+    /// A CallMeMaybe that arrives over the direct path is activity.
+    #[test]
+    fn prefer_udp_call_me_maybe_marks_active() {
+        let mut w = prefer_world(vec![]);
+        let cmm = b_says(
+            &w,
+            &Message::CallMeMaybe {
+                endpoints: vec![PUB.parse().unwrap()],
+            },
+        );
+        w.a.on_disco(Source::Udp(PUB.parse().unwrap()), &cmm, S, &mut w.rng);
+        let acts = w.a.tick(S, &mut w.rng);
+        assert_eq!(derp_pings(&w, &acts).len(), 1, "{acts:?}");
+    }
+
+    /// Two prefer nodes, relays up, traffic both ways for 20 s and then none: both stop probing
+    /// within the active window and neither falls back.
+    #[test]
+    fn prefer_two_nodes_go_quiet_after_traffic_stops() {
+        let a_disco = DiscoPrivate::generate().unwrap();
+        let b_disco = DiscoPrivate::generate().unwrap();
+        let (a_node, b_node) = (NodePublic([1; 32]), NodePublic([2; 32]));
+        let a_addr: SocketAddr = "198.51.100.1:41641".parse().unwrap();
+        let b_addr: SocketAddr = PUB.parse().unwrap();
+        let node = |me: &DiscoPrivate, my_node, peer, peer_disco: &DiscoPrivate, peer_addr| {
+            let mut s = PathSock::new(me.clone(), my_node);
+            s.set_mode(Mode::Prefer);
+            s.set_peers(vec![PeerInfo {
+                node: peer,
+                disco: peer_disco.public(),
+                home_region: Some(1000),
+                endpoints: vec![peer_addr],
+                online: true,
+            }]);
+            s
+        };
+        let mut a = node(&a_disco, a_node, b_node, &b_disco, b_addr);
+        let mut b = node(&b_disco, b_node, a_node, &a_disco, a_addr);
+        let mut net = Net {
+            a_addr,
+            b_addr,
+            ra: Counter(0),
+            rb: Counter(100),
+            first_ping_to_b: None,
+            derp: true,
+        };
+        let (mut a_last, mut b_last) = (Duration::ZERO, Duration::ZERO);
+        let pings = |acts: &[Action]| {
+            acts.iter()
+                .filter(|x| matches!(x, Action::Derp { .. } | Action::Udp { .. }))
+                .count()
+        };
+        for t in 0..=300u32 {
+            let now = t * S;
+            let acts = a.tick(now, &mut net.ra);
+            if pings(&acts) > 0 {
+                a_last = now;
+            }
+            net.deliver(&mut a, &mut b, acts, true, now);
+            let acts = b.tick(now, &mut net.rb);
+            if pings(&acts) > 0 {
+                b_last = now;
+            }
+            net.deliver(&mut a, &mut b, acts, false, now);
+            if t < 20 {
+                // Data both ways (over DERP), seen by the receiver too.
+                let (_, acts) = a.route(b_node, now, &mut net.ra);
+                net.deliver(&mut a, &mut b, acts, true, now);
+                b.note_received(a_node, now);
+                let (_, acts) = b.route(a_node, now, &mut net.rb);
+                net.deliver(&mut a, &mut b, acts, false, now);
+                a.note_received(b_node, now);
+            }
+            assert!(
+                !a.in_prefer_fallback(b_node) && !b.in_prefer_fallback(a_node),
+                "at {t}s"
+            );
+        }
+        // Last traffic at 19 s: the last probe is due before 19 + 15 s.
+        let quiet_by = 19 * S + PREFER_ACTIVE_WINDOW;
+        assert!(
+            a_last > Duration::ZERO && a_last < quiet_by,
+            "A last probed at {a_last:?}"
+        );
+        assert!(
+            b_last > Duration::ZERO && b_last < quiet_by,
+            "B last probed at {b_last:?}"
+        );
     }
 }
