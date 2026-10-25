@@ -12,6 +12,15 @@ use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::time::Duration;
 
+// The fallback state machine is wired into `Pathsock` in a later change; until then only the
+// pub items below are reachable from outside this module.
+#[allow(dead_code)]
+mod prefer;
+pub use prefer::{
+    PREFER_ACTIVE_WINDOW, PREFER_MIN_FALLBACK, PREFER_PROBE_INTERVAL, PREFER_RELAY_DEAD_AFTER,
+    PREFER_RELAY_MAX_GAP, PREFER_RELAY_STABLE_FOR, is_lan,
+};
+
 /// While a direct path is active, ping it every 3 seconds (observed: official clients send a heartbeat every 3.0 s).
 pub const HEARTBEAT: Duration = Duration::from_secs(3);
 /// How long a direct path is trusted after its last pong. Observed fallback was 6.2 s after blocking; with a 3 s
