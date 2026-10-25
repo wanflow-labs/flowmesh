@@ -39,7 +39,10 @@
 #    Not so after the user's own Disconnect or Log out (the LuCI helper's down/logout leave the
 #    marker /etc/flowmesh/user-stopped, which its up/reconnect remove): then the state is "stopped",
 #    and the kill switch rule and the IPv6 block are lifted (the LAN uses the local uplink). A marker
-#    is also removed once the daemon is Running again (it was brought up some other way). Running
+#    is also removed once the daemon is Running again after the stop was seen (it was brought up
+#    some other way, e.g. `flowmesh up`): the watcher notes in the marker that it saw the daemon not
+#    Running in a check that began after the marker was written, and only a noted marker expires on
+#    Running (a check that reads Running just before the stop takes effect leaves it alone). Running
 #    again after down_*: the state goes back to "active" and the settings are re-applied (which
 #    lifts the rule once the exit node is usable).
 #    The state, for the LuCI page: /var/run/flowmesh/exit-state.json,
@@ -190,16 +193,27 @@ adopt_recorded() {
 # The user stopped FlowMesh (Disconnect or Log out in LuCI): the marker exists.
 user_stopped() { [ -e "$USER_STOPPED" ]; }
 
-# The daemon is Running: a marker written before this check's status was read (by the helper, just
-# before its down/logout) belongs to a stop that is over: FlowMesh was brought up again, maybe not
-# through LuCI. (The marker holds the time it was written; one from the same second is left for the
-# next check, so a status read just before the stop cannot remove it.)
-user_stop_expire() {
-	local t
-	user_stopped || return 0
-	t=$(cat "$USER_STOPPED" 2> /dev/null)
+# The marker: "<time written>" (the helper, just before its down/logout), then "<time> seen" once a
+# check that began after that second has read a state other than Running: the stop has taken
+# effect (the helper writes the marker immediately before the CLI call, so a status read that began
+# in a later second sees its result, or the CLI failed and the helper removed the marker again).
+user_stop_seen() {
+	local t rest
+	read -r t rest < "$USER_STOPPED" 2> /dev/null
+	[ "$rest" = seen ] && return 0
 	case "$t" in '' | *[!0-9]*) t=0 ;; esac
-	[ "$t" -lt "${T_STATUS:-0}" ] || return 0
+	[ "${T_STATUS:-0}" -gt "$t" ] || return 0
+	printf '%s seen\n' "$t" > "$USER_STOPPED.tmp" && mv -f "$USER_STOPPED.tmp" "$USER_STOPPED"
+}
+
+# The daemon is Running: a marker whose stop was seen belongs to a stop that is over (FlowMesh was
+# brought up again, maybe not through LuCI). One not seen yet stays: this check may have read the
+# status just before the stop took effect. (An unreadable marker is not the helper's: removed.)
+user_stop_expire() {
+	local t rest
+	user_stopped || return 0
+	read -r t rest < "$USER_STOPPED" 2> /dev/null
+	case "$t" in [0-9]*) [ "$rest" = seen ] || return 0 ;; esac
 	rm -f "$USER_STOPPED"
 	log "FlowMesh is running again: the user's stop is over"
 }
@@ -233,6 +247,16 @@ exit_fw() {
 		# shellcheck disable=SC2086 # the actions, one word each
 		$FW_CMD $args 2>&1 | logger -t flowmesh-watch
 	) 7<> "$APPLY_LOCK"
+}
+
+# Every check, exit node chosen or not ($STATUS_BACKEND read, its read begun at $T_STATUS).
+user_stop_track() {
+	user_stopped || return 0
+	if [ "$STATUS_BACKEND" = Running ]; then
+		user_stop_expire
+	else
+		user_stop_seen
+	fi
 }
 
 # down_tick <kill switch>: the daemon is not Running ($STATUS_BACKEND, empty when it does not answer).
@@ -281,7 +305,6 @@ exit_tick() {
 		return 0
 	fi
 	E_DOWN=0
-	user_stop_expire
 	case "$E_STATE" in
 	down_* | stopped)
 		# FlowMesh is running again: the exit node (if it is in the mesh) is back in the daemon's
@@ -750,6 +773,7 @@ watch_tick() {
 	T_STATUS=$(now)
 	status=$(bounded 5 flowmesh status --json 2> /dev/null)
 	STATUS_BACKEND=$(echo "$status" | jsonfilter -e '@.BackendState' 2> /dev/null)
+	user_stop_track
 	exit_tick "$status"
 	[ -n "$STOP" ] && return 0
 	[ -n "$STATUS_BACKEND" ] || return 0

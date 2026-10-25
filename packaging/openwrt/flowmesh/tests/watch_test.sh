@@ -141,6 +141,7 @@ ticks() {
 		esac
 		STATUS_BACKEND=$(jsonfilter -i "$work/status" -e @.BackendState 2> /dev/null)
 		T_STATUS=$NOW
+		user_stop_track
 		exit_tick "$(cat "$work/status")"
 		NOW=$((NOW + 3))
 		got="$got${got:+ }$(jsonfilter -i "$work/exit-state.json" -e @.state 2>/dev/null)"
@@ -344,21 +345,52 @@ ticks - - -
 STOP=
 expect "being stopped (SIGTERM): the state is recorded, the firewall left alone" "active active down_blocked " "$got $(fwcalls)"
 
-# The marker against a Running daemon.
+# The marker against a Running daemon: it expires only once the stop was seen.
+mk() { [ -e "$work/user-stopped" ] && cat "$work/user-stopped" || echo none; }
 fresh 1
-echo $((NOW - 10)) > "$work/user-stopped"
+T0=$NOW
+echo "$T0" > "$work/user-stopped"
+ticks ok ok
+expect "the helper's marker written, the next checks still read Running (the stop not yet in effect): kept, the exit node handled as usual" \
+	"active active $T0" "$got $(mk)"
+backend Stopped
+ticks - - - -
+expect "  ... then Stopped: stopped at once, no kill switch rule, the marker noted as seen" \
+	"stopped stopped stopped stopped [] $T0 seen" "$got [$(fwstate)] $(mk)"
+# (The race of the review: marker at second S, a check from S+1 reading Running, then the stop.)
+fresh 1
+T0=$NOW
+echo "$T0" > "$work/user-stopped"
+NOW=$((T0 + 1))
 ticks ok
-expect "Running, marker from before the status was read: removed (FlowMesh was brought up again)" "active no" \
-	"$got $([ -e "$work/user-stopped" ] && echo yes || echo no)"
+backend Stopped
+ticks - - -
+expect "  ... marker at S, a check from S+1 still reads Running, then Stopped: stays unblocked" \
+	"stopped stopped stopped  $T0 seen" "$got $(fwcalls) $(mk)"
+peer_status true
+ticks ok
+expect "  ... Running again after the seen stop (brought up some other way): removed, active, re-applied" \
+	"active none reload active," "$got $(mk) $(reloads)"
+fresh 1
+echo "$NOW" > "$work/user-stopped"
+backend Stopped
+ticks -
+expect "a non-Running read begun in the marker's own second: not noted yet (it may predate the stop)" "stopped $((NOW - 3))" "$got $(mk)"
+ticks -
+expect "  ... the next check notes it" "stopped $((NOW - 6)) seen" "$got $(mk)"
+fresh 1
+uci delete flowmesh.main.use_exit_node
+echo "$NOW" > "$work/user-stopped"
+backend Stopped
+ticks - -
+peer_status true
+ticks -
+expect "no exit node chosen: the marker is still noted and expires the same way" "none" "$(mk)"
+uci set flowmesh.main.use_exit_node=$EXIT
 fresh 1
 echo garbage > "$work/user-stopped"
 ticks ok
-expect "  ... an unreadable marker too" "no" "$([ -e "$work/user-stopped" ] && echo yes || echo no)"
-fresh 1
-echo "$NOW" > "$work/user-stopped"
-ticks ok
-expect "  ... one from the same second is kept (the status may predate the stop), the exit node handled as usual" \
-	"active yes" "$got $([ -e "$work/user-stopped" ] && echo yes || echo no)"
+expect "an unreadable marker (not the helper's): removed on Running" "none" "$(mk)"
 # Disconnect, Reconnect.
 fresh 1
 echo $V6 > "$work/fwstate"
