@@ -11,7 +11,8 @@
 use std::net::{IpAddr, Ipv4Addr};
 use std::time::Duration;
 
-/// A peer is "active" if anything was sent to or received from it within this window.
+/// A peer is "active" if anything was sent to or received from it less than this long ago (idle once
+/// the window has fully elapsed).
 pub const PREFER_ACTIVE_WINDOW: Duration = Duration::from_secs(15);
 /// While a peer is active, probe it through the relays this often.
 pub const PREFER_PROBE_INTERVAL: Duration = Duration::from_secs(5);
@@ -61,7 +62,7 @@ pub(crate) enum Transition {
 /// Per-peer prefer-relay state. The zero value means: never active, online, no relay pong seen,
 /// not in fallback.
 ///
-/// Rules (evaluated only while the peer is active, i.e. `now - last_active <= PREFER_ACTIVE_WINDOW`;
+/// Rules (evaluated only while the peer is active, i.e. `now - last_active < PREFER_ACTIVE_WINDOW`;
 /// an idle peer keeps whatever state it has and is neither probed nor judged):
 ///
 /// * enter fallback = not in fallback, online, and
@@ -170,7 +171,7 @@ impl PreferFallback {
 
     fn active_at(&self, now: Duration) -> bool {
         self.last_active
-            .is_some_and(|a| now.saturating_sub(a) <= PREFER_ACTIVE_WINDOW)
+            .is_some_and(|a| now.saturating_sub(a) < PREFER_ACTIVE_WINDOW)
     }
 }
 
@@ -340,11 +341,8 @@ mod tests {
 
     #[test]
     fn s4_old_pong_does_not_hurry_a_new_flow() {
-        // The scenario ticks only at the seconds it names (0 and 100..=120). Ticking through the idle
-        // seconds 1..=14 would make the peer, still inside its 15 s active window at 15, fall back
-        // legitimately (no pong for 15 s) and stay there, which is a different scenario.
         let mut fb = PreferFallback::default();
-        let tr = run(&mut fb, std::iter::once(0).chain(100..=120), |fb, t| {
+        let tr = run(&mut fb, 0..=120, |fb, t| {
             if t == 0 {
                 fb.note_relay_pong(secs(0));
             }
