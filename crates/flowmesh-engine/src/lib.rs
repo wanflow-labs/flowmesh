@@ -58,6 +58,9 @@ pub struct EngineConfig {
     pub exit_node: String,
     /// Keep the host's own networks off the exit node (`--exit-node-allow-lan-access`).
     pub exit_node_allow_lan_access: bool,
+    /// Router exit mode (`--exit-node-forwarded-only`): only forwarded traffic uses the exit
+    /// node, SNATed to this node's mesh IPv4 address; the host's own traffic keeps the main table.
+    pub exit_node_forwarded_only: bool,
     /// Run the SSH server (`--ssh`).
     pub run_ssh: bool,
     /// The program that runs SSH sessions as the user (`<it> be-child ssh …`); None: this

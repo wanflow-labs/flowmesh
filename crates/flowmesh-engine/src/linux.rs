@@ -35,6 +35,8 @@ use tokio::net::UdpSocket;
 use tokio::sync::{mpsc, watch};
 
 const TICK: Duration = Duration::from_millis(250);
+/// Router exit mode: how often the host's networks are checked for the throw routes (≤10 s).
+const EXIT_LAN_CHECK: Duration = Duration::from_secs(5);
 const RELAY_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// Home may be down this long (a redial) before the health report mentions it.
 const HOME_HEALTH_GRACE: Duration = Duration::from_secs(5);
@@ -1172,6 +1174,7 @@ pub async fn run(
     let mut features = crate::features::Features::default();
     features.sync_forwarding(args, None);
     features.sync_exit_routing(args, None, ipv6_mesh);
+    features.sync_exit_snat(args, &Vec::from_iter(subnet_routes(&ctx.nm)));
     // resolv.conf: taken over with --accept-dns unless another service manages it.
     let mut dns_msg = dns_owner_message(args.accept_dns);
     let mut dns_taken = args.accept_dns && dns_msg.is_none();
@@ -1245,6 +1248,7 @@ pub async fn run(
     let (dns_tx, mut dns_rx) = mpsc::channel::<Vec<u8>>(64);
     let start = Instant::now();
     let mut last_publish: Option<Duration> = None;
+    let mut last_lan_check = Duration::ZERO;
     let mut ticker = tokio::time::interval(TICK);
     let mut pings: Vec<PendingPing> = Vec::new();
     let mut udp_rx = crate::udpio::UdpRx::new();
@@ -1446,6 +1450,7 @@ pub async fn run(
                         sync_routes(&args.tun, &mut installed_routes, subnet_routes(&ctx.nm));
                     }
                     if changed.peers || changed.filter || changed.derp || changed.self_node {
+                        features.sync_exit_snat(&cur, &Vec::from_iter(subnet_routes(&ctx.nm)));
                         exit_health = select_exit_node(&mut policy, &ctx.nm, &cur.exit_node);
                         if let Err(e) = apply_netmap(&mut dp, &mut ctx.ps, &ctx.nm, crate::logic::unix_now(), &policy) {
             log(e);
@@ -1541,6 +1546,7 @@ pub async fn run(
                                 let old = std::mem::replace(&mut cur, *new);
                                 features.sync_forwarding(&cur, Some(&old));
                                 features.sync_exit_routing(&cur, Some(&old), ipv6_mesh);
+                                features.sync_exit_snat(&cur, &Vec::from_iter(subnet_routes(&ctx.nm)));
                                 let rules = flowmesh_filter::compile::compile(&ctx.nm.filter_rules()).unwrap_or_default();
                                 features
                                     .sync_peerapi(&cur, &me.addresses, rules, &host_upstreams, &mut dp)
@@ -1649,6 +1655,11 @@ pub async fn run(
                         });
                     }
                     expire_pings(&mut pings, now);
+                    if now.saturating_sub(last_lan_check) >= EXIT_LAN_CHECK {
+                        last_lan_check = now;
+                        features.refresh_exit_lan(&cur);
+                        features.reassert_exit_snat();
+                    }
                     let acts = ctx.ps.tick(now, &mut ctx.rng);
                     ctx.run_actions(acts).await;
                     log_prefer_events(ctx.ps.take_prefer_events(), &ctx.nm);

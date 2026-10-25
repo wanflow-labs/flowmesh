@@ -29,10 +29,18 @@ fail() { echo "FAIL  $*"; fails=$((fails + 1)); }
 # The helper under test, with the fake bin first on its PATH and a short hard deadline.
 helper=$work/flowmesh-luci
 sed -e "s|^PATH=/usr/sbin:/usr/bin:/sbin:/bin\$|PATH=$fakebin:/usr/sbin:/usr/bin:/sbin:/bin|" \
-	-e 's|^UP_DEADLINE=25 |UP_DEADLINE=3 |' "$src" > "$helper"
+	-e 's|^UP_DEADLINE=25 |UP_DEADLINE=3 |' \
+	-e "s|^USER_STOPPED=/etc/flowmesh/user-stopped\$|USER_STOPPED=$work/user-stopped|" \
+	-e "s|^FW=/usr/libexec/flowmesh-fw\$|FW=$fakebin/fw|" "$src" > "$helper"
 chmod 0755 "$helper"
-[ "$(grep -c "^PATH=$fakebin:" "$helper")" = 1 ] && [ "$(grep -c '^UP_DEADLINE=3 ' "$helper")" = 1 ] ||
+[ "$(grep -c "^PATH=$fakebin:" "$helper")" = 1 ] && [ "$(grep -c '^UP_DEADLINE=3 ' "$helper")" = 1 ] &&
+	[ "$(grep -c "^USER_STOPPED=$work/" "$helper")" = 1 ] && [ "$(grep -c "^FW=$fakebin/fw\$" "$helper")" = 1 ] ||
 	{ echo "could not point the helper at the fakes"; exit 100; }
+# (prefs.sh, read by up and reconnect, looks for the marker here too.)
+export FLOWMESH_USER_STOPPED=$work/user-stopped
+# Fake flowmesh-fw: records its arguments.
+printf '#!/bin/sh\necho "$*" >> %s/fwcalls\n' "$work" > "$fakebin/fw"
+chmod 0755 "$fakebin/fw"
 
 # Fake flowmesh: appends "<args, one per line>" and a "--" line to $work/calls; for --auth-key=file:
 # records the file's mode and content in $work/keyfile; prints $work/out; exits with $work/rc;
@@ -41,6 +49,15 @@ chmod 0755 "$helper"
 cat > "$fakebin/flowmesh" <<FAKE
 #!/bin/sh
 [ "\$1 \$2" = "debug prefs" ] && [ -f $work/prefs ] && { cat $work/prefs; exit 0; }
+[ "\$1" = status ] && [ -f $work/status-out ] && { cat $work/status-out; exit 1; }
+echo \$\$ > $work/pid
+[ "\$1" = netcheck ] && echo "# Warning: this JSON format is not yet considered a stable interface" >&2
+if [ "\$1" = bugreport ]; then
+	# Like the real CLI: the output file must not exist yet; its path is recorded.
+	[ -e "\$3" ] && { echo "write \$3: File exists" >&2; exit 1; }
+	echo "\$3" > $work/reportpath
+	[ -f $work/report ] && cat $work/report > "\$3"
+fi
 for a in "\$@"; do
 	printf '%s\n' "\$a" >> $work/calls
 	case "\$a" in
@@ -73,7 +90,8 @@ chmod 0755 "$fakebin/logread"
 
 # fake <rc> [output file]
 fake() {
-	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs"
+	rm -f "$work/calls" "$work/keyfile" "$work/out" "$work/sleep" "$work/prefs" "$work/report" "$work/reportpath" "$work/pid" \
+		"$work/fwcalls" "$work/status-out"
 	echo "$1" > "$work/rc"
 	[ -n "$2" ] && cp "$2" "$work/out"
 }
@@ -241,12 +259,35 @@ run status
 fake 1 "$work/other.txt"; run status; expect_code unknown "status, non-JSON failure"
 
 echo "== down / logout"
+marker() { [ -e "$work/user-stopped" ] && echo yes || echo no; }
 for c in down logout; do
-	fake 0; run $c; expect_ok "$c succeeds"
+	rm -f "$work/user-stopped"
+	fake 0; t0=$(date +%s); run $c; expect_ok "$c succeeds"
 	[ "$(sed -n 1p "$work/calls")" = $c ] && pass "$c runs flowmesh $c" || fail "$c runs flowmesh $c"
+	t=$(cat "$work/user-stopped" 2>/dev/null)
+	[ -n "$t" ] && [ "$t" -ge "$t0" ] && [ "$t" -le "$(date +%s)" ] && pass "$c records the user's stop, with the time" ||
+		fail "$c records the user's stop, with the time (got: $t)"
+	[ "$(cat "$work/fwcalls" 2>/dev/null)" = "exit-kill-off exit-v6-block-off" ] && pass "$c lifts the kill switch rule and the IPv6 block" ||
+		fail "$c lifts the kill switch rule and the IPv6 block (got: $(cat "$work/fwcalls" 2>/dev/null))"
+	rm -f "$work/user-stopped"
 	fake 1 "$fx/daemon-down.txt"; run $c; expect_code daemon_down "$c, daemon down"
+	[ "$(marker)" = no ] && pass "$c failed with the daemon down: no stop recorded" || fail "$c failed with the daemon down: no stop recorded"
+	[ -e "$work/fwcalls" ] && fail "$c failed: the firewall left alone" || pass "$c failed: the firewall left alone"
+	fake 1 "$work/other.txt"; printf '{"BackendState":"Stopped"}\n' > "$work/status-out"; run $c
+	expect_code unknown "$c failed, the node stopped all the same"
+	[ "$(marker)" = yes ] && pass "  ... the stop stays recorded" || fail "  ... the stop stays recorded"
 	fake 0; run $c now; expect_code invalid_arg "$c with an argument"
 done
+echo 1 > "$work/user-stopped"
+uci -q set flowmesh.main.use_exit_node=100.64.0.9; uci commit flowmesh
+fake 0; prefs "$URL"; run reconnect; expect_ok "reconnect after a stop"
+[ "$(marker)" = no ] && pass "reconnect removes the user's stop" || fail "reconnect removes the user's stop"
+grep -qxF -- --exit-node=100.64.0.9 "$work/calls" && pass "  ... before reading the settings: the chosen exit node goes with it" ||
+	fail "  ... before reading the settings: the chosen exit node goes with it"
+uci -q delete flowmesh.main.use_exit_node; uci commit flowmesh
+echo 1 > "$work/user-stopped"
+fake 0; run up "$URL" "$KEY" gw-test; expect_ok "up after a logout"
+[ "$(marker)" = no ] && pass "up removes the user's stop" || fail "up removes the user's stop"
 
 echo "== logs"
 fake 0
@@ -280,6 +321,152 @@ printf '%s\n' 'flowmesh: set: unknown flag -x' > "$work/err.txt"
 fake 1 "$work/err.txt"; run apply; expect_code unknown "apply, CLI refuses"
 printf '%s' "$(field detail)" | grep -qF 'unknown flag -x' && pass "apply error detail" || fail "apply error detail ($res)"
 fake 0; run apply now; expect_code invalid_arg "apply with an argument"
+
+echo "== exitstate"
+es=$work/exit-state.json
+sed -i "s|^EXIT_STATE=[^ ]*|EXIT_STATE=$es|" "$helper"
+[ "$(grep -c "^EXIT_STATE=$es " "$helper")" = 1 ] || fail "could not point the helper at the state file"
+rm -f "$es"; run exitstate
+[ "$res" = '{"state":"none"}' ] && pass "no state file -> none" || fail "no state file (got: $res)"
+printf '%s\n' '{"want":"100.64.0.5","state":"active","since":1790000000}' > "$es"; run exitstate
+[ "$(field state)" = active ] && [ "$(field want)" = 100.64.0.5 ] && [ "$(field since)" = 1790000000 ] &&
+	[ "$(printf '%s\n' "$res" | wc -l)" = 1 ] && pass "valid state passed through, one line" || fail "valid state (got: $res)"
+printf '%s\n' '{"want":"","state":"offline_blocked","since":1}' > "$es"; run exitstate
+[ "$(field state)" = offline_blocked ] && pass "offline_blocked passed through" || fail "offline_blocked (got: $res)"
+for junk in 'not json {' '' '[1,2]' '"str"' '{"state":'; do
+	printf '%s' "$junk" > "$es"; run exitstate
+	[ "$res" = '{"state":"none"}' ] && pass "invalid state file ($junk) -> none" || fail "invalid state file '$junk' (got: $res)"
+done
+fake 0; run exitstate now; expect_code invalid_arg "exitstate with an argument"
+
+echo "== netcheck"
+printf '%s\n' '{' '	"UDP": true,' '	"IPv4": true' '}' > "$work/nc.json"
+fake 0 "$work/nc.json"; run netcheck
+[ "$res" = "$(cat "$work/nc.json")" ] && pass "netcheck JSON passed through unchanged (stderr warning dropped)" || fail "netcheck passthrough (got: $res)"
+grep -qxF -- --format=json "$work/calls" && pass "netcheck asks for --format=json" || fail "netcheck asks for --format=json"
+fake 1 "$fx/daemon-down.txt"; run netcheck; expect_code daemon_down "netcheck, daemon down"
+printf '%s\n' 'flowmesh is not running: connect first' > "$work/nr.txt"
+fake 1 "$work/nr.txt"; run netcheck; expect_code unknown "netcheck, not running"
+printf '%s' "$(field detail)" | grep -qF 'not running' && pass "netcheck error detail includes stderr" || fail "netcheck detail ($res)"
+fake 0 "$work/other.txt"; run netcheck; expect_code unknown "netcheck, output is not JSON"
+fake 0 "$work/nc.json"; echo 15 > "$work/sleep"
+start=$(date +%s); run netcheck; took=$(( $(date +%s) - start ))
+expect_code timeout "netcheck past the hard deadline"
+sleep 1
+pid=$(cat "$work/pid" 2>/dev/null)
+[ -n "$pid" ] && ! kill -0 "$pid" 2>/dev/null && pass "netcheck deadline: the CLI process is gone (pid $pid)" || fail "netcheck deadline: CLI pid '$pid' still alive"
+[ "$took" -le 6 ] && pass "netcheck deadline returns in ${took}s" || fail "netcheck deadline took ${took}s"
+fake 0; run netcheck now; expect_code invalid_arg "netcheck with an argument"
+
+echo "== ping: arguments (the CLI must not be called)"
+bad_ping() {
+	fake 0
+	run ping "$@"
+	expect_code invalid_arg "ping $*"
+	if called; then fail "ping $*: the CLI was called"; fi
+}
+bad_ping 8.8.8.8
+bad_ping 192.168.1.1
+bad_ping 100.63.255.255
+bad_ping 100.128.0.1
+bad_ping 100.64.0
+bad_ping 100.64.0.256
+bad_ping 100.064.0.1
+bad_ping 100.64.0.1.1
+bad_ping '100.64.0.1;reboot'
+bad_ping '100.64.0.1 -c 9'
+bad_ping '$(reboot)'
+bad_ping '-c'
+bad_ping ts1
+bad_ping ''
+bad_ping '100.64.0.1
+reboot'
+bad_ping ::1
+bad_ping fe80::1
+bad_ping fd7a:115c:a1e1::1
+bad_ping fd7a:115c:a1e0
+bad_ping fd7a:115c:a1e0:::1
+bad_ping fd7a:115c:a1e0::1::2
+bad_ping fd7a:115c:a1e0:1:2:3:4:5:6
+bad_ping fd7a:115c:a1e0:1:2:3:4
+bad_ping fd7a:115c:a1e0::12345
+bad_ping 'fd7a:115c:a1e0::1;reboot'
+bad_ping 'fd7a:115c:a1e0::1%eth0'
+bad_ping 100.64.0.1 100.64.0.2
+fake 0; run ping; expect_code invalid_arg "ping without an address"
+if called; then fail "ping without an address: the CLI was called"; fi
+
+echo "== ping: results"
+for ip in 100.64.0.1 100.127.255.254 fd7a:115c:a1e0::1 FD7A:115C:A1E0:AB12::7 fd7a:115c:a1e0:1:2:3:4:5; do
+	fake 0 "$fx/ping-direct.txt"; run ping "$ip"; expect_ok "ping $ip accepted"
+done
+fake 0 "$fx/ping-direct.txt"; run ping 100.64.0.1
+[ "$(field path)" = direct ] && [ "$(field ms)" = 2 ] && pass "direct: last answer decides, ms 2" || fail "direct (got: $res)"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.lines[*]' | wc -l)" = 3 ] && pass "all lines returned" || fail "lines (got: $res)"
+[ "$(printf '%s\n' "$res" | wc -l)" = 1 ] && pass "one JSON line" || fail "one JSON line"
+for a in ping -c 3 --until-direct=false --timeout=3s 100.64.0.1; do
+	grep -qxF -- "$a" "$work/calls" && pass "ping passes $a" || fail "ping passes $a"
+done
+fake 0 "$fx/ping-relay.txt"; run ping 100.64.0.9
+[ "$(field path)" = relay ] && [ "$(field ms)" = 0 ] && pass "relay, 0s -> ms 0" || fail "relay (got: $res)"
+fake 0 "$fx/ping-peer-relay.txt"; run ping 100.64.0.22
+[ "$(field path)" = peer-relay ] && [ "$(field ms)" = 1 ] && pass "peer-relay, ms 1" || fail "peer-relay (got: $res)"
+printf '%s\n' 'pong from fm-a (100.64.0.9) via DERP(x) in 1.5s' > "$work/p.txt"
+fake 0 "$work/p.txt"; run ping 100.64.0.9
+[ "$(field path)" = relay ] && [ "$(field ms)" = 1500 ] && pass "1.5s -> ms 1500" || fail "1.5s (got: $res)"
+fake 1 "$fx/ping-noreply.txt"; run ping 100.64.0.9
+expect_ok "no reply is a result"
+[ "$(field path)" = unknown ] && [ "$(printf '%s' "$res" | jsonfilter -t '@.ms')" = null ] && pass "no reply: path unknown, ms null" || fail "no reply (got: $res)"
+fake 1 "$fx/daemon-down.txt"; run ping 100.64.0.9; expect_code daemon_down "ping, daemon down"
+printf '%s\n' 'no matching peer' > "$work/np.txt"
+fake 1 "$work/np.txt"; run ping 100.64.0.9; expect_code unknown "ping, no matching peer"
+fake 0; echo 15 > "$work/sleep"; run ping 100.64.0.9; expect_code timeout "ping past the hard deadline"
+
+echo "== regions"
+cat > "$work/nm.json" <<'NM'
+{
+	"self": {"Name": "gw"},
+	"derpMap": {
+		"Regions": {
+			"1000": {"RegionID": 1000, "RegionCode": "r1000", "RegionName": "Seoul \"North\"", "Nodes": []},
+			"1001": {"RegionID": 1001, "RegionCode": "r1001", "RegionName": "", "Nodes": []},
+			"9": {"RegionID": "9;reboot", "RegionCode": "x", "RegionName": "bad id"}
+		},
+		"OmitDefaultRegions": true
+	}
+}
+NM
+fake 0 "$work/nm.json"; run regions
+expect_ok "regions"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[*].id' | tr '\n' ' ')" = "1000 1001 " ] && pass "regions: ids, a bad one skipped" || fail "regions ids (got: $res)"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[0].name')" = 'Seoul "North"' ] && pass "regions: name" || fail "regions name (got: $res)"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.regions[1].code')" = r1001 ] && [ -z "$(printf '%s' "$res" | jsonfilter -e '@.regions[1].name')" ] && pass "regions: code, empty name" || fail "regions code (got: $res)"
+grep -qxF netmap "$work/calls" && pass "regions reads debug netmap" || fail "regions reads debug netmap"
+printf '%s\n' '{"derpMap":{"Regions":{}}}' > "$work/nm0.json"
+fake 0 "$work/nm0.json"; run regions
+[ "$(printf '%s' "$res" | jsonfilter -e '@.ok')" = true ] && [ "$(printf '%s' "$res" | jsonfilter -e '@.regions[*]' | wc -l)" = 0 ] && pass "regions: none" || fail "regions none (got: $res)"
+fake 1 "$fx/daemon-down.txt"; run regions; expect_code daemon_down "regions, daemon down"
+fake 0; run regions now; expect_code invalid_arg "regions with an argument"
+
+echo "== bugreport"
+printf '%s\n' '{' '  "version": "0.1.7",' '  "note": "quote \" back\\slash"' '}' > "$work/report.src"
+fake 0
+cp "$work/report.src" "$work/report"
+run bugreport
+expect_ok "bugreport"
+[ "$(printf '%s' "$res" | jsonfilter -e '@.text')" = "$(cat "$work/report.src")" ] && pass "text is the report" || fail "text (got: $res)"
+rp=$(cat "$work/reportpath" 2>/dev/null)
+[ -n "$rp" ] && [ ! -e "$rp" ] && [ ! -e "$(dirname "$rp")" ] && pass "temporary report and its directory removed" || fail "temporary report removed ($rp)"
+ls -d /tmp/flowmesh-bugreport* > /dev/null 2>&1 && fail "no flowmesh-bugreport* left in /tmp" || pass "no flowmesh-bugreport* left in /tmp"
+[ "$(sed -n 1,2p "$work/calls" | tr '\n' ' ')" = "bugreport --output " ] && pass "bugreport passes --output" || fail "bugreport args"
+fake 1 "$fx/daemon-down.txt"; run bugreport; expect_code daemon_down "bugreport, daemon down"
+rp=$(cat "$work/reportpath" 2>/dev/null)
+[ -z "$rp" ] || { [ ! -e "$rp" ] && [ ! -e "$(dirname "$rp")" ]; } && pass "failed bugreport leaves nothing" || fail "failed bugreport leaves $rp"
+fake 0; echo 15 > "$work/sleep"; run bugreport; expect_code timeout "bugreport past the hard deadline"
+rp=$(cat "$work/reportpath" 2>/dev/null)
+[ -z "$rp" ] || [ ! -e "$(dirname "$rp")" ] && pass "timed-out bugreport leaves nothing" || fail "timed-out bugreport leaves $rp"
+fake 0; run bugreport now; expect_code invalid_arg "bugreport with an argument"
+ls /tmp/flowmesh-netcheck.* /tmp/flowmesh-ping.* /tmp/flowmesh-bugreport* > /dev/null 2>&1 && fail "no temp files left in /tmp" || pass "no netcheck/ping/bugreport temp files left in /tmp"
 
 echo "== $fails failure(s)"
 exit "$fails"

@@ -596,6 +596,7 @@ fn engine_config(sh: &Shared, authkey: Option<String>, opts: &Options) -> Engine
         stateful_filtering: p.stateful_filtering,
         exit_node: p.exit_node.clone(),
         exit_node_allow_lan_access: p.exit_node_allow_lan_access,
+        exit_node_forwarded_only: p.exit_node_forwarded_only,
         run_ssh: p.run_ssh,
         ssh_helper: None,
         serve: sh.serve(),

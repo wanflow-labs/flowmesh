@@ -32,6 +32,9 @@ pub struct Prefs {
     pub exit_node: String,
     /// Reach the host's own networks directly while using an exit node. Default false.
     pub exit_node_allow_lan_access: bool,
+    /// Router exit mode (`--exit-node-forwarded-only`): only traffic this host forwards goes
+    /// through the exit node (SNAT to the mesh address); its own traffic stays off it. Default false.
+    pub exit_node_forwarded_only: bool,
     /// Local user (name) who may change settings without root (`--operator`); empty for none.
     pub operator_user: String,
     /// Run the SSH server (`--ssh`). Default false.
@@ -54,6 +57,7 @@ impl Default for Prefs {
             stateful_filtering: false,
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
+            exit_node_forwarded_only: false,
             operator_user: String::new(),
             run_ssh: false,
             want_running: false,
@@ -77,6 +81,7 @@ pub struct PrefsUpdate {
     pub stateful_filtering: Option<bool>,
     pub exit_node: Option<String>,
     pub exit_node_allow_lan_access: Option<bool>,
+    pub exit_node_forwarded_only: Option<bool>,
     pub operator_user: Option<String>,
     pub run_ssh: Option<bool>,
 }
@@ -147,6 +152,12 @@ impl Prefs {
             out.push((
                 "--exit-node-allow-lan-access",
                 self.exit_node_allow_lan_access.to_string(),
+            ));
+        }
+        if self.exit_node_forwarded_only != d.exit_node_forwarded_only {
+            out.push((
+                "--exit-node-forwarded-only",
+                self.exit_node_forwarded_only.to_string(),
             ));
         }
         if self.operator_user != d.operator_user {
@@ -230,6 +241,9 @@ impl Prefs {
         if let Some(v) = update.exit_node_allow_lan_access {
             p.exit_node_allow_lan_access = v;
         }
+        if let Some(v) = update.exit_node_forwarded_only {
+            p.exit_node_forwarded_only = v;
+        }
         if let Some(v) = &update.operator_user {
             p.operator_user.clone_from(v);
         }
@@ -256,6 +270,7 @@ impl PrefsUpdate {
             "--stateful-filtering" => self.stateful_filtering.is_some(),
             "--exit-node" => self.exit_node.is_some(),
             "--exit-node-allow-lan-access" => self.exit_node_allow_lan_access.is_some(),
+            "--exit-node-forwarded-only" => self.exit_node_forwarded_only.is_some(),
             "--operator" => self.operator_user.is_some(),
             "--ssh" => self.run_ssh.is_some(),
             _ => false,
@@ -368,6 +383,54 @@ mod tests {
         assert_eq!(missing, vec!["--advertise-routes"]);
     }
 
+    /// Router exit mode is a preference like the others: default off, stored, and `up` must
+    /// repeat it once it is on.
+    #[test]
+    fn exit_node_forwarded_only_is_a_non_default_flag() {
+        assert!(!Prefs::default().exit_node_forwarded_only);
+        let p = Prefs {
+            control_url: "http://h".into(),
+            ..Default::default()
+        }
+        .apply_set(&PrefsUpdate {
+            exit_node_forwarded_only: Some(true),
+            ..Default::default()
+        });
+        assert!(p.exit_node_forwarded_only);
+        assert_eq!(
+            p.non_default_flags(),
+            vec![
+                ("--login-server", "http://h".to_string()),
+                ("--exit-node-forwarded-only", "true".to_string()),
+            ]
+        );
+        let bare = PrefsUpdate {
+            control_url: Some("http://h".into()),
+            ..Default::default()
+        };
+        let PrefsError::MissingFlags {
+            missing,
+            suggestion,
+        } = p.apply_up(&bare, false).unwrap_err()
+        else {
+            panic!()
+        };
+        assert_eq!(missing, vec!["--exit-node-forwarded-only"]);
+        assert!(suggestion.ends_with(" --exit-node-forwarded-only=true"));
+        let again = PrefsUpdate {
+            exit_node_forwarded_only: Some(true),
+            ..bare
+        };
+        assert!(p.apply_up(&again, false).unwrap().exit_node_forwarded_only);
+        let stored: Prefs = serde_json::from_str(&serde_json::to_string(&p).unwrap()).unwrap();
+        assert!(stored.exit_node_forwarded_only);
+        let old: Prefs = serde_json::from_str(r#"{"control_url":"http://h"}"#).unwrap();
+        assert!(
+            !old.exit_node_forwarded_only,
+            "prefs stored before it existed: off"
+        );
+    }
+
     #[test]
     fn up_reset_restores_unmentioned_to_default() {
         let p = joined()
@@ -421,6 +484,7 @@ mod tests {
             stateful_filtering: false,
             exit_node: String::new(),
             exit_node_allow_lan_access: false,
+            exit_node_forwarded_only: false,
             operator_user: "alice".into(),
             run_ssh: false,
             want_running: true,

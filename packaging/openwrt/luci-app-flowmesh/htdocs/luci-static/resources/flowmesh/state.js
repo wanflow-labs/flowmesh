@@ -178,6 +178,45 @@ function peerPath(p) {
 	return 'idle';
 }
 
+// A byte counter: a non-negative finite number, else 0.
+function count(n) {
+	return (typeof n == 'number' && isFinite(n) && n > 0) ? n : 0;
+}
+
+// The mesh's own address ranges (100.64.0.0/10 and fd7a:115c:a1e0::/48).
+var MESH_RANGES = [ '100.64.0.0/10', 'fd7a:115c:a1e0::/48' ].map(parsePrefix);
+
+// Relay region names come from the control server: one that names the software behind it is not
+// shown (the page never names it), the region ID is.
+var INTERNAL_NAME = /tailscale|headscale|derp|wireguard/i;
+
+var EXIT_STATES = [ 'none', 'active', 'offline_blocked', 'offline_fallback', 'missing', 'down_blocked', 'down_fallback', 'stopped' ];
+
+// The network an address/length belongs to ("192.168.1.1/24" -> "192.168.1.0/24"), or null.
+function network(cidr) {
+	var p = parsePrefix(cidr);
+
+	if (!p)
+		return null;
+
+	var bytes = p.bytes.map(function(b, i) {
+		var bits = p.len - i * 8;
+
+		return bits >= 8 ? b : (bits <= 0 ? 0 : b & ((0xff << (8 - bits)) & 255));
+	});
+
+	return format(bytes, p.len);
+}
+
+// The first label of a DNS name ("sungs-iphone.mesh.example." -> "sungs-iphone"): the name the
+// mesh's resolver answers for, unlike HostName (free text such as "Sung's iPhone"). '' without one.
+function dnsLabel(name) {
+	if (typeof name != 'string')
+		return '';
+
+	return name.trim().replace(/\.+$/, '').split('.')[0];
+}
+
 function peerName(p) {
 	if (p.HostName)
 		return String(p.HostName);
@@ -187,8 +226,9 @@ function peerName(p) {
 
 return baseclass.extend({
 	// {state, ips, name, peers, primaryRoutes, exitNodeOption, haveNodeKey}; state is one of down,
-	// needs_login, stopped, starting, running. Peer = {name, ips, online, path, primaryRoutes}, path
-	// one of direct, relay, peer-relay, idle.
+	// needs_login, stopped, starting, running. Peer = {name, ips, online, path, primaryRoutes,
+	// rxBytes, txBytes, exitNodeOption, exitNode}, path one of direct, relay, peer-relay, idle;
+	// exitNode: it is this router's exit node now.
 	summarize: function(status) {
 		var s = (status != null && typeof status == 'object') ? status : {};
 		var self = (s.Self != null && typeof s.Self == 'object') ? s.Self : {};
@@ -204,7 +244,12 @@ return baseclass.extend({
 					ips: list(p.TailscaleIPs).slice(),
 					online: p.Online === true,
 					path: peerPath(p),
-					primaryRoutes: list(p.PrimaryRoutes).slice()
+					primaryRoutes: list(p.PrimaryRoutes).slice(),
+					rxBytes: count(p.RxBytes),
+					txBytes: count(p.TxBytes),
+					exitNodeOption: p.ExitNodeOption === true,
+					exitNode: p.ExitNode === true,
+					dnsLabel: dnsLabel(p.DNSName)
 				});
 			}
 		}
@@ -218,7 +263,8 @@ return baseclass.extend({
 			peers: peers,
 			primaryRoutes: list(self.PrimaryRoutes).slice(),
 			exitNodeOption: self.ExitNodeOption === true,
-			haveNodeKey: s.HaveNodeKey === true
+			haveNodeKey: s.HaveNodeKey === true,
+			dnsLabel: state == 'down' ? '' : dnsLabel(self.DNSName)
 		};
 	},
 
@@ -270,20 +316,153 @@ return baseclass.extend({
 		return out;
 	},
 
-	// The network an interface address belongs to: "192.168.1.1/24" -> "192.168.1.0/24"; null when
-	// the text is not "address/length".
-	network: function(cidr) {
+	// "1.5 KiB": binary units, one decimal from KiB up; anything that is not a count is "0 B".
+	formatBytes: function(n) {
+		var units = [ 'B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB' ], i = 0;
+
+		n = count(n);
+
+		while (n >= 1024 && i < units.length - 1) {
+			n /= 1024;
+			i++;
+		}
+
+		return i == 0 ? Math.floor(n) + ' B' : n.toFixed(1) + ' ' + units[i];
+	},
+
+	// [{ip, name, online, current}] for the peers offering themselves as exit node, by name. ip is
+	// the peer's mesh IPv4 address (what use_exit_node holds); a peer without one is left out.
+	exitOptions: function(status) {
+		var s = (status != null && typeof status == 'object') ? status : {}, out = [];
+
+		if (s.Peer == null || typeof s.Peer != 'object')
+			return out;
+
+		for (var k in s.Peer) {
+			var p = s.Peer[k] || {};
+			var ip = list(p.TailscaleIPs).filter(function(a) { return parseIPv4(String(a)) != null; })[0];
+
+			if (p.ExitNodeOption === true && ip)
+				out.push({ ip: ip, name: peerName(p), online: p.Online === true, current: p.ExitNode === true });
+		}
+
+		return out.sort(function(a, b) { return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0); });
+	},
+
+	// A network to share: {ok:true, prefix} (normalized to its network address) or {ok:false, error}
+	// with error 'format' (not addr/len), 'default' (a default route: that is the exit node
+	// switch) or 'mesh' (overlaps the mesh's own addresses).
+	validateRoute: function(cidr) {
 		var p = parsePrefix(cidr);
 
 		if (!p)
-			return null;
+			return { ok: false, error: 'format' };
 
-		var bytes = p.bytes.map(function(b, i) {
-			var bits = p.len - i * 8;
+		if (p.len == 0)
+			return { ok: false, error: 'default' };
 
-			return bits >= 8 ? b : (bits <= 0 ? 0 : b & ((0xff << (8 - bits)) & 255));
+		if (MESH_RANGES.some(function(m) { return m.bytes.length == p.bytes.length && overlap(m, p); }))
+			return { ok: false, error: 'mesh' };
+
+		return { ok: true, prefix: network(cidr) };
+	},
+
+	// The exit-node state the page shows: none, active, offline_blocked, offline_fallback, missing,
+	// down_blocked, down_fallback (FlowMesh itself not running), stopped (the user disconnected or
+	// logged out), or unknown. Takes the state or `flowmesh-luci exitstate`'s whole answer.
+	exitStateLabel: function(state) {
+		if (state != null && typeof state == 'object')
+			state = state.state;
+
+		return EXIT_STATES.indexOf(state) >= 0 ? state : 'unknown';
+	},
+
+	// {id: name} for the relay regions `flowmesh-luci regions` lists (the code where a region has no
+	// name).
+	regionNames: function(res) {
+		var out = {};
+
+		list(res && res.ok && res.regions).forEach(function(r) {
+			var id = r ? +r.id : NaN;
+
+			if (r && id > 0 && Math.floor(id) == id)
+				out[id] = String(r.name || r.code || '');
 		});
 
-		return format(bytes, p.len);
-	}
+		return out;
+	},
+
+	// The parts of `flowmesh netcheck --format=json` the page shows: {udp, holePunch, regions,
+	// preferred, ipv4, ipv6}. holePunch is 'hard' when the public mapping varies by destination,
+	// 'easy' when two relay probes saw the same mapping, else 'unknown'. regions: [{id, name, ms}],
+	// fastest first; names from `names` ({id: name}, see regionNames), else the ID.
+	netcheckSummary: function(json, names) {
+		var r = (json != null && typeof json == 'object' && json.ok !== false) ? json : {};
+		var n = (names != null && typeof names == 'object') ? names : {};
+		var udp = r.UDP === true, varies = r.MappingVariesByDestIP, counters = 0;
+
+		if (r.GlobalV4Counters != null && typeof r.GlobalV4Counters == 'object')
+			counters = Object.keys(r.GlobalV4Counters).length;
+
+		var holePunch = 'unknown';
+
+		if (varies === true || varies === 'true')
+			holePunch = 'hard';
+		else if ((varies === false || varies === 'false') && udp && counters > 1)
+			holePunch = 'easy';
+
+		function nameOf(id) {
+			var name = n[id] != null ? String(n[id]) : '';
+
+			return (name == '' || INTERNAL_NAME.test(name)) ? String(id) : name;
+		}
+
+		var regions = [], lat = (r.RegionLatency != null && typeof r.RegionLatency == 'object') ? r.RegionLatency : {};
+
+		for (var k in lat) {
+			var id = +k, ns = lat[k];
+
+			if (!(id > 0) || Math.floor(id) != id || typeof ns != 'number' || !isFinite(ns) || ns < 0)
+				continue;
+
+			regions.push({ id: id, name: nameOf(id), ms: Math.round(ns / 1e5) / 10 });
+		}
+
+		regions.sort(function(a, b) { return a.ms - b.ms || a.id - b.id; });
+
+		var pid = +r.PreferredDERP, preferred = null;
+
+		if (pid > 0) {
+			preferred = regions.filter(function(x) { return x.id == pid; })[0] || { id: pid, name: nameOf(pid), ms: null };
+		}
+
+		return {
+			udp: udp,
+			holePunch: holePunch,
+			regions: regions,
+			preferred: preferred,
+			ipv4: String(r.GlobalV4 || ''),
+			ipv6: String(r.GlobalV6 || '')
+		};
+	},
+
+	dnsLabel: dnsLabel,
+
+	// A mesh name to try from the LAN ("nas.mesh.example"): an online peer's DNS label (else any
+	// peer's, else this router's) with the mesh suffix; '' when there is no such name or no suffix.
+	nameExample: function(sum, suffix) {
+		suffix = (typeof suffix == 'string') ? suffix.trim().replace(/^\.+|\.+$/g, '') : '';
+
+		if (!sum || !suffix)
+			return '';
+
+		var peers = list(sum.peers).filter(function(p) { return p && p.dnsLabel; });
+		var label = (peers.filter(function(p) { return p.online; })[0] || peers[0] || {}).dnsLabel || sum.dnsLabel || '';
+
+		return label ? label + '.' + suffix : '';
+	},
+
+	// The network an interface address belongs to: "192.168.1.1/24" -> "192.168.1.0/24"; null when
+	// the text is not "address/length".
+	network: network
 });

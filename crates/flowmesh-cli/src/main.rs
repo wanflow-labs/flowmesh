@@ -210,9 +210,14 @@ async fn run(
                 }
             }
         }
-        Command::DnsStatus { all } => {
+        Command::DnsStatus { all, json } => {
             let v = client.get("dns").await.map_err(e)?;
-            out!("{}", query::dns_status(&v, all));
+            if json {
+                // The daemon's `dns` view as is, on one line; `--all` changes nothing here.
+                outln!("{v}");
+            } else {
+                out!("{}", query::dns_status(&v, all));
+            }
             Ok(0)
         }
         Command::DnsQuery { name: None, .. } => {

@@ -1,348 +1,801 @@
 msgid ""
 msgstr "Content-Type: text/plain; charset=UTF-8"
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:538
-msgid ""
-"%s overlaps a network that %s already shares. Devices may not reach the "
-"right one; consider changing this router's LAN network."
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:183
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:161
+msgid "%d ms"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:446
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:285
+msgid "%d of %d online"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:170
+msgid "%s (%s)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:170
+msgid "%s (%s, offline)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:174
+msgid "%s (not available in the mesh)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:86
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:109
+msgid "%s ms"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:321
+msgid ""
+"%s overlaps a network that %s already shares. Devices may not reach "
+"the right one; consider changing this router's LAN network."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:30
+msgid ""
+"A default route cannot be shared. To carry other devices' Internet "
+"traffic, use \"Act as exit node\"."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:160
 msgid "Act as exit node"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:516
+#: htdocs/luci-static/resources/flowmesh/common.js:278
 msgid "Active"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:517
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:196
+msgid "Advanced"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:279
 msgid "Advertised — waiting for an admin to approve it in the console"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:656
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:157
+msgid ""
+"An exit node carries Internet traffic for other devices. This router "
+"can be one, or send its LAN's Internet traffic through one, but not "
+"both at once."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:356
+msgid "Applying settings…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "Available"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "Blocked: connections go through a relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:377
 msgid "Cancel"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:118
+#: htdocs/luci-static/resources/flowmesh/common.js:117
 msgid ""
-"Cannot reach the mesh server. Check the address and this router's Internet "
-"connection."
+"Cannot reach the mesh server. Check the address and this router's "
+"Internet connection."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:477
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:70
+msgid "Checking the network…"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:229
+msgid "Checking…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:60
+msgid ""
+"Checks how this router's Internet connection suits the mesh: whether "
+"UDP gets through, how easily direct connections can be made, and the "
+"latency to each relay region. Takes up to 20 seconds."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:46
+msgid ""
+"Checks to run when something does not work as expected. Each one runs "
+"once, when you click its button."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:177
+msgid ""
+"Collects this router's FlowMesh state into a report you can copy and "
+"send to support. Nothing is sent automatically."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:264
 msgid "Connecting…"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:573
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:69
 msgid "Connection"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:499
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:292
 msgid "Connections"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:301
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:498
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:205
+msgid "Copied."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:228
+msgid "Copy"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:139
+msgid "Current exit node"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:152
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:163
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:176
+msgid "Current state"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:95
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:154
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:289
 msgid "Device name"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:450
-msgid "Devices in this mesh"
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:28
+msgid "Devices"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:558
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:176
+msgid "Diagnostic report"
+msgstr ""
+
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:54
+msgid "Diagnostics"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:20
 msgid "Direct"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:594
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:29
+msgid "Direct connection"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:91
+msgid "Direct connections"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:313
 msgid "Disconnect"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:478
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:265
 msgid "Disconnected"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:645
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:366
 msgid "Disconnecting…"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:308
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:168
+msgid "Don't use"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:82
+msgid "Easy: direct connections usually work"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:34
+msgid "Enter a network as address/prefix length, such as 192.168.1.0/24."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:161
 msgid "Enter manually"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:340
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:193
 msgid "Enter the join key."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:338
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:191
 msgid "Enter the mesh address, starting with https:// or http://."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:198
-#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:3
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:191
+msgid "Example"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:98
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:141
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:294
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:157
+msgid "Exit node"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:225
+msgid "Exit node %s is not available in the mesh"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:227
+msgid "FlowMesh is not connected: the LAN has no Internet access (Kill Switch)"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:229
+msgid "FlowMesh is not connected: the LAN uses the local Internet connection for now"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:231
+msgid "Disconnected: the LAN uses the local Internet connection"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:221
+msgid "Exit node %s is offline: the LAN has no Internet access (Kill Switch)"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:223
+msgid ""
+"Exit node %s is offline: the LAN uses the local Internet connection "
+"for now"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:209
 msgid "FlowMesh"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:233
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:83
 msgid "FlowMesh is turned off."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:181
+msgid "Generate report"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:187
+msgid "Generating the report…"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:179
+msgid "Go to Overview"
 msgstr ""
 
 #: root/usr/share/rpcd/acl.d/luci-app-flowmesh.json:3
 msgid "Grant access to FlowMesh"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:560
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:83
+msgid ""
+"Hard: this network's NAT changes ports per destination; connections "
+"may go through a relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:22
 msgid "High-speed relay"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:304
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:157
 msgid "How this router appears in the mesh."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:561
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:102
+msgid ""
+"IPv4 or IPv6 networks, such as 192.168.1.0/24. Starts with this "
+"router's LAN networks."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:23
 msgid "Idle"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:295
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:148
 msgid ""
-"In the console, add a device to your mesh and copy its join code (or the "
-"Linux install command), then paste it here."
+"In the console, add a device to your mesh and copy its join code (or "
+"the Linux install command), then paste it here."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:130
+#: htdocs/luci-static/resources/flowmesh/common.js:131
 msgid "Invalid request."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:325
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:178
 msgid "Join"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:294
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:147
 msgid "Join a mesh"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:297
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:150
 msgid "Join code"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:314
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:167
 msgid "Join key"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:199
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:48
 msgid "Join this router to a Wanflow FlowMesh mesh network."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:373
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:226
 msgid "Joining the mesh… This can take up to half a minute."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:444
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:179
+msgid "Kill Switch"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:71
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:102
+msgid "Latency"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:96
 msgid ""
-"Lets other devices in the mesh reach this router's LAN. A mesh administrator "
-"approves it in the console."
+"Let other devices in the mesh reach networks behind this router. A "
+"mesh administrator approves each network in the console."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:424
-msgid "Loading…"
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:184
+msgid ""
+"Lets devices on the LAN reach mesh devices by name. Only mesh names "
+"are answered by FlowMesh; every other lookup works as before."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:597
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:663
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:316
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:384
 msgid "Log out"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:653
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:374
 msgid "Log out of the mesh?"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:661
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:382
 msgid "Logging out…"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:427
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:67
 msgid "Logs"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:497
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:571
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:67
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:96
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:290
 msgid "Mesh IP"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:310
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:163
 msgid "Mesh address"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:570
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:187
+msgid "Mesh names for the LAN"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:66
 msgid "Name"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:526
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:184
+msgid "Name resolution"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:108
+msgid "Nearest"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:94
+msgid "Nearest relay region"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:59
+msgid "Network check"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:102
+msgid "Networks"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:328
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:306
 msgid "No LAN network found to share."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:605
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:33
 msgid "No log lines."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:285
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:345
+msgid "No mesh names yet."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:138
 msgid "No mesh yet? Wanflow FlowMesh Free is free forever."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:565
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:75
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:140
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
 msgid "No other devices yet."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:513
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:165
+msgid "No output."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:114
+msgid "No relay region answered."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:180
+msgid "No reply"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:160
+msgid "No reply."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:86
+msgid "None"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:278
+msgid "Not available while this router acts as an exit node."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:279
+msgid ""
+"Not available while this router uses an exit node. Choose \"Don't use\" "
+"first."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:330
+msgid "Not offered yet: save to offer it."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:323
+msgid "Not shared"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:275
 msgid "Not shared while disconnected"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:579
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:302
+msgid "Not shared yet: save to start sharing."
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:227
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:344
+msgid "Not used"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:98
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:338
+msgid "Offered to other devices"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:147
 msgid "Offline"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:476
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:579
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:146
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:263
 msgid "Online"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:107
+#: htdocs/luci-static/resources/flowmesh/common.js:106
 msgid "Open the console"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:446
-msgid ""
-"Other devices may send their Internet traffic through this router. A mesh "
-"administrator approves it in the console."
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:79
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
+msgid "Other devices"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:351
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:160
+msgid ""
+"Other devices may send their Internet traffic through this router. A "
+"mesh administrator approves it in the console."
+msgstr ""
+
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:15
+msgid "Overview"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:204
 msgid "Paste a join code first."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:448
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:132
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:139
+msgid "Ping"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:151
+msgid "Pinging %s…"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:92
+msgid "Public IPv4 address"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:93
+msgid "Public IPv6 address"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:199
 msgid "Reach the LANs other mesh devices share."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:595
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:70
+msgid "Received / sent"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:314
 msgid "Reconnect"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:649
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:370
 msgid "Reconnecting…"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:431
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:25
 msgid "Refresh"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:559
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:101
+msgid "Region"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:21
 msgid "Relay"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:443
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:99
+msgid "Relay region latency"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:64
+msgid "Run network check"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:344
+msgid "Run this on a LAN device."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:211
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:221
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:224
+msgid "Select the text and copy it with Ctrl+C."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:167
+msgid ""
+"Send the Internet traffic of every LAN device through this mesh "
+"device. The router's own traffic keeps using the local Internet "
+"connection, and the LAN's IPv6 Internet access is blocked meanwhile."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:133
+msgid ""
+"Sends three pings to a device in the mesh and shows whether they go "
+"directly or through a relay. A ping also prompts the two devices to "
+"try a direct connection."
+msgstr ""
+
+#: root/usr/share/luci/menu.d/luci-app-flowmesh.json:41
 msgid "Settings"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:444
-msgid "Share local LAN"
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:363
+msgid "Settings applied."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:291
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:99
+msgid "Share networks"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:72
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:97
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:293
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:96
+msgid "Shared networks"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:144
 msgid "Sign up free"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:237
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:369
+msgid "Some settings are not valid; nothing was saved."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:87
 msgid "Start"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:441
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:496
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:572
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:68
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:252
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:288
 msgid "Status"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:122
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:233
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:127
+msgid "Test"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:176
+msgid "Testing…"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:123
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:83
 msgid "The FlowMesh service is not running."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:125
-msgid ""
-"The device name may only contain letters, digits and hyphens (at most 63)."
+#: htdocs/luci-static/resources/flowmesh/common.js:177
+msgid "The FlowMesh service is not running. Start it on the Overview page."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:127
+#: htdocs/luci-static/resources/flowmesh/common.js:219
+msgid "The LAN reaches the Internet through %s"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:126
+msgid ""
+"The device name may only contain letters, digits and hyphens (at most "
+"63)."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:49
+msgid "The devices in this mesh and how this router reaches them."
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:128
 msgid "The join key is not valid."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:129
+#: htdocs/luci-static/resources/view/flowmesh/logs.js:21
+msgid "The latest FlowMesh lines of the system log, newest at the bottom."
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:130
 msgid "The mesh address is not valid."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:120
+#: htdocs/luci-static/resources/flowmesh/common.js:120
 msgid "The mesh server did not answer in time. Please try again."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:134
+#: htdocs/luci-static/resources/flowmesh/common.js:135
 msgid "The operation failed."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:132
+#: htdocs/luci-static/resources/flowmesh/common.js:133
 msgid "The router did not answer: %s"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:355
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:208
 msgid ""
-"This is not a join code. Paste the join code or the Linux install command "
-"from the console."
+"This is not a join code. Paste the join code or the Linux install "
+"command from the console."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:114
+#: htdocs/luci-static/resources/flowmesh/common.js:113
 msgid ""
-"This join code has expired or was already used. Generate a new one in the "
-"console."
+"This join code has expired or was already used. Generate a new one in "
+"the console."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:353
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:206
 msgid ""
-"This join code is newer than this plugin. Please upgrade luci-app-flowmesh."
+"This join code is newer than this plugin. Please upgrade "
+"luci-app-flowmesh."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:654
-msgid ""
-"This router leaves the mesh. Joining again needs a new join code from the "
-"console."
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:32
+msgid "This network overlaps the mesh's own addresses."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:448
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:77
+msgid "This router"
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:178
+msgid ""
+"This router has not joined a mesh yet. Join one on the Overview page "
+"first."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:375
+msgid ""
+"This router leaves the mesh. Joining again needs a new join code from "
+"the console."
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:121
+msgid ""
+"This took too long; FlowMesh may still be applying an earlier change. "
+"Please try again in a moment."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:31
+msgid "Through a high-speed relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:30
+msgid "Through a relay"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:82
+msgid ""
+"Traffic is counted since the current connection to each device was "
+"set up. Latency is measured only when you ask for it."
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:90
+msgid "UDP"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/devices.js:24
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:32
+msgid "Unknown"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:84
+msgid "Unknown (finding out needs answers from two or more relay servers)"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:167
+msgid "Use exit node"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:199
 msgid "Use networks shared by other devices"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:317
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:170
 msgid "Used when the join code box is empty."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:116
+#: htdocs/luci-static/resources/view/flowmesh/settings.js:179
+msgid ""
+"While the exit node is offline, the LAN has no Internet access. Off: "
+"the LAN uses the local Internet connection until the exit node is "
+"back."
+msgstr ""
+
+#: htdocs/luci-static/resources/flowmesh/common.js:115
 msgid "Your mesh has reached its site limit."
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:489
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:278
 msgid "direct: %d"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:491
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:280
 msgid "high-speed relay: %d"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:499
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:292
 msgid "none active"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:493
+#: htdocs/luci-static/resources/view/flowmesh/diagnostics.js:128
+msgid "offline"
+msgstr ""
+
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:282
 msgid "relay: %d"
 msgstr ""
 
-#: htdocs/luci-static/resources/view/flowmesh/overview.js:260
+#: htdocs/luci-static/resources/view/flowmesh/overview.js:113
 msgid "wanflow://… or the Linux install command from the console"
 msgstr ""

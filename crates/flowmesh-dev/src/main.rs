@@ -38,6 +38,7 @@ fn parse_args() -> Result<flowmesh_engine::EngineConfig, String> {
         stateful_filtering: false,
         exit_node: String::new(),
         exit_node_allow_lan_access: false,
+        exit_node_forwarded_only: false,
         run_ssh: false,
         ssh_helper: None,
         serve: Default::default(),

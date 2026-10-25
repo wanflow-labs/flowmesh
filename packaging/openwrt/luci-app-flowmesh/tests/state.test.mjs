@@ -79,7 +79,7 @@ test('summarize: peers and their connection path', () => {
 	assert.deepEqual(by.gone.ips, ['100.64.0.9']);
 	assert.deepEqual(by.gone.primaryRoutes, ['10.9.0.0/24']);
 	assert.deepEqual(by.relayed.primaryRoutes, []); // PrimaryRoutes: null
-	assert.deepEqual(Object.keys(by[s.peers[0].name]).sort(), ['ips', 'name', 'online', 'path', 'primaryRoutes']);
+	assert.deepEqual(Object.keys(by[s.peers[0].name]).sort(), ['dnsLabel', 'exitNode', 'exitNodeOption', 'ips', 'name', 'online', 'path', 'primaryRoutes', 'rxBytes', 'txBytes']);
 	// sorted by name
 	assert.deepEqual(s.peers.map((p) => p.name), ['direct-one', 'fast', 'gone', 'quiet', 'relayed']);
 });
@@ -167,4 +167,199 @@ test('network: the network of an interface address', () => {
 	assert.equal(st.network('192.168.1.1'), null);
 	assert.equal(st.network('300.1.1.1/24'), null);
 	assert.equal(st.network('192.168.1.1/33'), null);
+});
+
+test('summarize: per-peer traffic and exit-node flags', () => {
+	const s = st.summarize(status({ Peer: {
+		k1: node({ HostName: 'exit', RxBytes: 1536, TxBytes: 42, ExitNodeOption: true, ExitNode: true }),
+		k2: node({ HostName: 'plain', RxBytes: undefined, TxBytes: 'x' }),
+	} }));
+	const by = Object.fromEntries(s.peers.map((p) => [p.name, p]));
+	assert.equal(by.exit.rxBytes, 1536);
+	assert.equal(by.exit.txBytes, 42);
+	assert.equal(by.exit.exitNodeOption, true);
+	assert.equal(by.exit.exitNode, true);
+	assert.equal(by.plain.rxBytes, 0);
+	assert.equal(by.plain.txBytes, 0);
+	assert.equal(by.plain.exitNodeOption, false);
+	assert.equal(by.plain.exitNode, false);
+});
+
+test('formatBytes: binary units, one decimal', () => {
+	assert.equal(st.formatBytes(0), '0 B');
+	assert.equal(st.formatBytes(1), '1 B');
+	assert.equal(st.formatBytes(1023), '1023 B');
+	assert.equal(st.formatBytes(1024), '1.0 KiB');
+	assert.equal(st.formatBytes(1536), '1.5 KiB');
+	assert.equal(st.formatBytes(5 * 1024 * 1024), '5.0 MiB');
+	assert.equal(st.formatBytes(3.25 * 1024 ** 3), '3.3 GiB');
+	assert.equal(st.formatBytes(2 * 1024 ** 4), '2.0 TiB');
+	assert.equal(st.formatBytes(2 * 1024 ** 6), '2048.0 PiB');
+	for (const bad of [null, undefined, -5, NaN, 'abc', Infinity])
+		assert.equal(st.formatBytes(bad), '0 B', String(bad));
+});
+
+test('exitOptions: peers offering themselves as exit node, by name', () => {
+	const s = status({ Peer: {
+		k1: node({ HostName: 'zeta', TailscaleIPs: ['fd7a:115c:a1e0::5', '100.64.0.5'], ExitNodeOption: true, Online: false }),
+		k2: node({ HostName: 'alpha', TailscaleIPs: ['100.64.0.3'], ExitNodeOption: true, ExitNode: true }),
+		k3: node({ HostName: 'not-exit', TailscaleIPs: ['100.64.0.4'] }),
+		k4: node({ HostName: 'no-v4', TailscaleIPs: ['fd7a:115c:a1e0::9'], ExitNodeOption: true }),
+		k5: node({ HostName: 'nulls', TailscaleIPs: null, ExitNodeOption: true }),
+	} });
+	assert.deepEqual(st.exitOptions(s), [
+		{ ip: '100.64.0.3', name: 'alpha', online: true, current: true },
+		{ ip: '100.64.0.5', name: 'zeta', online: false, current: false },
+	]);
+	assert.deepEqual(st.exitOptions(status()), []); // Peer: null
+	assert.deepEqual(st.exitOptions(null), []);
+	assert.deepEqual(st.exitOptions({ ok: false, code: 'daemon_down' }), []);
+});
+
+test('validateRoute: valid networks, normalized to the network address', () => {
+	assert.deepEqual(st.validateRoute('192.168.1.0/24'), { ok: true, prefix: '192.168.1.0/24' });
+	assert.deepEqual(st.validateRoute(' 192.168.1.77/24 '), { ok: true, prefix: '192.168.1.0/24' });
+	assert.deepEqual(st.validateRoute('10.1.2.3/32'), { ok: true, prefix: '10.1.2.3/32' });
+	assert.deepEqual(st.validateRoute('FD00:ABCD::1/64'), { ok: true, prefix: 'fd00:abcd::/64' });
+	assert.deepEqual(st.validateRoute('2001:db8:0:0:1::/48'), { ok: true, prefix: '2001:db8::/48' });
+	// next to the mesh range, not in it
+	assert.deepEqual(st.validateRoute('100.128.0.0/16'), { ok: true, prefix: '100.128.0.0/16' });
+	assert.deepEqual(st.validateRoute('fd7a:115c:a1e1::/48'), { ok: true, prefix: 'fd7a:115c:a1e1::/48' });
+});
+
+test('validateRoute: errors', () => {
+	for (const bad of ['', '   ', null, undefined, '192.168.1.0', '192.168.1.0/33', '300.1.1.1/24', 'fd00::/129', 'abc/8', '1.2.3.4/24/1', 'fd00:::1/64'])
+		assert.deepEqual(st.validateRoute(bad), { ok: false, error: 'format' }, String(bad));
+	assert.deepEqual(st.validateRoute('0.0.0.0/0'), { ok: false, error: 'default' });
+	assert.deepEqual(st.validateRoute('::/0'), { ok: false, error: 'default' });
+	assert.deepEqual(st.validateRoute('10.0.0.0/0'), { ok: false, error: 'default' });
+	assert.deepEqual(st.validateRoute('100.64.0.0/10'), { ok: false, error: 'mesh' });
+	assert.deepEqual(st.validateRoute('100.100.1.0/24'), { ok: false, error: 'mesh' });
+	assert.deepEqual(st.validateRoute('100.0.0.0/8'), { ok: false, error: 'mesh' }); // contains it
+	assert.deepEqual(st.validateRoute('fd7a:115c:a1e0:ab12::/64'), { ok: false, error: 'mesh' });
+	assert.deepEqual(st.validateRoute('fd7a::/16'), { ok: false, error: 'mesh' });
+});
+
+test('exitStateLabel: the eight states, anything else unknown', () => {
+	for (const s of ['none', 'active', 'offline_blocked', 'offline_fallback', 'missing', 'down_blocked', 'down_fallback', 'stopped'])
+		assert.equal(st.exitStateLabel(s), s);
+	for (const s of ['', null, undefined, 'weird', 7])
+		assert.equal(st.exitStateLabel(s), 'unknown', String(s));
+	// the helper's answer itself is accepted too
+	assert.equal(st.exitStateLabel({ want: '100.64.0.2', state: 'offline_blocked', since: 1 }), 'offline_blocked');
+	assert.equal(st.exitStateLabel({ ok: false, code: 'rpc' }), 'unknown');
+});
+
+// `flowmesh netcheck --format=json` (crates/flowmesh-cli/src/netcheck.rs json()).
+function netcheck(over) {
+	return Object.assign({
+		Now: '2026-10-24T01:02:03.456Z', UDP: true, IPv6: false, IPv4: true, IPv6CanSend: false, IPv4CanSend: true,
+		OSHasIPv6: true, ICMPv4: false, MappingVariesByDestIP: false, UPnP: false, PMP: false, PCP: false,
+		PreferredDERP: 1001,
+		RegionLatency: { 1000: 25300000, 1001: 4600000, 1002: 120000000 },
+		RegionV4Latency: { 1000: 25300000, 1001: 4600000 }, RegionV6Latency: {},
+		GlobalV4Counters: { '203.0.113.9:41641': 2, '203.0.113.9:41642': 1 }, GlobalV6Counters: null,
+		GlobalV4: '203.0.113.9:41641', GlobalV6: '', CaptivePortal: null,
+	}, over);
+}
+
+test('netcheckSummary: regions sorted by latency, names from the map, preferred region', () => {
+	const r = st.netcheckSummary(netcheck(), { 1000: 'Seoul', 1001: 'Tokyo' });
+	assert.equal(r.udp, true);
+	assert.equal(r.holePunch, 'easy');
+	assert.deepEqual(r.regions, [
+		{ id: 1001, name: 'Tokyo', ms: 4.6 },
+		{ id: 1000, name: 'Seoul', ms: 25.3 },
+		{ id: 1002, name: '1002', ms: 120 },
+	]);
+	assert.deepEqual(r.preferred, { id: 1001, name: 'Tokyo', ms: 4.6 });
+	assert.equal(r.ipv4, '203.0.113.9:41641');
+	assert.equal(r.ipv6, '');
+});
+
+test('netcheckSummary: hole punching from MappingVariesByDestIP', () => {
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: true })).holePunch, 'hard');
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: false })).holePunch, 'easy');
+	// the official client's opt.Bool encodes as a string
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: 'true' })).holePunch, 'hard');
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: 'false' })).holePunch, 'easy');
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: '' })).holePunch, 'unknown');
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: null })).holePunch, 'unknown');
+	assert.equal(st.netcheckSummary(netcheck({ MappingVariesByDestIP: undefined })).holePunch, 'unknown');
+	// "false" is only known with two mapped addresses to compare, and only with UDP
+	assert.equal(st.netcheckSummary(netcheck({ GlobalV4Counters: { '203.0.113.9:41641': 3 } })).holePunch, 'unknown');
+	assert.equal(st.netcheckSummary(netcheck({ GlobalV4Counters: null })).holePunch, 'unknown');
+	assert.equal(st.netcheckSummary(netcheck({ UDP: false, GlobalV4Counters: null })).holePunch, 'unknown');
+});
+
+test('netcheckSummary: no UDP, no regions, no preferred region', () => {
+	const r = st.netcheckSummary(netcheck({ UDP: false, PreferredDERP: 0, RegionLatency: {}, MappingVariesByDestIP: false, GlobalV4Counters: null }));
+	assert.equal(r.udp, false);
+	assert.deepEqual(r.regions, []);
+	assert.equal(r.preferred, null);
+	// a preferred region that has no latency entry is still named
+	assert.deepEqual(st.netcheckSummary(netcheck({ PreferredDERP: 7, RegionLatency: null }), { 7: 'X' }).preferred, { id: 7, name: 'X', ms: null });
+});
+
+test('netcheckSummary: garbage in, empty summary out', () => {
+	for (const bad of [null, undefined, 'x', 5, { ok: false, code: 'timeout' }]) {
+		const r = st.netcheckSummary(bad);
+		assert.equal(r.udp, false);
+		assert.equal(r.holePunch, 'unknown');
+		assert.deepEqual(r.regions, []);
+		assert.equal(r.preferred, null);
+	}
+	const r = st.netcheckSummary(netcheck({ RegionLatency: { abc: 5, 1000: 'slow', 1001: -1, 1002: 3000000 } }));
+	assert.deepEqual(r.regions, [{ id: 1002, name: '1002', ms: 3 }]);
+});
+
+test('netcheckSummary: relay names that carry an internal product name are not shown', () => {
+	const r = st.netcheckSummary(netcheck(), { 1000: 'Headscale Embedded DERP', 1001: 'my tailscale relay', 1002: '' });
+	assert.deepEqual(r.regions.map((x) => x.name), ['1001', '1000', '1002']);
+});
+
+test('regionNames: the relay regions of `flowmesh-luci regions`', () => {
+	assert.deepEqual(st.regionNames({ ok: true, regions: [{ id: 1000, code: 'r1', name: 'Seoul' }, { id: '1001', code: 'r2', name: '' }] }),
+		{ 1000: 'Seoul', 1001: 'r2' });
+	assert.deepEqual(st.regionNames({ ok: false, code: 'daemon_down' }), {});
+	assert.deepEqual(st.regionNames(null), {});
+	assert.deepEqual(st.regionNames({ ok: true, regions: [{ id: 'x', name: 'bad' }, null] }), {});
+});
+
+test('dnsLabel: the first label of a DNS name, the name the mesh answers for', () => {
+	assert.equal(st.dnsLabel('sungs-iphone.mesh.example.'), 'sungs-iphone');
+	assert.equal(st.dnsLabel('sungs-iphone.mesh.example'), 'sungs-iphone');
+	assert.equal(st.dnsLabel('gw.'), 'gw');
+	assert.equal(st.dnsLabel('GW-Home.Mesh.Example.'), 'GW-Home');
+	for (const bad of ['', '.', '..', null, undefined, 7, {}, ' '])
+		assert.equal(st.dnsLabel(bad), '', String(bad));
+});
+
+test('summarize: peers and self carry the DNS label (not the free-form HostName)', () => {
+	const s = st.summarize(status({
+		Self: node({ HostName: 'gw-home', DNSName: 'gw-home.mesh.example.' }),
+		Peer: {
+			k1: node({ HostName: "Sung's iPhone", DNSName: 'sungs-iphone.mesh.example.' }),
+			k2: node({ HostName: 'nodns', DNSName: undefined }),
+		},
+	}));
+	const by = Object.fromEntries(s.peers.map((p) => [p.name, p]));
+	assert.equal(by["Sung's iPhone"].dnsLabel, 'sungs-iphone');
+	assert.equal(by.nodns.dnsLabel, '');
+	assert.equal(s.dnsLabel, 'gw-home');
+	assert.equal(st.summarize(null).dnsLabel, '');
+});
+
+test('nameExample: a peer name the mesh resolves, or nothing', () => {
+	const peers = [
+		{ name: "Sung's iPhone", dnsLabel: 'sungs-iphone', online: false },
+		{ name: 'nas', dnsLabel: 'nas', online: true },
+	];
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, 'mesh.example'), 'nas.mesh.example');
+	assert.equal(st.nameExample({ peers: [peers[0]], dnsLabel: 'gw' }, 'mesh.example.'), 'sungs-iphone.mesh.example');
+	assert.equal(st.nameExample({ peers: [{ name: 'x', dnsLabel: '', online: true }], dnsLabel: 'gw' }, 'mesh.example'), 'gw.mesh.example');
+	assert.equal(st.nameExample({ peers: [{ name: 'x', dnsLabel: '', online: true }], dnsLabel: '' }, 'mesh.example'), '');
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, ''), '');
+	assert.equal(st.nameExample({ peers, dnsLabel: 'gw' }, null), '');
+	assert.equal(st.nameExample(null, 'mesh.example'), '');
 });
