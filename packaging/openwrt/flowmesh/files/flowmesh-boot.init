@@ -15,7 +15,8 @@ start() {
 	if /etc/init.d/flowmesh enabled && [ "$(uci -q get flowmesh.main.enabled)" != 0 ]; then
 		return 0
 	fi
-	logger -t flowmesh-boot "the flowmesh service does not start: removing its exit node firewall rules and LAN name entries"
+	# (The kernel log: this early, logd may not be accepting messages yet; logread shows both.)
+	echo "flowmesh-boot: the flowmesh service does not start: removing its exit node firewall rules and LAN name entries" > /dev/kmsg
 	FLOWMESH_FW_NORELOAD=1 /usr/libexec/flowmesh-fw exit-v6-block-off exit-kill-off
 	FLOWMESH_WATCH_DNSMASQ_RELOAD=true /usr/libexec/flowmesh-watch cleanup
 }
