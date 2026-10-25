@@ -47,35 +47,37 @@ pub(crate) fn relay_only(dm: &DerpMap) -> bool {
     nodes.peek().is_some() && nodes.all(|n| n.stun_port == -1)
 }
 
-/// Relay mode: strict if the self node carries `tag:relay-strict`; prefer if every DERP node has STUNPort == -1; otherwise auto.
+/// Relay mode: strict if the self node carries `tag:relay-strict`; otherwise prefer if it carries
+/// `tag:relay-force` or every DERP node has STUNPort == -1 (an older control server's only signal);
+/// otherwise auto.
 pub(crate) fn mode_of(nm: &NetMap) -> Mode {
-    let strict = nm
-        .self_node
-        .as_ref()
-        .is_some_and(|n| n.tags.iter().any(|t| t == "tag:relay-strict"));
-    if strict {
+    let has = |tag: &str| {
+        nm.self_node
+            .as_ref()
+            .is_some_and(|n| n.tags.iter().any(|t| t == tag))
+    };
+    if has("tag:relay-strict") {
         Mode::Strict
-    } else if relay_only(&nm.derp_map) {
+    } else if has("tag:relay-force") || relay_only(&nm.derp_map) {
         Mode::Prefer
     } else {
         Mode::Auto
     }
 }
 
-/// Endpoints to report in each mode: auto = local + STUN; prefer = local only (no STUN); strict = none.
+/// Endpoints to report in each mode: auto and prefer = local + STUN (prefer needs public
+/// candidates on the peer's side for its fallback); strict = none.
 pub(crate) fn endpoints_for(
     mode: Mode,
     local: &[SocketAddr],
     stun: Option<SocketAddr>,
 ) -> Vec<SocketAddr> {
-    let mut v = match mode {
-        Mode::Strict => return Vec::new(),
-        Mode::Prefer | Mode::Auto => local.to_vec(),
-    };
-    if mode == Mode::Auto {
-        if let Some(s) = stun.filter(|s| !v.contains(s)) {
-            v.push(s);
-        }
+    if mode == Mode::Strict {
+        return Vec::new();
+    }
+    let mut v = local.to_vec();
+    if let Some(s) = stun.filter(|s| !v.contains(s)) {
+        v.push(s);
     }
     v
 }
@@ -226,6 +228,7 @@ pub(crate) fn snapshot(
                 Route::PeerRelay { server, vni } => s.peer_relay = format!("{server}:vni:{vni}"),
                 _ => {}
             }
+            s.prefer_fallback = ps.in_prefer_fallback(n.key);
             if let Some((tx, rx)) = stats.get(&n.key) {
                 s.tx_bytes = *tx;
                 s.rx_bytes = *rx;
@@ -378,6 +381,17 @@ pub(crate) fn resolve_exit_node(nm: &NetMap, spec: &str) -> Result<NodePublic, S
         .ok_or_else(bad)
 }
 
+/// What path selection needs to know about a peer.
+pub(crate) fn peer_info(n: &Node) -> PeerInfo {
+    PeerInfo {
+        node: n.key,
+        disco: n.disco_key,
+        home_region: peer_home(n),
+        endpoints: n.endpoints.clone(),
+        online: n.online != Some(false),
+    }
+}
+
 pub(crate) fn apply_netmap(
     dp: &mut Dataplane,
     ps: &mut PathSock,
@@ -394,16 +408,7 @@ pub(crate) fn apply_netmap(
             })
             .collect(),
     );
-    ps.set_peers(
-        live_peers(nm, now_unix)
-            .map(|n| PeerInfo {
-                node: n.key,
-                disco: n.disco_key,
-                home_region: peer_home(n),
-                endpoints: n.endpoints.clone(),
-            })
-            .collect(),
-    );
+    ps.set_peers(live_peers(nm, now_unix).map(peer_info).collect());
     ps.set_mode(mode_of(nm));
     // Shields up: no rules, so only replies to this node's own connections come in (the filter
     // tracks outbound flows), as the official client does.
@@ -964,6 +969,26 @@ mod tests {
         );
         assert_eq!(mode_of(&netmap_with(&[], 3478)), Mode::Auto);
         assert_eq!(mode_of(&NetMap::default()), Mode::Auto);
+        // A control server that keeps the relays' STUN port marks prefer with the tag alone.
+        assert_eq!(
+            mode_of(&netmap_with(
+                &["tag:relay-enabled", "tag:relay-force"],
+                3478
+            )),
+            Mode::Prefer
+        );
+        assert_eq!(
+            mode_of(&netmap_with(
+                &["tag:relay-enabled", "tag:relay-force", "tag:relay-strict"],
+                3478
+            )),
+            Mode::Strict,
+            "strict wins over force"
+        );
+        assert_eq!(
+            mode_of(&netmap_with(&["tag:relay-enabled"], 3478)),
+            Mode::Auto
+        );
     }
 
     #[test]
@@ -989,7 +1014,12 @@ mod tests {
         let local: Vec<SocketAddr> = vec!["172.29.0.31:41641".parse().unwrap()];
         let stun: SocketAddr = "203.0.113.5:41641".parse().unwrap();
         assert!(endpoints_for(Mode::Strict, &local, Some(stun)).is_empty());
-        assert_eq!(endpoints_for(Mode::Prefer, &local, Some(stun)), local);
+        // Prefer reports its STUN address too, so a peer has public candidates for the fallback.
+        assert_eq!(
+            endpoints_for(Mode::Prefer, &local, Some(stun)),
+            vec![local[0], stun]
+        );
+        assert_eq!(endpoints_for(Mode::Prefer, &local, None), local);
         assert_eq!(
             endpoints_for(Mode::Auto, &local, Some(stun)),
             vec![local[0], stun]
@@ -1155,6 +1185,7 @@ mod tests {
         );
         let mut unknown = nm.peers[&2].clone();
         unknown.allowed_ips.retain(|p| p.prefix_len() != 0);
+        unknown.online = None;
         let s = peer_status(&unknown, &nm);
         assert_eq!(
             (s.relay.as_str(), s.online, s.exit_node_option),
@@ -1242,6 +1273,7 @@ mod tests {
             disco: peer_disco.public(),
             home_region: Some(1000),
             endpoints: vec![ep],
+            online: true,
         }]);
         // Answer the direct probe so the path to the peer is direct.
         struct R(u8);
@@ -1530,5 +1562,70 @@ mod tests {
     fn unix_now_is_plausible() {
         let t = unix_now();
         assert!((1_700_000_000..4_000_000_000).contains(&t), "{t}");
+    }
+
+    /// Path selection treats a peer as online unless the control server says it is offline.
+    #[test]
+    fn peer_info_online_unless_marked_offline() {
+        let mut n = Node {
+            key: NodePublic([5; 32]),
+            home_derp: 1000,
+            endpoints: vec!["172.29.0.21:41641".parse().unwrap()],
+            ..Default::default()
+        };
+        let info = peer_info(&n);
+        assert_eq!(
+            (
+                info.node,
+                info.home_region,
+                info.endpoints.len(),
+                info.online
+            ),
+            (NodePublic([5; 32]), Some(1000), 1, true),
+            "unknown counts as online"
+        );
+        n.online = Some(true);
+        assert!(peer_info(&n).online);
+        n.online = Some(false);
+        assert!(!peer_info(&n).online);
+    }
+
+    /// A peer in prefer fallback is flagged in the status snapshot.
+    #[test]
+    fn snapshot_reports_prefer_fallback() {
+        struct R(u8);
+        impl flowmesh_pathsock::Random for R {
+            fn fill(&mut self, buf: &mut [u8]) {
+                for b in buf {
+                    self.0 = self.0.wrapping_add(1);
+                    *b = self.0;
+                }
+            }
+        }
+        let peer = Node {
+            id: 2,
+            key: NodePublic([5; 32]),
+            disco_key: DiscoPrivate::generate().unwrap().public(),
+            home_derp: 1000,
+            ..Default::default()
+        };
+        let mut nm = NetMap::default();
+        nm.peers.insert(2, peer.clone());
+        let mut ps = PathSock::new(DiscoPrivate::generate().unwrap(), NodePublic([1; 32]));
+        ps.set_mode(Mode::Prefer);
+        ps.set_peers(vec![peer_info(&peer)]);
+        let dp = Dataplane::new(NodePrivate::generate().unwrap());
+        let mut rng = R(0);
+        let flag =
+            |ps: &PathSock| snapshot(&nm, ps, &dp, Duration::ZERO, &[]).peers[0].prefer_fallback;
+        // Active, and no relay answers for 15 s.
+        for t in 0..=15 {
+            ps.route(peer.key, Duration::from_secs(t), &mut rng);
+            ps.tick(Duration::from_secs(t), &mut rng);
+            if t < 15 {
+                assert!(!flag(&ps), "at {t}s");
+            }
+        }
+        assert!(flag(&ps));
     }
 }

@@ -1006,9 +1006,10 @@ pub async fn run(
         home_node.host_name
     ));
 
-    // STUN to learn the externally visible address (skipped in relay-only mode or when the node has STUNPort == -1).
+    // STUN to learn the externally visible address (auto and prefer; skipped in strict mode or when
+    // the node has STUNPort == -1).
     let mut stun_tx = None;
-    if mode == Mode::Auto && home_node.stun_port != -1 {
+    if mode != Mode::Strict && home_node.stun_port != -1 {
         let port = u16::try_from(home_node.stun_port)
             .ok()
             .filter(|p| *p != 0)
@@ -1342,6 +1343,7 @@ pub async fn run(
                             {
                                 Some(peer) => {
                                     ctx.traffic.received(crate::metrics::Path::PeerRelay(from.ip()), payload.len());
+                                    ctx.ps.note_received(peer, now);
                                     dp.inbound(peer, payload, now)
                                 }
                                 None => Vec::new(),
@@ -1389,6 +1391,7 @@ pub async fn run(
                         .or_else(|| ctx.ps.peer_for_addr(from))
                     {
                         ctx.traffic.received(crate::metrics::Path::Direct(from.ip()), data.len());
+                        ctx.ps.note_received(peer, now);
                         dp.inbound(peer, data, now)
                     } else {
                         Vec::new()
@@ -1416,6 +1419,7 @@ pub async fn run(
                                 tap("derp-other", &data, now);
                             }
                             ctx.traffic.received(crate::metrics::Path::Derp, data.len());
+                            ctx.ps.note_received(src, now);
                             dp.inbound(src, &data, now)
                         }
                     }
@@ -1657,6 +1661,7 @@ pub async fn run(
                     expire_pings(&mut pings, now);
                     let acts = ctx.ps.tick(now, &mut ctx.rng);
                     ctx.run_actions(acts).await;
+                    log_prefer_events(ctx.ps.take_prefer_events(), &ctx.nm);
                     let acts = ctx.peer_relay.tick(now);
                     ctx.run_relay(acts).await;
                     if last_publish.is_none_or(|t| now.saturating_sub(t) >= STATUS_INTERVAL) {
@@ -1698,6 +1703,42 @@ pub async fn run(
             if let Err(e) = tun.flush().await {
                 log(format!("tun write: {e}"));
             }
+        }
+    }
+}
+
+/// One log line per prefer-relay fallback transition. The state machine's minimum stay in fallback
+/// and the steady-answer requirement already bound how often one peer can produce these.
+fn log_prefer_events(events: Vec<flowmesh_pathsock::PreferEvent>, nm: &NetMap) {
+    use flowmesh_pathsock::PreferEvent;
+    let name = |key: NodePublic| {
+        nm.peers
+            .values()
+            .find(|n| n.key == key)
+            .map_or_else(|| key.to_string(), |n| n.hostinfo.hostname.clone())
+    };
+    for e in events {
+        match e {
+            PreferEvent::Entered {
+                peer,
+                no_relay_path,
+            } => {
+                let why = if no_relay_path {
+                    "no relay path"
+                } else {
+                    "relays silent"
+                };
+                log(format!(
+                    "prefer relay: {} falls back to direct ({why} for {}s)",
+                    name(peer),
+                    flowmesh_pathsock::PREFER_RELAY_DEAD_AFTER.as_secs()
+                ));
+            }
+            PreferEvent::Exited { peer, after } => log(format!(
+                "prefer relay: {} back on relay after {}s of direct fallback",
+                name(peer),
+                after.as_secs()
+            )),
         }
     }
 }

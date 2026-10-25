@@ -19,6 +19,8 @@ pub struct PeerStatus {
     pub cur_addr: Option<SocketAddr>,
     /// Current peer relay path as `ip:port:vni:N`; empty otherwise (peer-relay.md §1).
     pub peer_relay: String,
+    /// Prefer relay mode: the relays went silent for this peer, so direct paths are allowed.
+    pub prefer_fallback: bool,
     pub rx_bytes: u64,
     pub tx_bytes: u64,
     pub active: bool,

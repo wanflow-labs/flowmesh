@@ -124,6 +124,8 @@ fn node(n: &PeerStatus) -> Value {
         "TailscaleIPs": ips(&n.tailscale_ips),
         "CurAddr": n.cur_addr.map(|a| a.to_string()).unwrap_or_default(),
         "PeerRelay": n.peer_relay,
+        // FlowMesh: prefer relay mode fell back to direct for this peer (relays silent).
+        "prefer_fallback": n.prefer_fallback,
         "Relay": n.relay,
         "RxBytes": n.rx_bytes,
         "TxBytes": n.tx_bytes,
@@ -189,6 +191,7 @@ mod tests {
     fn peer(key: &str) -> PeerStatus {
         PeerStatus {
             peer_relay: String::new(),
+            prefer_fallback: false,
             id: 7,
             public_key: key.into(),
             host_name: "ts1".into(),
@@ -444,6 +447,20 @@ mod tests {
         let v = node(&p);
         assert_eq!(v["PeerRelay"], "172.29.0.23:40000:vni:5");
         assert_eq!(v["CurAddr"], "");
+    }
+
+    /// FlowMesh's own field: whether prefer relay mode fell back to direct for this peer; always
+    /// present, false outside prefer mode.
+    #[test]
+    fn prefer_fallback_field() {
+        let mut p = peer("nodekey:a");
+        assert_eq!(node(&p)["prefer_fallback"], false);
+        p.prefer_fallback = true;
+        assert_eq!(node(&p)["prefer_fallback"], true);
+        let mut s = running();
+        s.peers[0].prefer_fallback = true;
+        let v = out(BackendState::Running, true, &s);
+        assert_eq!(v["Peer"]["nodekey:bb"]["prefer_fallback"], true);
     }
 
     /// The official field: the routes the control server reports a node as primary for. `Self` and
