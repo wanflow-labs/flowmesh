@@ -1308,6 +1308,13 @@ check "after reboot: back up" eventually 120 eval 'r true 2>/dev/null'
 check "after reboot: Running again without the key" eventually 60 backend_running
 check "after reboot: LAN host still reaches the mesh" eventually 45 lan_ping
 check "after reboot: LAN host through the exit node again, IPv6 blocked" eventually 60 eval 'via_exit && v6_blocked'
+check "after reboot (service enabled): the boot guard is enabled and left everything alone" eval '
+  r "/etc/init.d/flowmesh-boot enabled" && ! r "logread | grep -q flowmesh-boot"'
+"$LAB" peer-stop "$OWT_WORK" >/dev/null
+check "  ... the kill switch works: exit node offline -> offline_blocked, the LAN off the uplink" eventually 30 eval '
+  state_is offline_blocked && ! LAN4_T=2 lan4_direct'
+"$LAB" peer-start "$OWT_WORK" >/dev/null
+check "  ... exit node back: through it again" eventually 45 back_now
 
 # Disabled in the settings (enabled=0, without a reload) while the IPv6 block and a kill switch rule
 # are in place, then the power goes (reboot -f: no shutdown scripts, so the service's stop never
@@ -1321,6 +1328,20 @@ check "  ... no daemon, no IPv6 block or kill switch rule (UCI and $fw), the LAN
   no_daemon && kill_off && v6_open && lan4_direct'
 r 'uci delete flowmesh.main.enabled; uci commit flowmesh; /etc/init.d/flowmesh start' >/dev/null 2>&1
 check "  ... enabled again and started: through the exit node, IPv6 blocked" eventually 60 eval 'via_exit && v6_blocked'
+
+# Disabled under System -> Startup (`/etc/init.d/flowmesh disable`: no start and no stop link, so
+# the service runs neither at shutdown nor at boot) with both rules in place, then an ordinary
+# reboot: the boot guard (flowmesh-boot, START 18, before the firewall) removes them.
+r '/usr/libexec/flowmesh-fw exit-kill-on; /etc/init.d/flowmesh disable' >/dev/null 2>&1
+check "init disable with the IPv6 block and the kill switch rule in place" eval '
+  kill_on && v6_blocked && ! r "/etc/init.d/flowmesh enabled"'
+r 'reboot' >/dev/null 2>&1
+eventually 60 eval '! r true 2>/dev/null'
+check "disabled under Startup, rebooted: back up" eventually 120 eval 'r true 2>/dev/null'
+check "  ... no daemon, no IPv6 block or kill switch rule (UCI and $fw), the LAN on the uplink; the boot guard says why" eventually 60 eval '
+  no_daemon && kill_off && v6_open && lan4_direct && r "logread | grep -q flowmesh-boot"'
+r '/etc/init.d/flowmesh enable; /etc/init.d/flowmesh start' >/dev/null 2>&1
+check "  ... enabled and started again: through the exit node, IPv6 blocked" eventually 60 eval 'via_exit && v6_blocked'
 
 # --- the Linux installer ---------------------------------------------------------------------
 # The console's Linux install command run on the router must refuse and point to the feed, leaving
@@ -1358,7 +1379,8 @@ check "removed: no flowmesh rules in the running firewall ($fw)" eval '
   out=$(r "nft list ruleset 2>/dev/null; iptables -S 2>/dev/null; true") && ! grep -q flowmesh0 <<< "$out" && own_rules_absent'
 check "removed while using an exit node: no exit routing, table 52 or SNAT, no IPv6 block rule (UCI or $fw)" \
   eval 'no_exit_rules && exit_snat_absent && v6_open && kill_off'
-check "removed: init script and binaries gone" r '! test -e /etc/init.d/flowmesh && ! test -e /usr/sbin/flowmeshd && ! test -e /etc/rc.d/S95flowmesh'
+check "removed: init scripts (service and boot guard), their links and binaries gone" r '! test -e /etc/init.d/flowmesh && ! test -e /usr/sbin/flowmeshd &&
+  ! test -e /etc/rc.d/S95flowmesh && ! test -e /etc/init.d/flowmesh-boot && ! ls /etc/rc.d/ | grep -q flowmesh'
 check "removed: /etc/flowmesh (identity) kept" r 'test -n "$(ls -A /etc/flowmesh)"'
 check "removed: no dnsmasq entries of ours left, the user's kept" eval 'ours_absent && user_dns_kept'
 dns_list server | sed 's/^/   | server after removal: /'

@@ -107,7 +107,10 @@ from a copy when only the `flowmesh` package is installed): after Disconnect and
 the uplink with neither rule, state `stopped`, also 12 s and a reload later; after Reconnect and the
 join it goes through the exit node again. After the reboot check: `enabled=0` with the IPv6 block and
 a kill switch rule in place, then `reboot -f` (no shutdown scripts): the router comes up with no
-daemon, neither rule and the LAN on the uplink.
+daemon, neither rule and the LAN on the uplink. The same after `/etc/init.d/flowmesh disable` and an
+ordinary reboot (the boot guard `flowmesh-boot` removes them). With the service enabled the reboot
+leaves the guard silent and the kill switch still blocks the LAN when the exit node goes offline;
+removal also removes the guard and its link.
 
 ## Running
 
