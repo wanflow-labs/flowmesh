@@ -131,6 +131,7 @@ impl PreferFallback {
 
     /// Re-evaluates the peer; call it regularly (about once a second) while the peer may be active.
     pub(crate) fn update(&mut self, now: Duration) -> Transition {
+        // Both entering and leaving fallback are decided only while the peer is active.
         if !self.active_at(now) {
             return Transition::NoChange;
         }
@@ -446,6 +447,35 @@ mod tests {
     fn s10_a_single_pong_does_not_leave_fallback() {
         let tr = after_fallback(60, |t| t <= 60, |t| t == 20);
         assert!(tr.fb(60));
+        assert_eq!(tr.transitions, vec![(15, Entered)]);
+    }
+
+    #[test]
+    fn s11_no_switch_back_while_idle() {
+        let mut fb = PreferFallback::default();
+        let tr = run(&mut fb, 0..=90, |fb, t| {
+            if t <= 16 {
+                fb.note_active(secs(t));
+            }
+            if t >= 40 && t % 5 == 0 {
+                fb.note_relay_pong(secs(t));
+            }
+        });
+        assert!(tr.fb(90));
+        assert_eq!(tr.transitions, vec![(15, Entered)]);
+    }
+
+    #[test]
+    fn going_offline_in_fallback_keeps_fallback() {
+        let mut fb = PreferFallback::default();
+        let tr = run(&mut fb, 0..=40, |fb, t| {
+            fb.note_active(secs(t));
+            if t == 20 {
+                fb.set_online(secs(20), false);
+            }
+        });
+        assert!(tr.fb(15));
+        assert!(tr.fb(40));
         assert_eq!(tr.transitions, vec![(15, Entered)]);
     }
 }
